@@ -10,6 +10,3 @@
 [submodule "lib/preprocessor"]
 	path = lib/preprocessor
 	url = git@github.com:boostorg/preprocessor.git
-[submodule "lib/poly_vector"]
-	path = lib/poly_vector
-	url = git@github.com:fecjanky/poly_vector.git

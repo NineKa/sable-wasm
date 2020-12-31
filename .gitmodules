@@ -1,0 +1,15 @@
+[submodule "lib/poly_vector"]
+	path = lib/poly_vector
+	url = git@github.com:NineKa/poly_vector.git
+[submodule "lib/mio"]
+	path = lib/mio
+	url = git@github.com:mandreyel/mio.git
+[submodule "lib/fmt"]
+	path = lib/fmt
+	url = git@github.com:fmtlib/fmt.git
+[submodule "lib/utfcpp"]
+	path = lib/utfcpp
+	url = git@github.com:nemtrif/utfcpp.git
+[submodule "lib/preprocessor"]
+	path = lib/preprocessor
+	url = git@github.com:boostorg/preprocessor.git

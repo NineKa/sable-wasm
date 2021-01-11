@@ -1,8 +1,6 @@
 .cache/
+.idea/
 build/
 
-.clangd
-.clang-format
-.clang-tidy
 .DS_Store
 compile_commands.json

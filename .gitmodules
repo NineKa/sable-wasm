@@ -10,3 +10,9 @@
 [submodule "lib/preprocessor"]
 	path = lib/preprocessor
 	url = git@github.com:boostorg/preprocessor.git
+[submodule "lib/poly_vector"]
+	path = lib/poly_vector
+	url = git@github.com:NineKa/poly_vector.git
+[submodule "lib/cppitertools"]
+	path = lib/cppitertools
+	url = git@github.com:ryanhaining/cppitertools.git

@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+ColumnLimit: 80
+
+
+AlignAfterOpenBracket: AlwaysBreak
+
+AllowShortIfStatementsOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Always

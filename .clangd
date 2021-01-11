@@ -1,0 +1,8 @@
+CompileFlags:  
+  Add: [
+    -I/opt/homebrew/Cellar/gcc/10.2.0_1/include/c++/10.2.1,
+    -I/opt/homebrew/Cellar/gcc/10.2.0_1/include/c++/10.2.1/aarch64-apple-darwin20,
+    -I/opt/homebrew/Cellar/gcc/10.2.0_1/include/c++/10.2.1/backward,
+    -I/opt/homebrew/Cellar/gcc/10.2.0_1/lib/gcc/10/gcc/aarch64-apple-darwin20/10.2.1/include,
+    -I/opt/homebrew/Cellar/gcc/10.2.0_1/lib/gcc/10/gcc/aarch64-apple-darwin20/10.2.1/include-fixed
+  ]

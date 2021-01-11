@@ -1,0 +1,3 @@
+X(enterTypeSection  , (1, ((SizeType, Size))))
+X(onTypeSectionEntry, (2, ((SizeType, Index), (bytecode::FunctionType, Type))))
+X(enterImportSection, (1, ((SizeType, Size))))

@@ -1,0 +1,17 @@
+Checks: '
+  -*,
+  clang-analyzer-*,
+  modernize-*,
+  cppcoreguidelines-*,
+  performance-*,
+  bugprone-*,
+  misc-*,
+  llvm-*,
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  -modernize-use-nullptr, 
+  -cppcoreguidelines-macro-usage,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-avoid-magic-numbers, 
+  -misc-non-private-member-variables-in-classes'
+HeaderFilterRegex: '.*/src/.*'

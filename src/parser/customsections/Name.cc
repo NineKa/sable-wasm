@@ -24,7 +24,7 @@ void Name::parseFunctionNames(WASMReader<ByteArrayReader> &Reader) {
   auto NumEntries = Reader.readULEB128Int32();
   FunctionNames.reserve(NumEntries);
   for (decltype(NumEntries) I = 0; I < NumEntries; ++I) {
-    auto FuncIndex = static_cast<bytecode::FuncIDX>(Reader.readULEB128Int32());
+    auto FuncIndex = Reader.readFuncIDX();
     auto Name = Reader.readUTF8StringVector();
     FunctionNames.push_back(
         FunctionNameEntry{.FuncIndex = FuncIndex, .Name = std::string(Name)});
@@ -43,11 +43,10 @@ void Name::parseLocalNames(WASMReader<ByteArrayReader> &Reader) {
   Reader.setBarrier(SubsectionSize);
   auto NumEntries = Reader.readULEB128Int32();
   for (decltype(NumEntries) I = 0; I < NumEntries; ++I) {
-    auto FuncIndex = static_cast<bytecode::FuncIDX>(Reader.readULEB128Int32());
+    auto FuncIndex = Reader.readFuncIDX();
     auto NumSubEntries = Reader.readULEB128Int32();
     for (decltype(NumSubEntries) J = 0; J < NumSubEntries; ++J) {
-      auto LocalIndex =
-          static_cast<bytecode::LocalIDX>(Reader.readULEB128Int32());
+      auto LocalIndex = Reader.readLocalIDX();
       auto Name = Reader.readUTF8StringVector();
       LocalNames.push_back(LocalNameEntry{
           .FuncIndex = FuncIndex,

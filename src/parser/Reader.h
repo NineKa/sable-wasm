@@ -2,6 +2,7 @@
 #define SABLE_INCLUDE_GUARD_PARSER_READER
 
 #include "../bytecode/Instruction.h"
+#include "../bytecode/Module.h"
 #include "../bytecode/Type.h"
 #include "../utility/Commons.h"
 
@@ -14,7 +15,6 @@
 #include <span>
 #include <stdexcept>
 #include <string>
-#include <variant>
 
 namespace parser {
 struct ParserError : std::runtime_error {
@@ -41,13 +41,6 @@ concept reader = requires(T R) {
   { R.restoreBarrier(std::declval<typename T::BarrierStatus>()) };
 };
 // clang-format on
-
-using ImportDescriptor = std::variant<
-    bytecode::TypeIDX, bytecode::TableType, bytecode::MemoryType,
-    bytecode::GlobalType>;
-using ExportDescriptor = std::variant<
-    bytecode::FuncIDX, bytecode::TableIDX, bytecode::MemIDX,
-    bytecode::GlobalIDX>;
 
 template <reader ReaderImpl> class WASMReader {
   using CursorStatus = typename ReaderImpl::CursorStatus;
@@ -102,18 +95,33 @@ public:
   std::uint32_t readULEB128Int32() { return readLEB128<std::uint32_t>(); }
   std::uint64_t readULEB128Int64() { return readLEB128<std::uint64_t>(); }
 
-  std::string_view          readUTF8StringVector();
+  std::string_view           readUTF8StringVector();
 
-  bytecode::ValueType       readValueType();
-  bytecode::FunctionType    readFunctionType();
-  bytecode::MemoryType      readMemoryType();
-  bytecode::TableType       readTableType();
-  bytecode::GlobalType      readGlobalType();
+  bytecode::ValueType        readValueType();
+  bytecode::FunctionType     readFunctionType();
+  bytecode::MemoryType       readMemoryType();
+  bytecode::TableType        readTableType();
+  bytecode::GlobalType       readGlobalType();
 
-  ImportDescriptor          readImportDescriptor();
-  ExportDescriptor          readExportDescriptor();
+  bytecode::ImportDescriptor readImportDescriptor();
+  bytecode::ExportDescriptor readExportDescriptor();
 
-  bytecode::BlockResultType readBlockResultType();
+  bytecode::BlockResultType  readBlockResultType();
+
+  bytecode::TypeIDX readTypeIDX()
+  { return static_cast<bytecode::TypeIDX  >(readULEB128Int32()); }
+  bytecode::FuncIDX readFuncIDX()
+  { return static_cast<bytecode::FuncIDX  >(readULEB128Int32()); }
+  bytecode::TableIDX readTableIDX()
+  { return static_cast<bytecode::TableIDX >(readULEB128Int32()); }
+  bytecode::MemIDX readMemIDX()
+  { return static_cast<bytecode::MemIDX   >(readULEB128Int32()); }
+  bytecode::GlobalIDX readGlobalIDX()
+  { return static_cast<bytecode::GlobalIDX>(readULEB128Int32()); }
+  bytecode::LocalIDX readLocalIDX()
+  { return static_cast<bytecode::LocalIDX >(readULEB128Int32()); }
+  bytecode::LabelIDX readLabelIDX()
+  { return static_cast<bytecode::LabelIDX >(readULEB128Int32()); }
   // clang-format on
 };
 
@@ -281,10 +289,10 @@ bytecode::GlobalType WASMReader<ReaderImpl>::readGlobalType() {
 }
 
 template <reader ReaderImpl>
-ImportDescriptor WASMReader<ReaderImpl>::readImportDescriptor() {
+bytecode::ImportDescriptor WASMReader<ReaderImpl>::readImportDescriptor() {
   auto MagicNumber = read();
   switch (static_cast<unsigned>(MagicNumber)) {
-  case 0x00: return static_cast<bytecode::TypeIDX>(readULEB128Int32());
+  case 0x00: return readTypeIDX();
   case 0x01: return readTableType();
   case 0x02: return readMemoryType();
   case 0x03: return readGlobalType();
@@ -295,13 +303,13 @@ ImportDescriptor WASMReader<ReaderImpl>::readImportDescriptor() {
 }
 
 template <reader ReaderImpl>
-ExportDescriptor WASMReader<ReaderImpl>::readExportDescriptor() {
+bytecode::ExportDescriptor WASMReader<ReaderImpl>::readExportDescriptor() {
   auto MagicNumber = read();
   switch (static_cast<unsigned>(MagicNumber)) {
-  case 0x00: return static_cast<bytecode::FuncIDX>(readULEB128Int32());
-  case 0x01: return static_cast<bytecode::TableIDX>(readULEB128Int32());
-  case 0x02: return static_cast<bytecode::MemIDX>(readULEB128Int32());
-  case 0x03: return static_cast<bytecode::GlobalIDX>(readULEB128Int32());
+  case 0x00: return readFuncIDX();
+  case 0x01: return readTableIDX();
+  case 0x02: return readMemIDX();
+  case 0x03: return readGlobalIDX();
   default:
     throw ParserError(fmt::format(
         "unknown export descriptor magic number 0x{:02x}", MagicNumber));

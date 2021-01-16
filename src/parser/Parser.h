@@ -128,7 +128,7 @@ void Parser<ReaderImpl, DelegateImpl>::parseFunctionSection() {
   auto NumEntries = Reader.readULEB128Int32();
   Delegate.enterFunctionSection(NumEntries);
   for (decltype(NumEntries) I = 0; I < NumEntries; ++I) {
-    auto TypeIndex = static_cast<bytecode::TypeIDX>(Reader.readULEB128Int32());
+    auto TypeIndex = Reader.readTypeIDX();
     Delegate.onFunctionSectionEntry(I, TypeIndex);
   }
 }
@@ -177,7 +177,7 @@ void Parser<ReaderImpl, DelegateImpl>::parseExportSection() {
 
 template <reader ReaderImpl, delegate DelegateImpl>
 void Parser<ReaderImpl, DelegateImpl>::parseStartSection() {
-  auto StartFunc = static_cast<bytecode::FuncIDX>(Reader.readULEB128Int32());
+  auto StartFunc = Reader.readFuncIDX();
   Delegate.onStartSectionEntry(StartFunc);
 }
 
@@ -186,15 +186,13 @@ void Parser<ReaderImpl, DelegateImpl>::parseElementSection() {
   auto NumEntries = Reader.readULEB128Int32();
   Delegate.enterElementSection(NumEntries);
   for (decltype(NumEntries) I = 0; I < NumEntries; ++I) {
-    auto TableIndex =
-        static_cast<bytecode::TableIDX>(Reader.readULEB128Int32());
+    auto TableIndex = Reader.readTableIDX();
     parseExpression();
     auto NumFuncIndices = Reader.readULEB128Int32();
     std::vector<bytecode::FuncIDX> FuncIndices;
     FuncIndices.reserve(NumFuncIndices);
     for (decltype(NumFuncIndices) J = 0; J < NumFuncIndices; ++J) {
-      auto FuncIndex =
-          static_cast<bytecode::FuncIDX>(Reader.readULEB128Int32());
+      auto FuncIndex = Reader.readFuncIDX();
       FuncIndices.push_back(FuncIndex);
     }
     Delegate.onElementSectionEntry(I, TableIndex, FuncIndices);
@@ -229,7 +227,7 @@ void Parser<ReaderImpl, DelegateImpl>::parseDataSection() {
   auto NumEntries = Reader.readULEB128Int32();
   Delegate.enterDataSection(NumEntries);
   for (decltype(NumEntries) I = 0; I < NumEntries; ++I) {
-    auto MemoryIndex = static_cast<bytecode::MemIDX>(Reader.readULEB128Int32());
+    auto MemoryIndex = Reader.readMemIDX();
     parseExpression();
     auto NumBytes = Reader.readULEB128Int32();
     auto Bytes = Reader.read(NumBytes);
@@ -359,61 +357,35 @@ void Parser<ReaderImpl, DelegateImpl>::parseInstruction() {
     Delegate.exitInstIf();
     break;
   }
-  case 0x0c: {
-    auto Target = static_cast<bytecode::LabelIDX>(Reader.readULEB128Int32());
-    Delegate.onInstBr(Target);
-    break;
-  }
-  case 0x0d: {
-    auto Target = static_cast<bytecode::LabelIDX>(Reader.readULEB128Int32());
-    Delegate.onInstBrIf(Target);
-    break;
-  }
+  case 0x0c: Delegate.onInstBr(Reader.readLabelIDX()); break;
+  case 0x0d: Delegate.onInstBrIf(Reader.readLabelIDX()); break;
   case 0x0e: {
     auto NumTargetEntries = Reader.readULEB128Int32();
     std::vector<bytecode::LabelIDX> Targets;
     Targets.reserve(NumTargetEntries);
     for (decltype(NumTargetEntries) I = 0; I < NumTargetEntries; ++I) {
-      auto Target = static_cast<bytecode::LabelIDX>(Reader.readULEB128Int32());
+      auto Target = Reader.readLabelIDX();
       Targets.push_back(Target);
     }
-    auto DefaultTarget =
-        static_cast<bytecode::LabelIDX>(Reader.readULEB128Int32());
+    auto DefaultTarget = Reader.readLabelIDX();
     Delegate.onInstBrTable(DefaultTarget, Targets);
     break;
   }
   case 0x0f: Delegate.onInstReturn(); break;
-  case 0x10: {
-    auto Target = static_cast<bytecode::FuncIDX>(Reader.readULEB128Int32());
-    Delegate.onInstCall(Target);
-    break;
-  }
-  case 0x11: {
-    auto ExpectedType =
-        static_cast<bytecode::TypeIDX>(Reader.readULEB128Int32());
-    Delegate.onInstCallIndirect(ExpectedType);
-    break;
-  }
+  case 0x10: Delegate.onInstCall(Reader.readFuncIDX()); break;
+  case 0x11: Delegate.onInstCallIndirect(Reader.readTypeIDX()); break;
 
   case 0x1a: Delegate.onInstDrop(); break;
   case 0x1b: Delegate.onInstSelect(); break;
 
 #define SABLE_LOCAL_INSTRUCTION(Opcode, Name)                                  \
-  case Opcode: {                                                               \
-    auto Target = static_cast<bytecode::LocalIDX>(Reader.readULEB128Int32());  \
-    Delegate.onInst##Name(Target);                                             \
-    break;                                                                     \
-  }
+  case Opcode: Delegate.onInst##Name(Reader.readLocalIDX()); break;
     SABLE_LOCAL_INSTRUCTION(0x20, LocalGet)
     SABLE_LOCAL_INSTRUCTION(0x21, LocalSet)
     SABLE_LOCAL_INSTRUCTION(0x22, LocalTee)
 #undef SABLE_LOCAL_INSTRUCTION
 #define SABLE_GLOBAL_INSTRUCTION(Opcode, Name)                                 \
-  case Opcode: {                                                               \
-    auto Target = static_cast<bytecode::GlobalIDX>(Reader.readULEB128Int32()); \
-    Delegate.onInst##Name(Target);                                             \
-    break;                                                                     \
-  }
+  case Opcode: Delegate.onInst##Name(Reader.readGlobalIDX()); break;
     SABLE_GLOBAL_INSTRUCTION(0x23, GlobalGet)
     SABLE_GLOBAL_INSTRUCTION(0x24, GlobalSet)
 #undef SABLE_GLOBAL_INSTRUCTION

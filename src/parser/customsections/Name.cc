@@ -26,10 +26,10 @@ void Name::parseFunctionNames(WASMReader<ByteArrayReader> &Reader) {
   for (decltype(NumEntries) I = 0; I < NumEntries; ++I) {
     auto FuncIndex = static_cast<bytecode::FuncIDX>(Reader.readULEB128Int32());
     auto Name = Reader.readUTF8StringVector();
-    FunctionNames.emplace_back(FuncIndex, Name);
+    FunctionNames.push_back(
+        FunctionNameEntry{.FuncIndex = FuncIndex, .Name = std::string(Name)});
   }
-  auto ProjectFn = [](auto &&Pair) { return std::get<0>(Pair); };
-  ranges::sort(FunctionNames, std::less{}, ProjectFn);
+  ranges::sort(FunctionNames);
   Reader.restoreBarrier(EnteringBarrierStatus);
 }
 
@@ -49,13 +49,13 @@ void Name::parseLocalNames(WASMReader<ByteArrayReader> &Reader) {
       auto LocalIndex =
           static_cast<bytecode::LocalIDX>(Reader.readULEB128Int32());
       auto Name = Reader.readUTF8StringVector();
-      LocalNames.emplace_back(FuncIndex, LocalIndex, Name);
+      LocalNames.push_back(LocalNameEntry{
+          .FuncIndex = FuncIndex,
+          .LocalIndex = LocalIndex,
+          .Name = std::string(Name)});
     }
   }
-  auto ProjectFn = [](auto &&Pair) {
-    return std::make_pair(std::get<0>(Pair), std::get<1>(Pair));
-  };
-  ranges::sort(LocalNames, std::less{}, ProjectFn);
+  ranges::sort(LocalNames);
   Reader.restoreBarrier(EnteringBarrierStatus);
 }
 
@@ -80,21 +80,21 @@ std::optional<std::string_view> Name::getModuleName() const {
 
 std::optional<std::string_view>
 Name::getFunctionName(bytecode::FuncIDX Func) const {
-  auto ProjectFn = [](auto &&Pair) { return std::get<0>(Pair); };
+  auto ProjectFn = [](FunctionNameEntry const &Pair) { return Pair.FuncIndex; };
   auto EqualRange = ranges::equal_range(FunctionNames, Func, {}, ProjectFn);
   if (ranges::empty(EqualRange)) return std::nullopt;
-  return std::string_view(std::get<1>(*ranges::begin(EqualRange)));
+  return std::string_view(ranges::begin(EqualRange)->Name);
 }
 
 std::optional<std::string_view>
 Name::getLocalName(bytecode::FuncIDX Func, bytecode::LocalIDX Local) const {
   auto SearchValue = std::make_pair(Func, Local);
-  auto ProjectFn = [](auto &&Pair) {
-    return std::make_pair(std::get<0>(Pair), std::get<1>(Pair));
+  auto ProjectFn = [](LocalNameEntry const &Pair) {
+    return std::make_pair(Pair.FuncIndex, Pair.LocalIndex);
   };
   auto EqualRange = ranges::equal_range(LocalNames, SearchValue, {}, ProjectFn);
   if (ranges::empty(EqualRange)) return std::nullopt;
-  return std::string_view(std::get<2>(*ranges::begin(EqualRange)));
+  return std::string_view(ranges::begin(EqualRange)->Name);
 }
 
 } // namespace parser::customsections

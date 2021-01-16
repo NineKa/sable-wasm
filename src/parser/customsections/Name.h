@@ -14,9 +14,24 @@
 namespace parser::customsections {
 class Name : public parser::CustomSection {
   std::optional<std::string> ModuleName;
-  std::vector<std::pair<bytecode::FuncIDX, std::string>> FunctionNames;
-  std::vector<std::tuple<bytecode::FuncIDX, bytecode::LocalIDX, std::string>>
-      LocalNames;
+
+  struct FunctionNameEntry {
+    bytecode::FuncIDX FuncIndex;
+    std::string Name;
+    bool operator==(FunctionNameEntry const &) const = default;
+    auto operator<=>(FunctionNameEntry const &) const = default;
+  };
+
+  struct LocalNameEntry {
+    bytecode::FuncIDX FuncIndex;
+    bytecode::LocalIDX LocalIndex;
+    std::string Name;
+    bool operator==(LocalNameEntry const &) const = default;
+    auto operator<=>(LocalNameEntry const &) const = default;
+  };
+
+  std::vector<FunctionNameEntry> FunctionNames;
+  std::vector<LocalNameEntry> LocalNames;
 
   void parseModuleName(WASMReader<ByteArrayReader> &Reader);
   void parseFunctionNames(WASMReader<ByteArrayReader> &Reader);

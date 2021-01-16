@@ -58,8 +58,8 @@ public:
     ranges::copy(ResultTypes_, ranges::back_inserter(ResultTypes));
   }
 
-  auto getParamTypes() const { return ranges::views::const_(ParamTypes); }
-  auto getResultTypes() const { return ranges::views::const_(ResultTypes); }
+  auto getParamTypes() const { return ranges::views::all(ParamTypes); }
+  auto getResultTypes() const { return ranges::views::all(ResultTypes); }
 
   bool operator==(FunctionType const &Other) const = default;
 };

@@ -26,6 +26,17 @@ public:
   virtual void parse(std::span<std::byte const> Bytes) = 0;
 };
 
+class CustomSectionError : public std::runtime_error {
+  std::size_t Offset;
+
+public:
+  CustomSectionError(std::size_t Offset_, char const *Msg)
+      : std::runtime_error(Msg), Offset(Offset_) {}
+  CustomSectionError(std::size_t Offset_, std::string const &Msg)
+      : std::runtime_error(Msg), Offset(Offset_) {}
+  std::size_t getSiteOffset() const { return Offset; }
+};
+
 template <reader ReaderImpl, delegate DelegateImpl> class Parser {
   WASMReader<ReaderImpl> Reader;
   DelegateImpl &Delegate;
@@ -232,9 +243,18 @@ void Parser<ReaderImpl, DelegateImpl>::parseCustomSection(std::size_t Size) {
   auto NameTag = Reader.readUTF8StringVector();
   auto ExitNumBytesConsumed = Reader.getNumBytesConsumed();
   auto PayloadSize = Size - (ExitNumBytesConsumed - EnterNumBytesConsumed);
+  auto PayloadStartCursorStatus = Reader.backupCursor();
   auto Payload = Reader.read(PayloadSize);
   for (auto const &CustomSection : CustomSections) {
-    if (NameTag == CustomSection->getNameTag()) CustomSection->parse(Payload);
+    if (NameTag == CustomSection->getNameTag()) {
+      try {
+        CustomSection->parse(Payload);
+      } catch (CustomSectionError const &E) {
+        Reader.restoreCursor(PayloadStartCursorStatus);
+        Reader.skip(E.getSiteOffset());
+        throw ParserError(E.what());
+      }
+    }
   }
 }
 

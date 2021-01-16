@@ -68,7 +68,9 @@ public:
     Cursor = static_cast<std::size_t>(Status);
   }
 
-  enum class BarrierStatus : std::size_t {};
+  struct BarrierStatus {
+    std::optional<std::size_t> Value;
+  };
 
   void setBarrier(std::size_t NumBytesAhead) {
     if ((Cursor + NumBytesAhead) > Buffer.size())
@@ -79,14 +81,10 @@ public:
   void resetBarrier() { Barrier.reset(); }
 
   BarrierStatus backupBarrier() const {
-    if (!Barrier.has_value())
-      throw ParserError("reader barrier has not been set yet");
-    return static_cast<BarrierStatus>(*Barrier);
+    return BarrierStatus{.Value = Barrier};
   }
 
-  void restoreBarrier(BarrierStatus const &Status) {
-    Barrier = static_cast<std::size_t>(Status);
-  }
+  void restoreBarrier(BarrierStatus const &Status) { Barrier = Status.Value; }
 };
 } // namespace parser
 

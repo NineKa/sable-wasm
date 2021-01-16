@@ -6,18 +6,28 @@ set(CMAKE_CXX_STANDARD 20)
 #add_compile_options(-fno-rtti)
 add_compile_options(-Wall -Werror -Wextra -pedantic -Wfatal-errors)
 add_compile_options(-Wno-unknown-pragmas)
+add_compile_options($<$<CONFIG:RELEASE>:-flto>)
+add_link_options($<$<CONFIG:RELEASE>:-flto>)
 
-add_subdirectory(${PROJECT_SOURCE_DIR}/lib/fmt          EXCLUDE_FROM_ALL)
-add_subdirectory(${PROJECT_SOURCE_DIR}/lib/mio          EXCLUDE_FROM_ALL)
-add_subdirectory(${PROJECT_SOURCE_DIR}/lib/poly_vector  EXCLUDE_FROM_ALL) 
-add_subdirectory(${PROJECT_SOURCE_DIR}/lib/preprocessor EXCLUDE_FROM_ALL)
-add_subdirectory(${PROJECT_SOURCE_DIR}/lib/utfcpp       EXCLUDE_FROM_ALL)
-include_directories(${PROJECT_SOURCE_DIR}/lib/cppitertools)
+add_subdirectory(${PROJECT_SOURCE_DIR}/lib/fmt)
+add_subdirectory(${PROJECT_SOURCE_DIR}/lib/mio)
+add_subdirectory(${PROJECT_SOURCE_DIR}/lib/preprocessor)
+add_subdirectory(${PROJECT_SOURCE_DIR}/lib/utfcpp)
+add_subdirectory(${PROJECT_SOURCE_DIR}/lib/range-v3)
+
+
+set(FOONATHAN_MEMORY_DEBUG_LEAK_CHECK OFF)
+
+add_library(sablewasm
+        src/parser/ExprBuilderDelegate.cc
+        src/parser/customsections/Name.cc)
+
+target_link_libraries(sablewasm
+        fmt::fmt
+        mio::mio
+        Boost::preprocessor
+        utf8::cpp
+        range-v3)
 
 add_executable(sable-wasm src/Main.cc)
-target_link_libraries(sable-wasm
-    fmt::fmt 
-    mio::mio 
-    PolyVector 
-    Boost::preprocessor 
-    utf8::cpp)
+target_link_libraries(sable-wasm sablewasm)

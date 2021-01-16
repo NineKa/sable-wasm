@@ -4,12 +4,12 @@
 #include "../utility/Commons.h"
 
 #include <fmt/format.h>
+#include <range/v3/all.hpp>
 
 #include <cassert>
 #include <initializer_list>
 #include <iterator>
 #include <optional>
-#include <ranges>
 #include <vector>
 
 namespace bytecode {
@@ -43,29 +43,23 @@ class FunctionType {
   using ResultTypeIterator = decltype(ResultTypes)::const_iterator;
 
 public:
-  template <std::forward_iterator T, std::forward_iterator U>
-  FunctionType(T ParamBegin, T ParamEnd, U ResultBegin, U ResultEnd)
-      : ParamTypes(ParamBegin, ParamEnd), ResultTypes(ResultBegin, ResultEnd) {}
-
   FunctionType(
-      std::initializer_list<ValueType> ParamTypes_,
-      std::initializer_list<ValueType> ResultTypes_)
-      : FunctionType(
-            ParamTypes_.begin(), ParamTypes_.end(), ResultTypes_.begin(),
-            ResultTypes_.end()) {}
+      std::vector<ValueType> ParamTypes_, std::vector<ValueType> ResultTypes_)
+      : ParamTypes(std::move(ParamTypes_)),
+        ResultTypes(std::move(ResultTypes_)) {}
 
-  template <std::ranges::input_range T, std::ranges::input_range U>
-  FunctionType(T const &ParamTypes_, U const &ResultTypes_)
-      : FunctionType(
-            std::ranges::begin(ParamTypes_), std::ranges::end(ParamTypes_),
-            std::ranges::begin(ResultTypes_), std::ranges::end(ResultTypes_)) {}
+  template <ranges::input_range T, ranges::input_range U>
+  FunctionType(T const &ParamTypes_, U const &ResultTypes_) {
+    if constexpr (ranges::sized_range<T>)
+      ParamTypes.reserve(ranges::size(ParamTypes_));
+    if constexpr (ranges::sized_range<T>)
+      ResultTypes.reserve(ranges::size(ResultTypes_));
+    ranges::copy(ParamTypes_, ranges::back_inserter(ParamTypes));
+    ranges::copy(ResultTypes_, ranges::back_inserter(ResultTypes));
+  }
 
-  utility::IteratorPair<ParamTypeIterator> getParamTypes() const {
-    return utility::IteratorPair(ParamTypes.begin(), ParamTypes.end());
-  }
-  utility::IteratorPair<ResultTypeIterator> getResultTypes() const {
-    return utility::IteratorPair(ResultTypes.begin(), ResultTypes.end());
-  }
+  auto getParamTypes() const { return ranges::views::const_(ParamTypes); }
+  auto getResultTypes() const { return ranges::views::const_(ResultTypes); }
 
   bool operator==(FunctionType const &Other) const = default;
 };

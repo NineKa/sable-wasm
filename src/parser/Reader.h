@@ -9,8 +9,8 @@
 #include <utf8.h>
 
 #include <concepts>
+#include <cstddef>
 #include <optional>
-#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -43,7 +43,7 @@ concept reader = requires(T R) {
 // clang-format on
 
 using ImportDescriptor = std::variant<
-    bytecode::FunctionType, bytecode::TableType, bytecode::MemoryType,
+    bytecode::TypeIDX, bytecode::TableType, bytecode::MemoryType,
     bytecode::GlobalType>;
 using ExportDescriptor = std::variant<
     bytecode::FuncIDX, bytecode::TableIDX, bytecode::MemIDX,
@@ -55,18 +55,22 @@ template <reader ReaderImpl> class WASMReader {
 
   ReaderImpl &R;
 
-  template <std::integral T> constexpr auto ceil(double Number) -> T {
+  template <std::integral T> static constexpr auto ceil(double Number) -> T {
     return (static_cast<double>(static_cast<T>(Number)) == Number)
                ? static_cast<T>(Number)
                : static_cast<T>(Number) + ((Number > 0) ? 1 : 0);
   }
-  template <std::integral T> T readLEB128() requires std::is_signed_v<T>;
-  template <std::integral T> T readLEB128() requires std::is_unsigned_v<T>;
+  template <
+      std::integral T,
+      std::size_t MaxWidth_ = ceil<std::size_t>(sizeof(T) * 8 / 7.0)>
+  T readLEB128() requires std::is_signed_v<T>;
+
+  template <
+      std::integral T,
+      std::size_t MaxWidth_ = ceil<std::size_t>(sizeof(T) * 8 / 7.0)>
+  T readLEB128() requires std::is_unsigned_v<T>;
 
 public:
-  using BytesView =
-      decltype(std::declval<ReaderImpl>().read(std::declval<std::size_t>()));
-
   explicit WASMReader(ReaderImpl &R_) : R(R_) {}
 
   std::byte read() { return R.read(); }
@@ -97,23 +101,28 @@ public:
   std::uint16_t readULEB128Int16() { return readLEB128<std::uint16_t>(); }
   std::uint32_t readULEB128Int32() { return readLEB128<std::uint32_t>(); }
   std::uint64_t readULEB128Int64() { return readLEB128<std::uint64_t>(); }
-  
-  std::string_view readUTF8StringVector();
 
-  bytecode::ValueType    readValueType();
-  bytecode::FunctionType readFunctionType();
-  bytecode::MemoryType   readMemoryType();
-  bytecode::TableType    readTableType();
-  bytecode::GlobalType   readGlobalType();
+  std::string_view          readUTF8StringVector();
+
+  bytecode::ValueType       readValueType();
+  bytecode::FunctionType    readFunctionType();
+  bytecode::MemoryType      readMemoryType();
+  bytecode::TableType       readTableType();
+  bytecode::GlobalType      readGlobalType();
+
+  ImportDescriptor          readImportDescriptor();
+  ExportDescriptor          readExportDescriptor();
+
+  bytecode::BlockResultType readBlockResultType();
   // clang-format on
 };
 
 template <reader ReaderImpl>
-template <std::integral T>
+template <std::integral T, std::size_t MaxWidth_>
 T WASMReader<ReaderImpl>::readLEB128() requires std::is_signed_v<T> {
   using UnsignedT = std::make_unsigned_t<T>;
   auto EnteringCursorStatus = backupCursor();
-  auto MaximumWidth = ceil<std::size_t>(sizeof(T) * 8 / 7.0);
+  auto MaximumWidth = MaxWidth_;
   UnsignedT Value = 0;
   unsigned ShiftAmount = 0;
   std::byte Byte;
@@ -134,10 +143,10 @@ T WASMReader<ReaderImpl>::readLEB128() requires std::is_signed_v<T> {
 }
 
 template <reader ReaderImpl>
-template <std::integral T>
+template <std::integral T, std::size_t MaxWidth_>
 T WASMReader<ReaderImpl>::readLEB128() requires std::is_unsigned_v<T> {
   auto EnteringCursorStatus = backupCursor();
-  auto MaximumWidth = ceil<std::size_t>(sizeof(T) * 8 / 7.0);
+  auto MaximumWidth = MaxWidth_;
   T Value = 0;
   unsigned ShiftAmount = 0;
   std::byte Byte;
@@ -206,7 +215,7 @@ bytecode::FunctionType WASMReader<ReaderImpl>::readFunctionType() {
   auto NumResultTypes = readULEB128Int32();
   for (decltype(NumResultTypes) I = 0; I < NumResultTypes; ++I)
     ResultTypes.push_back(readValueType());
-  return bytecode::FunctionType(ParamTypes, ResultTypes);
+  return bytecode::FunctionType(std::move(ParamTypes), std::move(ResultTypes));
 }
 
 template <reader ReaderImpl>
@@ -269,6 +278,54 @@ bytecode::GlobalType WASMReader<ReaderImpl>::readGlobalType() {
         "unknown mutability descriptor 0x{:02x} found in global type",
         MutabilityByte));
   }
+}
+
+template <reader ReaderImpl>
+ImportDescriptor WASMReader<ReaderImpl>::readImportDescriptor() {
+  auto MagicNumber = read();
+  switch (static_cast<unsigned>(MagicNumber)) {
+  case 0x00: return static_cast<bytecode::TypeIDX>(readULEB128Int32());
+  case 0x01: return readTableType();
+  case 0x02: return readMemoryType();
+  case 0x03: return readGlobalType();
+  default:
+    throw ParserError(fmt::format(
+        "unknown import descriptor magic number 0x{:02x}", MagicNumber));
+  }
+}
+
+template <reader ReaderImpl>
+ExportDescriptor WASMReader<ReaderImpl>::readExportDescriptor() {
+  auto MagicNumber = read();
+  switch (static_cast<unsigned>(MagicNumber)) {
+  case 0x00: return static_cast<bytecode::FuncIDX>(readULEB128Int32());
+  case 0x01: return static_cast<bytecode::TableIDX>(readULEB128Int32());
+  case 0x02: return static_cast<bytecode::MemIDX>(readULEB128Int32());
+  case 0x03: return static_cast<bytecode::GlobalIDX>(readULEB128Int32());
+  default:
+    throw ParserError(fmt::format(
+        "unknown export descriptor magic number 0x{:02x}", MagicNumber));
+  }
+}
+
+template <reader ReaderImpl>
+bytecode::BlockResultType WASMReader<ReaderImpl>::readBlockResultType() {
+  using namespace utility::literals;
+  auto FirstByte = peek();
+  if ((FirstByte & 0b11000000_byte) == 0b01000000_byte) {
+    // if this is a LEB encoding integer, it will be negative. Thus, it must be
+    // either a unit block or it returns some value type.
+    if (FirstByte == 0x40_byte) {
+      utility::ignore(read()); // consume the byte
+      return bytecode::BlockResultTypeUnit();
+    }
+    return readValueType();
+  }
+  auto Index = readLEB128<std::int64_t, 5>(); // read integer of type s33
+  if (!((Index > 0) && (Index < std::numeric_limits<std::uint32_t>::max())))
+    throw ParserError(
+        "function index in block type beyonds maximum possible value");
+  return static_cast<bytecode::TypeIDX>(Index);
 }
 } // namespace parser
 

@@ -5,7 +5,8 @@
 #include "../Parser.h"
 #include "../Reader.h"
 
-#include <range/v3/all.hpp>
+#include <range/v3/core.hpp>
+#include <range/v3/view/all.hpp>
 
 #include <map>
 #include <optional>

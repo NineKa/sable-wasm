@@ -5,7 +5,13 @@
 #include "Delegate.h"
 #include "Reader.h"
 
-#include <range/v3/all.hpp>
+#include <range/v3/algorithm/copy.hpp>
+#include <range/v3/algorithm/fill_n.hpp>
+#include <range/v3/algorithm/find.hpp>
+#include <range/v3/algorithm/reverse.hpp>
+#include <range/v3/core.hpp>
+#include <range/v3/iterator.hpp>
+#include <range/v3/view/reverse.hpp>
 
 #include <array>
 #include <vector>
@@ -195,7 +201,7 @@ void Parser<ReaderImpl, DelegateImpl>::parseElementSection() {
       auto FuncIndex = Reader.readFuncIDX();
       FuncIndices.push_back(FuncIndex);
     }
-    Delegate.onElementSectionEntry(I, TableIndex, FuncIndices);
+    Delegate.onElementSectionEntry(I, TableIndex, std::move(FuncIndices));
   }
 }
 
@@ -214,7 +220,7 @@ void Parser<ReaderImpl, DelegateImpl>::parseCodeSection() {
       auto Type = Reader.readValueType();
       ranges::fill_n(ranges::back_inserter(LocalTypes), N, Type);
     }
-    Delegate.onCodeSectionLocal(I, LocalTypes);
+    Delegate.onCodeSectionLocal(I, std::move(LocalTypes));
     parseExpression();
     if (Reader.hasMoreBytes())
       throw ParserError("code section entry has unconsumed bytes");
@@ -442,7 +448,8 @@ void Parser<ReaderImpl, DelegateImpl>::parseInstruction() {
     if constexpr (std::endian::native == std::endian::little) {
       ranges::copy(Bytes, ranges::begin(ResultByteView));
     } else if constexpr (std::endian::native == std::endian::big) {
-      ranges::copy(ranges::reverse(Bytes), ranges::begin(ResultByteView));
+      auto ReverseView = ranges::views::reverse(Bytes);
+      ranges::copy(ReverseView, ranges::begin(ResultByteView));
     } else {
       SABLE_UNREACHABLE();
     }
@@ -457,7 +464,8 @@ void Parser<ReaderImpl, DelegateImpl>::parseInstruction() {
     if constexpr (std::endian::native == std::endian::little) {
       ranges::copy(Bytes, ranges::begin(ResultByteView));
     } else if constexpr (std::endian::native == std::endian::big) {
-      ranges::copy(ranges::reverse(Bytes), ranges::begin(ResultByteView));
+      auto ReverseView = ranges::views::reverse(Bytes);
+      ranges::copy(ReverseView, ranges::begin(ResultByteView));
     } else {
       SABLE_UNREACHABLE();
     }

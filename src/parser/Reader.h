@@ -325,7 +325,7 @@ bytecode::BlockResultType WASMReader<ReaderImpl>::readBlockResultType() {
     // either a unit block or it returns some value type.
     if (FirstByte == 0x40_byte) {
       utility::ignore(read()); // consume the byte
-      return bytecode::BlockResultTypeUnit();
+      return bytecode::BlockResultUnit{};
     }
     return readValueType();
   }

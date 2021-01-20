@@ -1,5 +1,8 @@
 #include "Name.h"
 
+#include <range/v3/algorithm/equal_range.hpp>
+#include <range/v3/algorithm/sort.hpp>
+
 namespace parser::customsections {
 void Name::parseModuleName(WASMReader<ByteArrayReader> &Reader) {
   using namespace utility::literals;

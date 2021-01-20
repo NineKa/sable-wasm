@@ -4,7 +4,8 @@
 #include "../utility/Commons.h"
 
 #include <fmt/format.h>
-#include <range/v3/all.hpp>
+#include <range/v3/core.hpp>
+#include <range/v3/range/conversion.hpp>
 
 #include <cassert>
 #include <initializer_list>
@@ -49,13 +50,11 @@ public:
         ResultTypes(std::move(ResultTypes_)) {}
 
   template <ranges::input_range T, ranges::input_range U>
-  FunctionType(T const &ParamTypes_, U const &ResultTypes_) {
-    if constexpr (ranges::sized_range<T>)
-      ParamTypes.reserve(ranges::size(ParamTypes_));
-    if constexpr (ranges::sized_range<T>)
-      ResultTypes.reserve(ranges::size(ResultTypes_));
-    ranges::copy(ParamTypes_, ranges::back_inserter(ParamTypes));
-    ranges::copy(ResultTypes_, ranges::back_inserter(ResultTypes));
+  FunctionType(T const &ParamTypes_, U const &ResultTypes_)
+      : ParamTypes(ranges::to<std::vector<ValueType>>(ParamTypes_)),
+        ResultTypes(ranges::to<std::vector<ValueType>>(ResultTypes_)) {
+    static_assert(std::convertible_to<ranges::range_value_t<T>, ValueType>);
+    static_assert(std::convertible_to<ranges::range_value_t<U>, ValueType>);
   }
 
   auto getParamTypes() const { return ranges::views::all(ParamTypes); }

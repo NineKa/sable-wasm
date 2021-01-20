@@ -34,7 +34,6 @@ class TaggedInstPtr;
 class Instruction {
   Opcode InstOpcode;
   friend class TaggedInstPtr;
-  virtual std::size_t getSize() const = 0;
 
 protected:
   explicit Instruction(Opcode InstOpcode_) : InstOpcode(InstOpcode_) {}
@@ -58,8 +57,8 @@ enum class FuncIDX   : std::uint32_t {};
 enum class TypeIDX   : std::uint32_t {};
 // clang-format on
 
-struct BlockResultTypeUnit {};
-using BlockResultType = std::variant<ValueType, TypeIDX, BlockResultTypeUnit>;
+struct BlockResultUnit {};
+using BlockResultType = utility::Sum<ValueType, TypeIDX, BlockResultUnit>;
 
 template <typename T> struct inst_trait;
 
@@ -97,25 +96,25 @@ inst_trait<T>::hasNoImmediate();
 template <inst_with_no_immediate T> static T NoImmInstSingleton;
 } // namespace detail
 
-class TaggedInstPtr {
+class InstructionPtr {
   std::intptr_t InstPtr;
-  explicit TaggedInstPtr(std::intptr_t InstPtr_) : InstPtr(InstPtr_) {}
+  explicit InstructionPtr(std::intptr_t InstPtr_) : InstPtr(InstPtr_) {}
   static std::intptr_t getIntPtrNull() {
-    return reinterpret_cast<std::intptr_t>(nullptr);
+    return reinterpret_cast<std::intptr_t>(nullptr); // NOLINT
   }
 
 public:
-  TaggedInstPtr(TaggedInstPtr const &) = delete;
-  TaggedInstPtr(TaggedInstPtr &&Other) noexcept : InstPtr(Other.InstPtr) {
+  InstructionPtr(InstructionPtr const &) = delete;
+  InstructionPtr(InstructionPtr &&Other) noexcept : InstPtr(Other.InstPtr) {
     Other.InstPtr = getIntPtrNull();
   }
-  TaggedInstPtr &operator=(TaggedInstPtr const &) = delete;
-  TaggedInstPtr &operator=(TaggedInstPtr &&Other) noexcept {
+  InstructionPtr &operator=(InstructionPtr const &) = delete;
+  InstructionPtr &operator=(InstructionPtr &&Other) noexcept {
     InstPtr = Other.InstPtr;
     Other.InstPtr = getIntPtrNull();
     return *this;
   }
-  ~TaggedInstPtr() noexcept {
+  ~InstructionPtr() noexcept {
     if (InstPtr == getIntPtrNull()) return;
     if (isHeapAllocated()) { delete asPointer(); }
   }
@@ -126,71 +125,31 @@ public:
 
   Instruction *asPointer() const {
     auto UnmaskedPtr = InstPtr & ~(std::intptr_t(0x01));
-    return reinterpret_cast<Instruction *>(UnmaskedPtr);
+    return reinterpret_cast<Instruction *>(UnmaskedPtr); // NOLINT
   }
 
   bool isNull() const { return InstPtr == getIntPtrNull(); }
   bool isHeapAllocated() const { return (InstPtr & 0x01) == 0; }
 
   template <instruction T, typename... ArgTypes>
-  static TaggedInstPtr Build(ArgTypes &&...Args) {
+  static InstructionPtr Build(ArgTypes &&...Args) {
     static_assert(alignof(T) >= 2, "use lowest bit as 'tagged bit'");
     if constexpr (inst_trait<T>::hasNoImmediate()) {
       T *Address = std::addressof(detail::NoImmInstSingleton<T>);
-      auto IntPtr = reinterpret_cast<std::intptr_t>(Address);
+      auto IntPtr = reinterpret_cast<std::intptr_t>(Address); // NOLINT
       assert((IntPtr & 0x01) == 0);
       IntPtr = IntPtr | 0x01;
-      return TaggedInstPtr(IntPtr);
+      return InstructionPtr(IntPtr);
     } else {
       auto *Address = new T(std::forward<ArgTypes>(Args)...);
-      auto IntPtr = reinterpret_cast<std::intptr_t>(Address);
+      auto IntPtr = reinterpret_cast<std::intptr_t>(Address); // NOLINT
       assert((IntPtr & 0x01) == 0);
-      return TaggedInstPtr(IntPtr);
+      return InstructionPtr(IntPtr);
     }
   }
 };
 
-class Expression {
-  std::vector<TaggedInstPtr> Storage;
-
-public:
-  Expression() {}
-  Expression(Expression const &) = delete;
-  Expression(Expression &&) noexcept = default;
-  Expression &operator=(Expression const &) = delete;
-  Expression &operator=(Expression &&) noexcept = default;
-
-  using value_type = TaggedInstPtr;
-  using reference = value_type &;
-  using const_reference = value_type const &;
-  using iterator = decltype(Storage)::iterator;
-  using const_iterator = decltype(Storage)::const_iterator;
-  using reverse_iterator = decltype(Storage)::reverse_iterator;
-  using const_reverse_iterator = decltype(Storage)::const_reverse_iterator;
-
-  std::size_t size() const { return Storage.size(); }
-  bool empty() const { return Storage.empty(); }
-  void clear() { Storage.clear(); }
-
-  reference back() { return Storage.back(); }
-  const_reference back() const { return Storage.back(); }
-
-  template <instruction T, typename... ArgTypes>
-  reference emplace_back(ArgTypes &&...Args) {
-    auto TaggedPtr = TaggedInstPtr::Build<T>(std::forward<ArgTypes>(Args)...);
-    Storage.push_back(std::move(TaggedPtr));
-    return Storage.back();
-  }
-
-  iterator begin() { return Storage.begin(); }
-  iterator end() { return Storage.end(); }
-  const_iterator begin() const { return Storage.begin(); }
-  const_iterator end() const { return Storage.end(); }
-  reverse_iterator rbegin() { return Storage.rbegin(); }
-  reverse_iterator rend() { return Storage.rend(); }
-  const_reverse_iterator rbegin() const { return Storage.rbegin(); }
-  const_reverse_iterator rend() const { return Storage.rend(); }
-};
+using Expression = std::vector<InstructionPtr>;
 
 #define MAKE_MEMBER_DECL(r, data, elem)                                        \
   BOOST_PP_TUPLE_ELEM(2, 0, elem) BOOST_PP_TUPLE_ELEM(2, 1, elem);
@@ -234,9 +193,6 @@ public:
       assert(Other != nullptr);                                                \
       return inst_trait<Name>::opcode() == Other->getOpcode();                 \
     }                                                                          \
-                                                                               \
-  private:                                                                     \
-    std::size_t getSize() const override { return sizeof(Name); }              \
   };                                                                           \
   } // namespace instructions
 #include "Instruction.defs"

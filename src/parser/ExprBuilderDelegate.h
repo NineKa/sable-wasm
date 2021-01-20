@@ -5,11 +5,15 @@
 #include "../bytecode/Type.h"
 #include "Delegate.h"
 
+#include <stack>
+
 namespace parser {
 class ExprBuilderDelegate : public DelegateBase {
   bytecode::Expression CExpr;
   std::stack<bytecode::Expression> Scopes;
   template <bytecode::instruction T> T *getCurrentScopeEnclosingInst();
+  template <bytecode::instruction T, typename... ArgTypes>
+  void addInst(ArgTypes &&...Args);
 
 public:
 #define SABLE_SKIP_SECTION_EVENTS

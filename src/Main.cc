@@ -1,27 +1,25 @@
 #include "bytecode/Module.h"
 #include "parser/ByteArrayReader.h"
-#include "parser/ExprBuilderDelegate.h"
+#include "parser/ModuleBuilderDelegate.h"
 #include "parser/Parser.h"
-#include "parser/customsections/Name.h"
 
 #include <mio/mmap.hpp>
 
-struct Delegate : parser::ExprBuilderDelegate {};
-
-int main() {
-  mio::basic_mmap_source<std::byte> File(
-      "../test/polybench-c-4.2.1-beta/2mm.wasm");
-  parser::ByteArrayReader Reader(File.data(), File.size());
-  Delegate D;
-  parser::customsections::Name N;
-
+int main(int argc, char const *argv[]) {
+  utility::ignore(argc, argv);
+  mio::basic_mmap_source<std::byte> Source("../test/viu.wasm");
+  parser::ByteArrayReader Reader(Source);
+  parser::ModuleBuilderDelegate D;
   parser::Parser Parser(Reader, D);
-  Parser.registerCustomSection(N);
   Parser.parse();
 
-  for (auto const &[FuncIDX, Name] : N.getFunctionNames()) {
-    fmt::print("{:2} {}\n", FuncIDX, Name);
+  auto &Module = D.getModule();
+  fmt::print("{}\n", Module.Imports.size());
+  fmt::print("{}\n", sizeof(bytecode::views::Function));
+
+  bytecode::ModuleView View(D.getModule());
+  for (auto Function : View.functions()) {
+    if (!Function.isExported()) continue;
+    fmt::print("{}\n{}\n", Function.getExportName(), *Function.getType());
   }
-  fmt::print(
-      "{}\n", N.getFunctionName(static_cast<bytecode::FuncIDX>(0)).value());
 }

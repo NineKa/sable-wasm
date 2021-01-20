@@ -31,7 +31,7 @@ concept delegate = requires(T D) {
 #define GENERATE_DELEGATE_ARGS(Name, MemberArray)                              \
   void Name(BOOST_PP_LIST_ENUM(BOOST_PP_LIST_TRANSFORM(                        \
       MAKE_DELEGATE_ARG, BOOST_PP_EMPTY,                                       \
-      BOOST_PP_ARRAY_TO_LIST(MemberArray)))){};
+      BOOST_PP_ARRAY_TO_LIST(MemberArray)))) {}
 struct DelegateBase {
 #define X(Name, MemberArray) GENERATE_DELEGATE_ARGS(Name, MemberArray)
 #include "DelegateEvents.defs"

@@ -3,9 +3,9 @@ project(sable-wasm)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
-#add_compile_options(-fno-rtti)
+add_compile_options(-fno-rtti)
 add_compile_options(-Wall -Werror -Wextra -pedantic -Wfatal-errors)
-add_compile_options(-Wno-unknown-pragmas)
+
 add_compile_options($<$<CONFIG:RELEASE>:-flto>)
 add_link_options($<$<CONFIG:RELEASE>:-flto>)
 
@@ -15,10 +15,9 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/lib/preprocessor)
 add_subdirectory(${PROJECT_SOURCE_DIR}/lib/utfcpp)
 add_subdirectory(${PROJECT_SOURCE_DIR}/lib/range-v3)
 
-
-set(FOONATHAN_MEMORY_DEBUG_LEAK_CHECK OFF)
-
 add_library(sablewasm
+        src/bytecode/Module.cc
+        src/bytecode/Validation.cc
         src/parser/ExprBuilderDelegate.cc
         src/parser/customsections/Name.cc)
 

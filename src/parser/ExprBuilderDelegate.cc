@@ -1,10 +1,11 @@
 #include "ExprBuilderDelegate.h"
 
-#include <range/v3/all.hpp>
+#include <range/v3/algorithm/copy.hpp>
+#include <range/v3/core.hpp>
+#include <range/v3/iterator.hpp>
 
 namespace parser {
 using namespace bytecode::instructions;
-#define EVENT(Name) void ExprBuilderDelegate::Name
 
 template <bytecode::instruction T>
 T *ExprBuilderDelegate::getCurrentScopeEnclosingInst() {
@@ -14,13 +15,21 @@ T *ExprBuilderDelegate::getCurrentScopeEnclosingInst() {
   return static_cast<T *>(Instruction);
 }
 
+template <bytecode::instruction T, typename... ArgTypes>
+void ExprBuilderDelegate::addInst(ArgTypes &&...Args) {
+  CExpr.push_back(
+      bytecode::InstructionPtr::Build<T>(std::forward<ArgTypes>(Args)...));
+}
+
+#define EVENT(Name) void ExprBuilderDelegate::Name
+
 EVENT(enterExpression)() { CExpr.clear(); }
 EVENT(exitExpression)() {}
 
-EVENT(onInstUnreachable)() { CExpr.emplace_back<Unreachable>(); }
-EVENT(onInstNop)() { CExpr.emplace_back<Nop>(); }
+EVENT(onInstUnreachable)() { addInst<Unreachable>(); }
+EVENT(onInstNop)() { addInst<Nop>(); }
 EVENT(enterInstBlock)(bytecode::BlockResultType Type) {
-  CExpr.emplace_back<Block>(Type, bytecode::Expression{});
+  addInst<Block>(Type, bytecode::Expression{});
   Scopes.push(std::move(CExpr));
   CExpr.clear();
 }
@@ -31,7 +40,7 @@ EVENT(exitInstBlock)() {
   Scopes.pop();
 }
 EVENT(enterInstLoop)(bytecode::BlockResultType Type) {
-  CExpr.emplace_back<Loop>(Type, bytecode::Expression{});
+  addInst<Loop>(Type, bytecode::Expression{});
   Scopes.push(std::move(CExpr));
   CExpr.clear();
 }
@@ -42,7 +51,7 @@ EVENT(exitInstLoop)() {
   Scopes.pop();
 }
 EVENT(enterInstIf)(bytecode::BlockResultType Type) {
-  CExpr.emplace_back<If>(Type, bytecode::Expression{}, std::nullopt);
+  addInst<If>(Type, bytecode::Expression{}, std::nullopt);
   Scopes.push(std::move(CExpr));
   CExpr.clear();
 }
@@ -62,41 +71,39 @@ EVENT(exitInstIf)() {
   CExpr = std::move(Scopes.top());
   Scopes.pop();
 }
-EVENT(onInstBr)(bytecode::LabelIDX Index) { CExpr.emplace_back<Br>(Index); }
-EVENT(onInstBrIf)(bytecode::LabelIDX Index) { CExpr.emplace_back<BrIf>(Index); }
+EVENT(onInstBr)(bytecode::LabelIDX Index) { addInst<Br>(Index); }
+EVENT(onInstBrIf)(bytecode::LabelIDX Index) { addInst<BrIf>(Index); }
 EVENT(onInstBrTable)
 (bytecode::LabelIDX DefaultTarget,
  std::span<bytecode::LabelIDX const> Targets) {
   std::vector<bytecode::LabelIDX> Targets_;
   Targets_.reserve(Targets.size());
   ranges::copy(Targets, ranges::back_inserter(Targets_));
-  CExpr.emplace_back<BrTable>(std::move(Targets_), DefaultTarget);
+  addInst<BrTable>(std::move(Targets_), DefaultTarget);
 }
-EVENT(onInstReturn)() { CExpr.emplace_back<Return>(); }
-EVENT(onInstCall)(bytecode::FuncIDX IDX) { CExpr.emplace_back<Call>(IDX); }
-EVENT(onInstCallIndirect)(bytecode::TypeIDX IDX) {
-  CExpr.emplace_back<CallIndirect>(IDX);
-}
+EVENT(onInstReturn)() { addInst<Return>(); }
+EVENT(onInstCall)(bytecode::FuncIDX IDX) { addInst<Call>(IDX); }
+EVENT(onInstCallIndirect)(bytecode::TypeIDX IDX) { addInst<CallIndirect>(IDX); }
 
-EVENT(onInstDrop)() { CExpr.emplace_back<Drop>(); }
-EVENT(onInstSelect)() { CExpr.emplace_back<Select>(); }
+EVENT(onInstDrop)() { addInst<Drop>(); }
+EVENT(onInstSelect)() { addInst<Select>(); }
 
 #define LOCAL_EVENT(Name, InstName)                                            \
-  EVENT(Name)(bytecode::LocalIDX IDX) { CExpr.emplace_back<InstName>(IDX); }
+  EVENT(Name)(bytecode::LocalIDX IDX) { addInst<InstName>(IDX); }
 LOCAL_EVENT(onInstLocalGet, LocalGet)
 LOCAL_EVENT(onInstLocalSet, LocalSet)
 LOCAL_EVENT(onInstLocalTee, LocalTee)
 #undef LOCAL_EVENT
 
 #define GLOBAL_EVENT(Name, InstName)                                           \
-  EVENT(Name)(bytecode::GlobalIDX IDX) { CExpr.emplace_back<InstName>(IDX); }
+  EVENT(Name)(bytecode::GlobalIDX IDX) { addInst<InstName>(IDX); }
 GLOBAL_EVENT(onInstGlobalGet, GlobalGet)
 GLOBAL_EVENT(onInstGlobalSet, GlobalSet)
 #undef GLOBAL_EVENT
 
 #define MEMORY_EVENT(Name, InstName)                                           \
   EVENT(Name)(std::uint32_t Align, std::uint32_t Offset) {                     \
-    CExpr.emplace_back<InstName>(Align, Offset);                               \
+    addInst<InstName>(Align, Offset);                                          \
   }
 // clang-format off
 MEMORY_EVENT(onInstI32Load   , I32Load   )
@@ -124,160 +131,160 @@ MEMORY_EVENT(onInstI64Store16, I64Store16)
 MEMORY_EVENT(onInstI64Store32, I64Store32)
 // clang-format on
 #undef MEMORY_EVENT
-EVENT(onInstMemorySize)() { CExpr.emplace_back<MemorySize>(); }
-EVENT(onInstMemoryGrow)() { CExpr.emplace_back<MemoryGrow>(); }
+EVENT(onInstMemorySize)() { addInst<MemorySize>(); }
+EVENT(onInstMemoryGrow)() { addInst<MemoryGrow>(); }
 
-EVENT(onInstI32Const)(std::int32_t N) { CExpr.emplace_back<I32Const>(N); }
-EVENT(onInstI64Const)(std::int64_t N) { CExpr.emplace_back<I64Const>(N); }
-EVENT(onInstF32Const)(float N) { CExpr.emplace_back<F32Const>(N); }
-EVENT(onInstF64Const)(double N) { CExpr.emplace_back<F64Const>(N); }
+EVENT(onInstI32Const)(std::int32_t N) { addInst<I32Const>(N); }
+EVENT(onInstI64Const)(std::int64_t N) { addInst<I64Const>(N); }
+EVENT(onInstF32Const)(float N) { addInst<F32Const>(N); }
+EVENT(onInstF64Const)(double N) { addInst<F64Const>(N); }
 
 // clang-format off
-EVENT(onInstI32Eqz           )() { CExpr.emplace_back<I32Eqz           >(); }
-EVENT(onInstI32Eq            )() { CExpr.emplace_back<I32Eq            >(); }
-EVENT(onInstI32Ne            )() { CExpr.emplace_back<I32Ne            >(); }
-EVENT(onInstI32LtS           )() { CExpr.emplace_back<I32LtS           >(); }
-EVENT(onInstI32LtU           )() { CExpr.emplace_back<I32LtU           >(); }
-EVENT(onInstI32GtS           )() { CExpr.emplace_back<I32GtS           >(); }
-EVENT(onInstI32GtU           )() { CExpr.emplace_back<I32GtU           >(); }
-EVENT(onInstI32LeS           )() { CExpr.emplace_back<I32LeS           >(); }
-EVENT(onInstI32LeU           )() { CExpr.emplace_back<I32LeU           >(); }
-EVENT(onInstI32GeS           )() { CExpr.emplace_back<I32GeS           >(); }
-EVENT(onInstI32GeU           )() { CExpr.emplace_back<I32GeU           >(); }
+EVENT(onInstI32Eqz           )() { addInst<I32Eqz           >(); }
+EVENT(onInstI32Eq            )() { addInst<I32Eq            >(); }
+EVENT(onInstI32Ne            )() { addInst<I32Ne            >(); }
+EVENT(onInstI32LtS           )() { addInst<I32LtS           >(); }
+EVENT(onInstI32LtU           )() { addInst<I32LtU           >(); }
+EVENT(onInstI32GtS           )() { addInst<I32GtS           >(); }
+EVENT(onInstI32GtU           )() { addInst<I32GtU           >(); }
+EVENT(onInstI32LeS           )() { addInst<I32LeS           >(); }
+EVENT(onInstI32LeU           )() { addInst<I32LeU           >(); }
+EVENT(onInstI32GeS           )() { addInst<I32GeS           >(); }
+EVENT(onInstI32GeU           )() { addInst<I32GeU           >(); }
 
-EVENT(onInstI64Eqz           )() { CExpr.emplace_back<I64Eqz           >(); }
-EVENT(onInstI64Eq            )() { CExpr.emplace_back<I64Eq            >(); }
-EVENT(onInstI64Ne            )() { CExpr.emplace_back<I64Ne            >(); }
-EVENT(onInstI64LtS           )() { CExpr.emplace_back<I64LtS           >(); }
-EVENT(onInstI64LtU           )() { CExpr.emplace_back<I64LtU           >(); }
-EVENT(onInstI64GtS           )() { CExpr.emplace_back<I64GtS           >(); }
-EVENT(onInstI64GtU           )() { CExpr.emplace_back<I64GtU           >(); }
-EVENT(onInstI64LeS           )() { CExpr.emplace_back<I64LeS           >(); }
-EVENT(onInstI64LeU           )() { CExpr.emplace_back<I64LeU           >(); }
-EVENT(onInstI64GeS           )() { CExpr.emplace_back<I64GeS           >(); }
-EVENT(onInstI64GeU           )() { CExpr.emplace_back<I64GeU           >(); }
+EVENT(onInstI64Eqz           )() { addInst<I64Eqz           >(); }
+EVENT(onInstI64Eq            )() { addInst<I64Eq            >(); }
+EVENT(onInstI64Ne            )() { addInst<I64Ne            >(); }
+EVENT(onInstI64LtS           )() { addInst<I64LtS           >(); }
+EVENT(onInstI64LtU           )() { addInst<I64LtU           >(); }
+EVENT(onInstI64GtS           )() { addInst<I64GtS           >(); }
+EVENT(onInstI64GtU           )() { addInst<I64GtU           >(); }
+EVENT(onInstI64LeS           )() { addInst<I64LeS           >(); }
+EVENT(onInstI64LeU           )() { addInst<I64LeU           >(); }
+EVENT(onInstI64GeS           )() { addInst<I64GeS           >(); }
+EVENT(onInstI64GeU           )() { addInst<I64GeU           >(); }
 
-EVENT(onInstF32Eq            )() { CExpr.emplace_back<F32Eq            >(); }
-EVENT(onInstF32Ne            )() { CExpr.emplace_back<F32Ne            >(); }
-EVENT(onInstF32Lt            )() { CExpr.emplace_back<F32Lt            >(); }
-EVENT(onInstF32Gt            )() { CExpr.emplace_back<F32Gt            >(); }
-EVENT(onInstF32Le            )() { CExpr.emplace_back<F32Le            >(); }
-EVENT(onInstF32Ge            )() { CExpr.emplace_back<F32Ge            >(); }
+EVENT(onInstF32Eq            )() { addInst<F32Eq            >(); }
+EVENT(onInstF32Ne            )() { addInst<F32Ne            >(); }
+EVENT(onInstF32Lt            )() { addInst<F32Lt            >(); }
+EVENT(onInstF32Gt            )() { addInst<F32Gt            >(); }
+EVENT(onInstF32Le            )() { addInst<F32Le            >(); }
+EVENT(onInstF32Ge            )() { addInst<F32Ge            >(); }
 
-EVENT(onInstF64Eq            )() { CExpr.emplace_back<F64Eq            >(); }
-EVENT(onInstF64Ne            )() { CExpr.emplace_back<F64Ne            >(); }
-EVENT(onInstF64Lt            )() { CExpr.emplace_back<F64Lt            >(); }
-EVENT(onInstF64Gt            )() { CExpr.emplace_back<F64Gt            >(); }
-EVENT(onInstF64Le            )() { CExpr.emplace_back<F64Le            >(); }
-EVENT(onInstF64Ge            )() { CExpr.emplace_back<F64Ge            >(); }
+EVENT(onInstF64Eq            )() { addInst<F64Eq            >(); }
+EVENT(onInstF64Ne            )() { addInst<F64Ne            >(); }
+EVENT(onInstF64Lt            )() { addInst<F64Lt            >(); }
+EVENT(onInstF64Gt            )() { addInst<F64Gt            >(); }
+EVENT(onInstF64Le            )() { addInst<F64Le            >(); }
+EVENT(onInstF64Ge            )() { addInst<F64Ge            >(); }
 
-EVENT(onInstI32Clz           )() { CExpr.emplace_back<I32Clz           >(); }
-EVENT(onInstI32Ctz           )() { CExpr.emplace_back<I32Ctz           >(); }
-EVENT(onInstI32Popcnt        )() { CExpr.emplace_back<I32Popcnt        >(); }
-EVENT(onInstI32Add           )() { CExpr.emplace_back<I32Add           >(); }
-EVENT(onInstI32Sub           )() { CExpr.emplace_back<I32Sub           >(); }
-EVENT(onInstI32Mul           )() { CExpr.emplace_back<I32Mul           >(); }
-EVENT(onInstI32DivS          )() { CExpr.emplace_back<I32DivS          >(); }
-EVENT(onInstI32DivU          )() { CExpr.emplace_back<I32DivU          >(); }
-EVENT(onInstI32RemS          )() { CExpr.emplace_back<I32RemS          >(); }
-EVENT(onInstI32RemU          )() { CExpr.emplace_back<I32RemU          >(); }
-EVENT(onInstI32And           )() { CExpr.emplace_back<I32And           >(); }
-EVENT(onInstI32Or            )() { CExpr.emplace_back<I32Or            >(); }
-EVENT(onInstI32Xor           )() { CExpr.emplace_back<I32Xor           >(); }
-EVENT(onInstI32Shl           )() { CExpr.emplace_back<I32Shl           >(); }
-EVENT(onInstI32ShrS          )() { CExpr.emplace_back<I32ShrS          >(); }
-EVENT(onInstI32ShrU          )() { CExpr.emplace_back<I32ShrU          >(); }
-EVENT(onInstI32Rotl          )() { CExpr.emplace_back<I32Rotl          >(); }
-EVENT(onInstI32Rotr          )() { CExpr.emplace_back<I32Rotr          >(); }
+EVENT(onInstI32Clz           )() { addInst<I32Clz           >(); }
+EVENT(onInstI32Ctz           )() { addInst<I32Ctz           >(); }
+EVENT(onInstI32Popcnt        )() { addInst<I32Popcnt        >(); }
+EVENT(onInstI32Add           )() { addInst<I32Add           >(); }
+EVENT(onInstI32Sub           )() { addInst<I32Sub           >(); }
+EVENT(onInstI32Mul           )() { addInst<I32Mul           >(); }
+EVENT(onInstI32DivS          )() { addInst<I32DivS          >(); }
+EVENT(onInstI32DivU          )() { addInst<I32DivU          >(); }
+EVENT(onInstI32RemS          )() { addInst<I32RemS          >(); }
+EVENT(onInstI32RemU          )() { addInst<I32RemU          >(); }
+EVENT(onInstI32And           )() { addInst<I32And           >(); }
+EVENT(onInstI32Or            )() { addInst<I32Or            >(); }
+EVENT(onInstI32Xor           )() { addInst<I32Xor           >(); }
+EVENT(onInstI32Shl           )() { addInst<I32Shl           >(); }
+EVENT(onInstI32ShrS          )() { addInst<I32ShrS          >(); }
+EVENT(onInstI32ShrU          )() { addInst<I32ShrU          >(); }
+EVENT(onInstI32Rotl          )() { addInst<I32Rotl          >(); }
+EVENT(onInstI32Rotr          )() { addInst<I32Rotr          >(); }
 
-EVENT(onInstI64Clz           )() { CExpr.emplace_back<I64Clz           >(); }
-EVENT(onInstI64Ctz           )() { CExpr.emplace_back<I64Ctz           >(); }
-EVENT(onInstI64Popcnt        )() { CExpr.emplace_back<I64Popcnt        >(); }
-EVENT(onInstI64Add           )() { CExpr.emplace_back<I64Add           >(); }
-EVENT(onInstI64Sub           )() { CExpr.emplace_back<I64Sub           >(); }
-EVENT(onInstI64Mul           )() { CExpr.emplace_back<I64Mul           >(); }
-EVENT(onInstI64DivS          )() { CExpr.emplace_back<I64DivS          >(); }
-EVENT(onInstI64DivU          )() { CExpr.emplace_back<I64DivU          >(); }
-EVENT(onInstI64RemS          )() { CExpr.emplace_back<I64RemS          >(); }
-EVENT(onInstI64RemU          )() { CExpr.emplace_back<I64RemU          >(); }
-EVENT(onInstI64And           )() { CExpr.emplace_back<I64And           >(); }
-EVENT(onInstI64Or            )() { CExpr.emplace_back<I64Or            >(); }
-EVENT(onInstI64Xor           )() { CExpr.emplace_back<I64Xor           >(); }
-EVENT(onInstI64Shl           )() { CExpr.emplace_back<I64Shl           >(); }
-EVENT(onInstI64ShrS          )() { CExpr.emplace_back<I64ShrS          >(); }
-EVENT(onInstI64ShrU          )() { CExpr.emplace_back<I64ShrU          >(); }
-EVENT(onInstI64Rotl          )() { CExpr.emplace_back<I64Rotl          >(); }
-EVENT(onInstI64Rotr          )() { CExpr.emplace_back<I64Rotr          >(); }
+EVENT(onInstI64Clz           )() { addInst<I64Clz           >(); }
+EVENT(onInstI64Ctz           )() { addInst<I64Ctz           >(); }
+EVENT(onInstI64Popcnt        )() { addInst<I64Popcnt        >(); }
+EVENT(onInstI64Add           )() { addInst<I64Add           >(); }
+EVENT(onInstI64Sub           )() { addInst<I64Sub           >(); }
+EVENT(onInstI64Mul           )() { addInst<I64Mul           >(); }
+EVENT(onInstI64DivS          )() { addInst<I64DivS          >(); }
+EVENT(onInstI64DivU          )() { addInst<I64DivU          >(); }
+EVENT(onInstI64RemS          )() { addInst<I64RemS          >(); }
+EVENT(onInstI64RemU          )() { addInst<I64RemU          >(); }
+EVENT(onInstI64And           )() { addInst<I64And           >(); }
+EVENT(onInstI64Or            )() { addInst<I64Or            >(); }
+EVENT(onInstI64Xor           )() { addInst<I64Xor           >(); }
+EVENT(onInstI64Shl           )() { addInst<I64Shl           >(); }
+EVENT(onInstI64ShrS          )() { addInst<I64ShrS          >(); }
+EVENT(onInstI64ShrU          )() { addInst<I64ShrU          >(); }
+EVENT(onInstI64Rotl          )() { addInst<I64Rotl          >(); }
+EVENT(onInstI64Rotr          )() { addInst<I64Rotr          >(); }
 
-EVENT(onInstF32Abs           )() { CExpr.emplace_back<F32Abs           >(); }
-EVENT(onInstF32Neg           )() { CExpr.emplace_back<F32Neg           >(); }
-EVENT(onInstF32Ceil          )() { CExpr.emplace_back<F32Ceil          >(); }
-EVENT(onInstF32Floor         )() { CExpr.emplace_back<F32Floor         >(); }
-EVENT(onInstF32Trunc         )() { CExpr.emplace_back<F32Trunc         >(); }
-EVENT(onInstF32Nearest       )() { CExpr.emplace_back<F32Nearest       >(); }
-EVENT(onInstF32Sqrt          )() { CExpr.emplace_back<F32Sqrt          >(); }
-EVENT(onInstF32Add           )() { CExpr.emplace_back<F32Add           >(); }
-EVENT(onInstF32Sub           )() { CExpr.emplace_back<F32Sub           >(); }
-EVENT(onInstF32Mul           )() { CExpr.emplace_back<F32Mul           >(); }
-EVENT(onInstF32Div           )() { CExpr.emplace_back<F32Div           >(); }
-EVENT(onInstF32Min           )() { CExpr.emplace_back<F32Min           >(); }
-EVENT(onInstF32Max           )() { CExpr.emplace_back<F32Max           >(); }
-EVENT(onInstF32CopySign      )() { CExpr.emplace_back<F32CopySign      >(); }
+EVENT(onInstF32Abs           )() { addInst<F32Abs           >(); }
+EVENT(onInstF32Neg           )() { addInst<F32Neg           >(); }
+EVENT(onInstF32Ceil          )() { addInst<F32Ceil          >(); }
+EVENT(onInstF32Floor         )() { addInst<F32Floor         >(); }
+EVENT(onInstF32Trunc         )() { addInst<F32Trunc         >(); }
+EVENT(onInstF32Nearest       )() { addInst<F32Nearest       >(); }
+EVENT(onInstF32Sqrt          )() { addInst<F32Sqrt          >(); }
+EVENT(onInstF32Add           )() { addInst<F32Add           >(); }
+EVENT(onInstF32Sub           )() { addInst<F32Sub           >(); }
+EVENT(onInstF32Mul           )() { addInst<F32Mul           >(); }
+EVENT(onInstF32Div           )() { addInst<F32Div           >(); }
+EVENT(onInstF32Min           )() { addInst<F32Min           >(); }
+EVENT(onInstF32Max           )() { addInst<F32Max           >(); }
+EVENT(onInstF32CopySign      )() { addInst<F32CopySign      >(); }
 
-EVENT(onInstF64Abs           )() { CExpr.emplace_back<F64Abs           >(); }
-EVENT(onInstF64Neg           )() { CExpr.emplace_back<F64Neg           >(); }
-EVENT(onInstF64Ceil          )() { CExpr.emplace_back<F64Ceil          >(); }
-EVENT(onInstF64Floor         )() { CExpr.emplace_back<F64Floor         >(); }
-EVENT(onInstF64Trunc         )() { CExpr.emplace_back<F64Trunc         >(); }
-EVENT(onInstF64Nearest       )() { CExpr.emplace_back<F64Nearest       >(); }
-EVENT(onInstF64Sqrt          )() { CExpr.emplace_back<F64Sqrt          >(); }
-EVENT(onInstF64Add           )() { CExpr.emplace_back<F64Add           >(); }
-EVENT(onInstF64Sub           )() { CExpr.emplace_back<F64Sub           >(); }
-EVENT(onInstF64Mul           )() { CExpr.emplace_back<F64Mul           >(); }
-EVENT(onInstF64Div           )() { CExpr.emplace_back<F64Div           >(); }
-EVENT(onInstF64Min           )() { CExpr.emplace_back<F64Min           >(); }
-EVENT(onInstF64Max           )() { CExpr.emplace_back<F64Max           >(); }
-EVENT(onInstF64CopySign      )() { CExpr.emplace_back<F64CopySign      >(); }
+EVENT(onInstF64Abs           )() { addInst<F64Abs           >(); }
+EVENT(onInstF64Neg           )() { addInst<F64Neg           >(); }
+EVENT(onInstF64Ceil          )() { addInst<F64Ceil          >(); }
+EVENT(onInstF64Floor         )() { addInst<F64Floor         >(); }
+EVENT(onInstF64Trunc         )() { addInst<F64Trunc         >(); }
+EVENT(onInstF64Nearest       )() { addInst<F64Nearest       >(); }
+EVENT(onInstF64Sqrt          )() { addInst<F64Sqrt          >(); }
+EVENT(onInstF64Add           )() { addInst<F64Add           >(); }
+EVENT(onInstF64Sub           )() { addInst<F64Sub           >(); }
+EVENT(onInstF64Mul           )() { addInst<F64Mul           >(); }
+EVENT(onInstF64Div           )() { addInst<F64Div           >(); }
+EVENT(onInstF64Min           )() { addInst<F64Min           >(); }
+EVENT(onInstF64Max           )() { addInst<F64Max           >(); }
+EVENT(onInstF64CopySign      )() { addInst<F64CopySign      >(); }
 
-EVENT(onInstI32WrapI64       )() { CExpr.emplace_back<I32WrapI64       >(); }
-EVENT(onInstI32TruncF32S     )() { CExpr.emplace_back<I32TruncF32S     >(); }
-EVENT(onInstI32TruncF32U     )() { CExpr.emplace_back<I32TruncF32U     >(); }
-EVENT(onInstI32TruncF64S     )() { CExpr.emplace_back<I32TruncF64S     >(); }
-EVENT(onInstI32TruncF64U     )() { CExpr.emplace_back<I32TruncF64U     >(); }
-EVENT(onInstI64ExtendI32S    )() { CExpr.emplace_back<I64ExtendI32S    >(); }
-EVENT(onInstI64ExtendI32U    )() { CExpr.emplace_back<I64ExtendI32U    >(); }
-EVENT(onInstI64TruncF32S     )() { CExpr.emplace_back<I64TruncF32S     >(); }
-EVENT(onInstI64TruncF32U     )() { CExpr.emplace_back<I64TruncF32U     >(); }
-EVENT(onInstI64TruncF64S     )() { CExpr.emplace_back<I64TruncF64S     >(); }
-EVENT(onInstI64TruncF64U     )() { CExpr.emplace_back<I64TruncF64U     >(); }
-EVENT(onInstF32ConvertI32S   )() { CExpr.emplace_back<F32ConvertI32S   >(); }
-EVENT(onInstF32ConvertI32U   )() { CExpr.emplace_back<F32ConvertI32U   >(); }
-EVENT(onInstF32ConvertI64S   )() { CExpr.emplace_back<F32ConvertI64S   >(); }
-EVENT(onInstF32ConvertI64U   )() { CExpr.emplace_back<F32ConvertI64U   >(); }
-EVENT(onInstF32DemoteF64     )() { CExpr.emplace_back<F32DemoteF64     >(); }
-EVENT(onInstF64ConvertI32S   )() { CExpr.emplace_back<F64ConvertI32S   >(); }
-EVENT(onInstF64ConvertI32U   )() { CExpr.emplace_back<F64ConvertI32U   >(); }
-EVENT(onInstF64ConvertI64S   )() { CExpr.emplace_back<F64ConvertI64S   >(); }
-EVENT(onInstF64ConvertI64U   )() { CExpr.emplace_back<F64ConvertI64U   >(); }
-EVENT(onInstF64PromoteF32    )() { CExpr.emplace_back<F64PromoteF32    >(); }
-EVENT(onInstI32ReinterpretF32)() { CExpr.emplace_back<I32ReinterpretF32>(); }
-EVENT(onInstI64ReinterpretF64)() { CExpr.emplace_back<I64ReinterpretF64>(); }
-EVENT(onInstF32ReinterpretI32)() { CExpr.emplace_back<F32ReinterpretI32>(); }
-EVENT(onInstF64ReinterpretI64)() { CExpr.emplace_back<F64ReinterpretI64>(); }
+EVENT(onInstI32WrapI64       )() { addInst<I32WrapI64       >(); }
+EVENT(onInstI32TruncF32S     )() { addInst<I32TruncF32S     >(); }
+EVENT(onInstI32TruncF32U     )() { addInst<I32TruncF32U     >(); }
+EVENT(onInstI32TruncF64S     )() { addInst<I32TruncF64S     >(); }
+EVENT(onInstI32TruncF64U     )() { addInst<I32TruncF64U     >(); }
+EVENT(onInstI64ExtendI32S    )() { addInst<I64ExtendI32S    >(); }
+EVENT(onInstI64ExtendI32U    )() { addInst<I64ExtendI32U    >(); }
+EVENT(onInstI64TruncF32S     )() { addInst<I64TruncF32S     >(); }
+EVENT(onInstI64TruncF32U     )() { addInst<I64TruncF32U     >(); }
+EVENT(onInstI64TruncF64S     )() { addInst<I64TruncF64S     >(); }
+EVENT(onInstI64TruncF64U     )() { addInst<I64TruncF64U     >(); }
+EVENT(onInstF32ConvertI32S   )() { addInst<F32ConvertI32S   >(); }
+EVENT(onInstF32ConvertI32U   )() { addInst<F32ConvertI32U   >(); }
+EVENT(onInstF32ConvertI64S   )() { addInst<F32ConvertI64S   >(); }
+EVENT(onInstF32ConvertI64U   )() { addInst<F32ConvertI64U   >(); }
+EVENT(onInstF32DemoteF64     )() { addInst<F32DemoteF64     >(); }
+EVENT(onInstF64ConvertI32S   )() { addInst<F64ConvertI32S   >(); }
+EVENT(onInstF64ConvertI32U   )() { addInst<F64ConvertI32U   >(); }
+EVENT(onInstF64ConvertI64S   )() { addInst<F64ConvertI64S   >(); }
+EVENT(onInstF64ConvertI64U   )() { addInst<F64ConvertI64U   >(); }
+EVENT(onInstF64PromoteF32    )() { addInst<F64PromoteF32    >(); }
+EVENT(onInstI32ReinterpretF32)() { addInst<I32ReinterpretF32>(); }
+EVENT(onInstI64ReinterpretF64)() { addInst<I64ReinterpretF64>(); }
+EVENT(onInstF32ReinterpretI32)() { addInst<F32ReinterpretI32>(); }
+EVENT(onInstF64ReinterpretI64)() { addInst<F64ReinterpretI64>(); }
 
-EVENT(onInstI32Extend8S      )() { CExpr.emplace_back<I32Extend8S      >(); }
-EVENT(onInstI32Extend16S     )() { CExpr.emplace_back<I32Extend16S     >(); }
-EVENT(onInstI64Extend8S      )() { CExpr.emplace_back<I64Extend8S      >(); }
-EVENT(onInstI64Extend16S     )() { CExpr.emplace_back<I64Extend16S     >(); }
-EVENT(onInstI64Extend32S     )() { CExpr.emplace_back<I64Extend32S     >(); }
+EVENT(onInstI32Extend8S      )() { addInst<I32Extend8S      >(); }
+EVENT(onInstI32Extend16S     )() { addInst<I32Extend16S     >(); }
+EVENT(onInstI64Extend8S      )() { addInst<I64Extend8S      >(); }
+EVENT(onInstI64Extend16S     )() { addInst<I64Extend16S     >(); }
+EVENT(onInstI64Extend32S     )() { addInst<I64Extend32S     >(); }
 
-EVENT(onInstI32TruncSatF32S  )() { CExpr.emplace_back<I32TruncSatF32S  >(); }
-EVENT(onInstI32TruncSatF32U  )() { CExpr.emplace_back<I32TruncSatF32U  >(); }
-EVENT(onInstI32TruncSatF64S  )() { CExpr.emplace_back<I32TruncSatF64S  >(); }
-EVENT(onInstI32TruncSatF64U  )() { CExpr.emplace_back<I32TruncSatF64U  >(); }
-EVENT(onInstI64TruncSatF32S  )() { CExpr.emplace_back<I64TruncSatF32S  >(); }
-EVENT(onInstI64TruncSatF32U  )() { CExpr.emplace_back<I64TruncSatF32U  >(); }
-EVENT(onInstI64TruncSatF64S  )() { CExpr.emplace_back<I64TruncSatF64S  >(); }
-EVENT(onInstI64TruncSatF64U  )() { CExpr.emplace_back<I64TruncSatF64U  >(); }
+EVENT(onInstI32TruncSatF32S  )() { addInst<I32TruncSatF32S  >(); }
+EVENT(onInstI32TruncSatF32U  )() { addInst<I32TruncSatF32U  >(); }
+EVENT(onInstI32TruncSatF64S  )() { addInst<I32TruncSatF64S  >(); }
+EVENT(onInstI32TruncSatF64U  )() { addInst<I32TruncSatF64U  >(); }
+EVENT(onInstI64TruncSatF32S  )() { addInst<I64TruncSatF32S  >(); }
+EVENT(onInstI64TruncSatF32U  )() { addInst<I64TruncSatF32U  >(); }
+EVENT(onInstI64TruncSatF64S  )() { addInst<I64TruncSatF64S  >(); }
+EVENT(onInstI64TruncSatF64U  )() { addInst<I64TruncSatF64U  >(); }
 // clang-format on
 } // namespace parser

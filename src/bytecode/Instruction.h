@@ -58,7 +58,7 @@ enum class TypeIDX   : std::uint32_t {};
 // clang-format on
 
 struct BlockResultUnit {};
-using BlockResultType = utility::Sum<ValueType, TypeIDX, BlockResultUnit>;
+using BlockResultType = std::variant<ValueType, TypeIDX, BlockResultUnit>;
 
 template <typename T> struct inst_trait;
 

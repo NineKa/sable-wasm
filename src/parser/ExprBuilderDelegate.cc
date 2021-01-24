@@ -287,4 +287,5 @@ EVENT(onInstI64TruncSatF32U  )() { addInst<I64TruncSatF32U  >(); }
 EVENT(onInstI64TruncSatF64S  )() { addInst<I64TruncSatF64S  >(); }
 EVENT(onInstI64TruncSatF64U  )() { addInst<I64TruncSatF64U  >(); }
 // clang-format on
+#undef EVENT
 } // namespace parser

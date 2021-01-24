@@ -16,8 +16,8 @@
 namespace bytecode {
 
 using ImportDescriptor =
-    utility::Sum<TypeIDX, TableType, MemoryType, GlobalType>;
-using ExportDescriptor = utility::Sum<FuncIDX, TableIDX, MemIDX, GlobalIDX>;
+    std::variant<TypeIDX, TableType, MemoryType, GlobalType>;
+using ExportDescriptor = std::variant<FuncIDX, TableIDX, MemIDX, GlobalIDX>;
 
 namespace entities {
 struct Function {
@@ -104,12 +104,23 @@ class Function : public Entity<FunctionType> {
   friend class bytecode::ModuleView;
   entities::Function const *Entity = nullptr;
 public:
-  ranges::random_access_range /* sized_range */ auto getLocals() const
-  { return ranges::views::all(Entity->Locals); }
   ValueType operator[](LocalIDX const & Index) const {
+    auto Parameters = getType()->getParamTypes(); 
     auto CastedIndex = static_cast<std::size_t>(Index);
-    assert(CastedIndex < ranges::size(getLocals()));
-    return getLocals()[CastedIndex];
+    if (CastedIndex < ranges::size(Parameters)) return Parameters[CastedIndex];
+    CastedIndex = CastedIndex - ranges::size(Parameters);
+    if (CastedIndex < ranges::size(Entity->Locals)) 
+      return Entity->Locals[CastedIndex];
+    SABLE_UNREACHABLE();
+  }
+  std::optional<ValueType> get(LocalIDX const &Index) const {
+    auto Parameters = getType()->getParamTypes(); 
+    auto CastedIndex = static_cast<std::size_t>(Index);
+    if (CastedIndex < ranges::size(Parameters)) return Parameters[CastedIndex];
+    CastedIndex = CastedIndex - ranges::size(Parameters);
+    if (CastedIndex < ranges::size(Entity->Locals)) 
+      return Entity->Locals[CastedIndex];
+    return std::nullopt;
   }
   bytecode::Expression const *getBody() const
   { return std::addressof(Entity->Body); }
@@ -158,6 +169,12 @@ public:
   views::Memory const &operator[](MemIDX const &Index) const;
   views::Global const &operator[](GlobalIDX const &Index) const;
   views::Function const &operator[](FuncIDX const &Index) const;
+
+  std::optional<FunctionType const *> get(TypeIDX const &Index) const;
+  std::optional<views::Table> get(TableIDX const &Index) const;
+  std::optional<views::Memory> get(MemIDX const &Index) const;
+  std::optional<views::Global> get(GlobalIDX const &Index) const;
+  std::optional<views::Function> get(FuncIDX const &Index) const;
 };
 
 } // namespace bytecode

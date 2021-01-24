@@ -33,22 +33,5 @@ template <typename... ArgTypes> void ignore(ArgTypes &&.../* IGNORED */) {}
 
 template <typename... Ts> struct Overload : Ts... { using Ts::operator()...; };
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
-
-template <typename... ArgTypes> class Sum : std::variant<ArgTypes...> {
-public:
-  using std::variant<ArgTypes...>::variant;
-  template <typename T> bool is() const {
-    return std::holds_alternative<T>(*this);
-  }
-  template <typename T> T &as() { return std::get<T>(*this); }
-  template <typename T> T const &as() const { return std::get<T>(*this); }
-  template <typename Function> auto match(Function &&Fn) {
-    return std::visit(std::forward<Function>(Fn), *this);
-  }
-  template <typename Function> auto match(Function &&Fn) const {
-    return std::visit(std::forward<Function>(Fn), *this);
-  }
-};
 } // namespace utility
-
 #endif

@@ -5,103 +5,110 @@
 #include "Module.h"
 #include "Type.h"
 
-#include <range/v3/core.hpp>
-#include <range/v3/range/traits.hpp>
-#include <range/v3/view/all.hpp>
-
 #include <variant>
 #include <vector>
 
 namespace bytecode::validation {
+bool validateType(ValueType const &Type);
+bool validateType(TableType const &Type);
+bool validateType(MemoryType const &Type);
+bool validateType(FunctionType const &Type);
+
 class TypeVariable {
   std::size_t ID;
 
 public:
   explicit TypeVariable(std::size_t ID_) : ID(ID_) {}
-  std::size_t getID() const { return ID; }
+  std::size_t id() const { return ID; }
   bool operator==(TypeVariable const &) const = default;
   auto operator<=>(TypeVariable const &) const = default;
 };
 
-class OperandStackElement {
-  std::variant<ValueType, TypeVariable> Element;
+using OperandStackElement = std::variant<ValueType, TypeVariable>;
+
+class ValidationContext;
+class ValidationError : std::runtime_error {
+  friend class ValidationContext;
+  bytecode::Module const *ModuleSite;
+  void const *EntitySite; // type erased entity site pointer
+  std::vector<InstructionPtr const *> Site;
 
 public:
-  /* Implicit */
-  OperandStackElement(ValueType Type) : Element(Type) {}
-  OperandStackElement(TypeVariable Variable) : Element(Variable) {}
+  ValidationError() : std::runtime_error("validation error") {}
+  using std::runtime_error::runtime_error;
+  virtual void signal() = 0;
 
-  // clang-format off
-  bool isValueType() const
-  { return std::holds_alternative<ValueType>(Element); }
-  bool isTypeVariable() const
-  { return std::holds_alternative<TypeVariable>(Element); }
-
-  ValueType &asValueType() { return std::get<ValueType>(Element); }
-  TypeVariable &asTypeVariable() { return std::get<TypeVariable>(Element); }
-
-  ValueType const &asValueType() const { return std::get<ValueType>(Element); }
-  TypeVariable const &asTypeVariable() const
-  { return std::get<TypeVariable>(Element); }
-
-  template <typename Function> auto match(Function &&Fn)
-  { return std::visit(std::forward<Function>(Fn), Element); }
-  template <typename Function> auto match(Function &&Fn) const
-  { return std::visit(std::forward<Function>(Fn), Element); }
-  // clang-format on
+  InstructionPtr const *getLatestInstSite() const { return Site.back(); }
 };
 
-struct OperandStack {
-  template <ranges::input_range T, ranges::input_range U>
-  bool operator()(T const &Ensures, U const &Promises) {
-    using TT = ranges::range_value_t<T>;
-    using UU = ranges::range_value_t<T>;
-    static_assert(std::convertible_to<TT, OperandStackElement>);
-    static_assert(std::convertible_to<UU, OperandStackElement>);
-    Cursor = Stack.rbegin();
-    for (auto const &Ensure : Ensures)
-      if (!ensure(Ensure)) return false;
-    if (Cursor == Stack.rend()) {
-      Stack.clear();
-    } else {
-      auto Start = ++std::next(Cursor).base();
-      auto End = Stack.end();
-      Stack.erase(Start, End);
-    }
-    for (auto const &Promise : Promises) promise(Promise);
-    return true;
-  }
-
-  void setEpsilon() { UnderEpsilon = true; }
-  auto getRequirements() { return ranges::views::all(Requirements); }
-
-private:
-  std::vector<OperandStackElement> Stack;
-  std::vector<OperandStackElement> Requirements;
-  bool UnderEpsilon = false;
-  decltype(Stack)::const_reverse_iterator Cursor;
-
-  bool ensure(OperandStackElement const &Type);
-  void promise(OperandStackElement Type);
-};
-
-class TypeError : std::runtime_error {
+class TypeError : public ValidationError {
+  bool Epsilon;
   std::vector<OperandStackElement> Expecting;
   std::vector<OperandStackElement> Actual;
-  InstructionPtr *Site;
 
 public:
   template <ranges::input_range T, ranges::input_range U>
-  TypeError(InstructionPtr *Site_, T const &Expecting_, U const &Actual_)
-      : std::runtime_error("type error"),
+  TypeError(bool Epsilon_, T const &Expecting_, U const &Actual_)
+      : Epsilon(Epsilon_),
         Expecting(ranges::to<decltype(Expecting)>(Expecting_)),
-        Actual(ranges::to<decltype(Actual)>(Actual_)), Site(Site_) {}
+        Actual(ranges::to<decltype(Actual)>(Actual_)) {}
+
+  void signal() override { throw *this; }
 
   auto expecting() const { return ranges::views::all(Expecting); }
   auto actual() const { return ranges::views::all(Actual); }
-  InstructionPtr *site() const { return Site; }
+  bool epsilon() const { return Epsilon; }
 };
 
+enum class MalformedErrorKind {
+  MISSING_CONTEXT_RETURN,
+  MALFORMED_FUNCTION_TYPE,
+  MALFORMED_VALUE_TYPE,
+  MALFORMED_MEMORY_TYPE,
+  MALFORMED_TABLE_TYPE,
+  TYPE_INDEX_OUT_OF_BOUND,
+  LABEL_INDEX_OUT_OF_BOUND,
+  FUNC_INDEX_OUT_OF_BOUND,
+  TABLE_INDEX_OUT_OF_BOUND,
+  MEM_INDEX_OUT_OF_BOUND,
+  LOCAL_INDEX_OUT_OF_BOUND,
+  GLOBAL_INDEX_OUT_OF_BOUND,
+  INVALID_BRANCH_TABLE,
+  INVALID_ALIGN,
+  GLOBAL_MUST_BE_MUT
+};
+
+class MalformedError : public ValidationError {
+  MalformedErrorKind Kind;
+
+public:
+  MalformedError(MalformedErrorKind Kind_) : Kind(Kind_) {}
+  MalformedErrorKind kind() const { return Kind; }
+
+  void signal() override { throw *this; }
+};
+
+bool validate(Module const *M);
+void validateThrow(Module const *M);
 } // namespace bytecode::validation
+
+////////////////////////////////// Formatters //////////////////////////////////
+namespace fmt {
+template <> struct formatter<bytecode::validation::OperandStackElement> {
+  using T = bytecode::validation::OperandStackElement;
+  template <typename C> auto parse(C &&CTX) { return CTX.begin(); }
+  template <typename C> auto format(T const &Element, C &&CTX) {
+    using ValueType = bytecode::ValueType;
+    using TypeVariable = bytecode::validation::TypeVariable;
+    if (std::holds_alternative<ValueType>(Element)) {
+      return fmt::format_to(CTX.out(), "{}", std::get<ValueType>(Element));
+    } else if (std::holds_alternative<TypeVariable>(Element)) {
+      auto const &TV = std::get<TypeVariable>(Element);
+      return fmt::format_to(CTX.out(), "t{}", TV.id());
+    } else
+      SABLE_UNREACHABLE();
+  }
+};
+} // namespace fmt
 
 #endif

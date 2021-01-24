@@ -222,6 +222,7 @@ void Parser<ReaderImpl, DelegateImpl>::parseCodeSection() {
     }
     Delegate.onCodeSectionLocal(I, std::move(LocalTypes));
     parseExpression();
+    Delegate.onCodeSectionEntry(I);
     if (Reader.hasMoreBytes())
       throw ParserError("code section entry has unconsumed bytes");
     Reader.restoreBarrier(EnteringBarrierStatus);

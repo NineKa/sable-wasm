@@ -2,13 +2,16 @@
 
 #include <boost/preprocessor.hpp>
 #include <range/v3/algorithm/copy.hpp>
+#include <range/v3/algorithm/count_if.hpp>
 #include <range/v3/iterator.hpp>
 #include <range/v3/range/concepts.hpp>
 #include <range/v3/view/concat.hpp>
+#include <range/v3/view/enumerate.hpp>
 #include <range/v3/view/reverse.hpp>
 #include <range/v3/view/single.hpp>
 
 #include <array>
+#include <bit>
 #include <optional>
 #include <span>
 #include <type_traits>
@@ -17,25 +20,10 @@ using namespace bytecode::valuetypes;
 using namespace bytecode::instructions;
 
 namespace bytecode::validation {
-namespace /* Helper Functions */ {
-template <ranges::input_range T, typename Predicate>
-bool forall(T const &Range, Predicate &&Fn) {
-  static_assert(std::convertible_to<
-                std::invoke_result_t<Predicate, ranges::range_value_type_t<T>>,
-                bool>);
-  for (auto const &Element : Range)
-    if (!Fn(Element)) return false;
-  return true;
-}
+using ErrorPtr = std::unique_ptr<ValidationError>;
 
-// helper function for calculate upper bound for alignment
-std::uint32_t power2(unsigned N) {
-  std::uint32_t Result = 1;
-  return Result << N;
-}
-} // namespace
-
-bool validateType(ValueType const &Type) {
+/////////////////////////////// Type Validation ////////////////////////////////
+bool validate(ValueType const &Type) {
   switch (Type.getKind()) {
   case ValueTypeKind::I32:
   case ValueTypeKind::I64:
@@ -45,16 +33,46 @@ bool validateType(ValueType const &Type) {
   }
 }
 
-bool validateType(FunctionType const &Type) {
-  auto const ValidateFn = [](ValueType const &T) { return validateType(T); };
-  return forall(Type.getParamTypes(), ValidateFn) &&
-         forall(Type.getResultTypes(), ValidateFn);
+bool validate(FunctionType const &Type) {
+  for (auto const &ParamType : Type.getParamTypes())
+    if (!validate(ParamType)) return false;
+  for (auto const &ResultType : Type.getResultTypes())
+    if (!validate(ResultType)) return false;
+  return true;
+}
+
+bool validate(GlobalType const &Type) {
+  switch (Type.getMutability()) {
+  case MutabilityKind::Const:
+  case MutabilityKind::Var: break;
+  default: return false;
+  }
+  return validate(Type.getType());
 }
 
 namespace {
-template <std::size_t Size>
-using OperandStackElemArray = std::array<OperandStackElement, Size>;
+namespace detail {
+template <limit_like_type T>
+bool validateLimitLikeType(T const &Type, std::uint64_t K) {
+  if (Type.getMin() > K) return false;
+  if (Type.hasMax()) {
+    if (Type.getMax() > K) return false;
+    if (Type.getMax() < Type.getMin()) return false;
+  }
+  return true;
+}
+} // namespace detail
+} // namespace
 
+bool validate(MemoryType const &Type) {
+  return detail::validateLimitLikeType(Type, std::uint64_t(1) << 32);
+}
+bool validate(TableType const &Type) {
+  return detail::validateLimitLikeType(Type, std::uint64_t(1) << 16);
+}
+
+///////////////////////////////// OperandStack /////////////////////////////////
+namespace {
 class OperandStack {
   std::vector<OperandStackElement> Stack;
   std::vector<OperandStackElement> Requirements;
@@ -65,15 +83,12 @@ class OperandStack {
   void promise(OperandStackElement Type) { Stack.push_back(Type); }
 
 public:
-  auto begin() { return Stack.begin(); }
-  auto end() { return Stack.end(); }
-
   template <ranges::input_range T, ranges::input_range U>
   bool operator()(T const &Ensures, U const &Promises) {
-    using TT = ranges::range_value_t<T>;
-    using UU = ranges::range_value_t<T>;
-    static_assert(std::convertible_to<TT, OperandStackElement>);
-    static_assert(std::convertible_to<UU, OperandStackElement>);
+    using RangeValueT = ranges::range_value_t<T>;
+    using RangeValueU = ranges::range_value_t<T>;
+    static_assert(std::convertible_to<RangeValueT, OperandStackElement>);
+    static_assert(std::convertible_to<RangeValueU, OperandStackElement>);
     Cursor = Stack.rbegin();
     for (auto const &Ensure : ranges::views::reverse(Ensures))
       if (!ensure(Ensure)) return false;
@@ -89,7 +104,7 @@ public:
   }
 
   void setEpsilon() { UnderEpsilon = true; }
-  bool epsilon() const { return UnderEpsilon; }
+  bool getEpsilon() const { return UnderEpsilon; }
   auto getRequirements() { return ranges::views::all(Requirements); }
   void clear() {
     Stack.clear();
@@ -106,7 +121,7 @@ public:
     return View.subspan(Stack.size() - NumOperandTypes, NumOperandTypes);
   }
 
-  std::optional<OperandStackElement> peek(std::size_t Offset = 0) {
+  std::optional<OperandStackElement> peek(std::size_t Offset = 0) const {
     if (!(Offset < Stack.size())) {
       if (!UnderEpsilon) return std::nullopt;
       return TypeVariable(Requirements.size());
@@ -145,7 +160,10 @@ bool OperandStack::ensure(OperandStackElement const &Type) {
   }
   return false;
 }
+} // namespace
 
+////////////////////////////////// LabelStack //////////////////////////////////
+namespace {
 class LabelStack {
   std::vector<ValueType> Storage;
   std::vector<std::size_t> Stack;
@@ -155,16 +173,14 @@ public:
   operator[](LabelIDX const &Index) const {
     auto CastedIndex = static_cast<std::size_t>(Index);
     if (!(CastedIndex < Stack.size())) return std::nullopt;
-    std::size_t StartPos;
-    std::size_t EndPos;
-    if (CastedIndex == 0) {
-      StartPos = Stack.back();
-      EndPos = Storage.size();
-    } else {
-      StartPos = *std::next(Stack.rbegin(), CastedIndex);
-      EndPos = *std::next(Stack.rbegin(), CastedIndex - 1);
-    }
     std::span<ValueType const> View(Storage);
+    if (CastedIndex == 0) {
+      auto StartPos = Stack.back();
+      auto EndPos = Storage.size();
+      return View.subspan(StartPos, EndPos - StartPos);
+    }
+    auto StartPos = *std::next(Stack.rbegin(), CastedIndex);
+    auto EndPos = *std::next(Stack.rbegin(), CastedIndex - 1);
     return View.subspan(StartPos, EndPos - StartPos);
   }
 
@@ -177,54 +193,25 @@ public:
 
   bool empty() const { return Stack.empty(); }
 };
-
-using ErrorPtr = std::unique_ptr<ValidationError>;
 } // namespace
 
-class ValidationContext {
+///////////////////////////// ExprValidationContext ////////////////////////////
+namespace {
+class ExprValidationContext {
   ModuleView Module;
   std::optional<entities::Function const *> EnclosingFunction;
   LabelStack Labels;
 
-  // used for error site recovery
-  bytecode::Module const *ModuleSite;
-  void const *EntitySite;
-  std::vector<InstructionPtr const *> Site;
-
 public:
-  template <ranges::input_range T, ranges::input_range U>
-  ErrorPtr BuildError(bool Epsilon, T const &Expecting, U const &Actual) {
-    assert(EntitySite != nullptr);
-    auto Error = std::make_unique<TypeError>(Epsilon, Expecting, Actual);
-    Error->ModuleSite = ModuleSite;
-    Error->EntitySite = EntitySite;
-    Error->Site = std::move(Site);
-    return Error;
-  }
-
-  ErrorPtr BuildError(MalformedErrorKind Kind) {
-    assert(EntitySite != nullptr);
-    auto Error = std::make_unique<MalformedError>(Kind);
-    Error->ModuleSite = ModuleSite;
-    Error->EntitySite = EntitySite;
-    Error->Site = std::move(Site);
-    return Error;
-  }
-
-  void enterInst(InstructionPtr const &Inst) {
-    Site.push_back(std::addressof(Inst));
-  }
-  void exitInst() { Site.pop_back(); }
-
   template <typename T> struct Wrapper {
-    ValidationContext const &Context;
+    ExprValidationContext const &Context;
     decltype(auto) operator[](T const &Index) {
       return Context.Module.get(Index);
     }
   };
 
   struct LocalWrapper {
-    ValidationContext const &Context;
+    ExprValidationContext const &Context;
     std::optional<ValueType> operator[](LocalIDX const &Index) {
       if (!Context.EnclosingFunction.has_value()) return std::nullopt;
       auto TypeIDX = (*Context.EnclosingFunction)->Type;
@@ -248,44 +235,50 @@ public:
   }
 
   auto types() const { return Wrapper<TypeIDX>{*this}; }
-  auto funcs() const { return Wrapper<FuncIDX>{*this}; }
+  auto functions() const { return Wrapper<FuncIDX>{*this}; }
   auto tables() const { return Wrapper<TableIDX>{*this}; }
-  auto mems() const { return Wrapper<MemIDX>{*this}; }
+  auto memories() const { return Wrapper<MemIDX>{*this}; }
   auto globals() const { return Wrapper<GlobalIDX>{*this}; }
   auto locals() const { return LocalWrapper{*this}; }
 
-  explicit ValidationContext(bytecode::Module const &M)
-      : Module(M), ModuleSite(std::addressof(M)), EntitySite(nullptr) {}
-
-  ValidationContext(
-      bytecode::Module const &M, entities::Function const &EnclosingFunction_)
-      : Module(M), EnclosingFunction(std::addressof(EnclosingFunction_)),
-        ModuleSite(std::addressof(M)),
-        EntitySite(std::addressof(EnclosingFunction_)) {
-    Labels.push(return_()); // allow branch to act as return
-  }
+  explicit ExprValidationContext(ModuleView MView)
+      : Module(std::move(MView)), EnclosingFunction(std::nullopt) {}
+  ExprValidationContext(ModuleView MView, entities::Function const &Function)
+      : Module(std::move(MView)), EnclosingFunction(std::addressof(Function)) {}
 };
+} // namespace
 
+//////////////////////////// ExprValidationVisitor /////////////////////////////
 namespace {
 class ExprValidationVisitor
     : public InstVisitorBase<
           ExprValidationVisitor, std::unique_ptr<ValidationError>> {
-  ValidationContext &Context;
+  ExprValidationContext &Context;
+  TraceCollector &Trace;
   OperandStack TypeStack;
 
+  template <typename... ArgTypes>
+  static constexpr std::array<OperandStackElement, sizeof...(ArgTypes)>
+  BuildTypesArray(ArgTypes &&...Args) {
+    return {std::forward<ArgTypes>(Args)...};
+  }
+
 public:
-  ExprValidationVisitor(ValidationContext &Context_) : Context(Context_) {}
+  ExprValidationVisitor(ExprValidationContext &Context_, TraceCollector &Trace_)
+      : Context(Context_), Trace(Trace_) {}
 
   ErrorPtr visit(InstructionPtr const &InstPtr) {
     using BaseVisitor = InstVisitorBase<
         ExprValidationVisitor, std::unique_ptr<ValidationError>>;
-    Context.enterInst(InstPtr);
+    Trace.pushInstSite(InstPtr);
     if (auto Error = BaseVisitor::visit(InstPtr.asPointer())) return Error;
-    Context.exitInst();
+    Trace.popInstSite();
     return nullptr;
   }
 
-  ExprValidationVisitor duplicate() { return ExprValidationVisitor(Context); }
+  ExprValidationVisitor duplicate() {
+    return ExprValidationVisitor(Context, Trace);
+  }
 
   template <ranges::input_range T, ranges::forward_range U>
   ErrorPtr operator()(
@@ -296,32 +289,33 @@ public:
     static_assert(std::convertible_to<UU, ValueType>);
     static_assert(ranges::sized_range<U>, "for site recovery");
     assert(TypeStack.empty()); // fresh start
-    OperandStackElemArray<0> Empty{};
-    auto AlwaysSuccessful = TypeStack(Empty, Parameters);
+    auto AlwaysSuccessful = TypeStack(BuildTypesArray(), Parameters);
     assert(AlwaysSuccessful);
     utility::ignore(AlwaysSuccessful);
     for (auto const &InstPtr : Expr)
       if (auto Error = visit(InstPtr)) return Error;
-    if (!TypeStack(Results, Empty)) {
+    if (!TypeStack(Results, BuildTypesArray())) {
+      auto Epsilon = TypeStack.getEpsilon();
       auto Actual = TypeStack.recover(ranges::size(Results));
-      return Context.BuildError(TypeStack.epsilon(), Results, Actual);
+      return Trace.BuildError(Epsilon, Results, Actual);
     }
     if (!TypeStack.empty()) {
+      auto Epsilon = TypeStack.getEpsilon();
       auto Actual = TypeStack.recover(TypeStack.size());
-      return Context.BuildError(TypeStack.epsilon(), Empty, Actual);
+      return Trace.BuildError(Epsilon, BuildTypesArray(), Actual);
     }
     return nullptr;
   }
 
 #define ON(Name, ParamTypes, ResultTypes)                                      \
   ErrorPtr operator()(Name const *) {                                          \
-    OperandStackElemArray<BOOST_PP_ARRAY_SIZE(ParamTypes)> Parameters{         \
-        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ParamTypes))};               \
-    OperandStackElemArray<BOOST_PP_ARRAY_SIZE(ResultTypes)> Results{           \
-        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ResultTypes))};              \
+    auto Parameters = BuildTypesArray(                                         \
+        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ParamTypes)));               \
+    auto Results = BuildTypesArray(                                            \
+        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ResultTypes)));              \
     if (!TypeStack(Parameters, Results)) {                                     \
       auto Actuals = TypeStack.recover(Parameters.size());                     \
-      return Context.BuildError(TypeStack.epsilon(), Parameters, Actuals);     \
+      return Trace.BuildError(TypeStack.getEpsilon(), Parameters, Actuals);    \
     }                                                                          \
     return nullptr;                                                            \
   }
@@ -483,22 +477,23 @@ public:
   ON(I64Extend8S      , (1, (I64)), (1, (I64))) // [i64] -> [i64]
   ON(I64Extend16S     , (1, (I64)), (1, (I64))) // [i64] -> [i64]
   ON(I64Extend32S     , (1, (I64)), (1, (I64))) // [i64] -> [i64]
-  // clang-format on
+// clang-format on
 #undef ON
 #define ON(Name, Width, ParamTypes, ResultTypes)                               \
   ErrorPtr operator()(Name const *Inst) {                                      \
-    auto Memory = Context.mems()[static_cast<MemIDX>(0)];                      \
+    auto Memory = Context.memories()[static_cast<MemIDX>(0)];                  \
     if (!Memory.has_value())                                                   \
-      return Context.BuildError(MalformedErrorKind::MEM_INDEX_OUT_OF_BOUND);   \
-    if (!(power2(Inst->Align) <= Width / 8))                                   \
-      return Context.BuildError(MalformedErrorKind::INVALID_ALIGN);            \
-    OperandStackElemArray<BOOST_PP_ARRAY_SIZE(ParamTypes)> Parameters{         \
-        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ParamTypes))};               \
-    OperandStackElemArray<BOOST_PP_ARRAY_SIZE(ResultTypes)> Results{           \
-        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ResultTypes))};              \
+      return Trace.BuildError(MalformedErrorKind::MEM_INDEX_OUT_OF_BOUND);     \
+    if (!(Inst->Align <= std::countr_zero(static_cast<unsigned>(Width)) + 1))  \
+      return Trace.BuildError(MalformedErrorKind::INVALID_ALIGN);              \
+    auto Parameters = BuildTypesArray(                                         \
+        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ParamTypes)));               \
+    auto Results = BuildTypesArray(                                            \
+        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ResultTypes)));              \
     if (!TypeStack(Parameters, Results)) {                                     \
+      auto Epsilon = TypeStack.getEpsilon();                                   \
       auto Actuals = TypeStack.recover(Parameters.size());                     \
-      return Context.BuildError(TypeStack.epsilon(), Parameters, Actuals);     \
+      return Trace.BuildError(Epsilon, Parameters, Actuals);                   \
     }                                                                          \
     return nullptr;                                                            \
   }
@@ -526,37 +521,32 @@ public:
   ON(I64Store8 ,  8, (2, (I32, I64)), (0, (   )))
   ON(I64Store16, 16, (2, (I32, I64)), (0, (   )))
   ON(I64Store32, 32, (2, (I32, I64)), (0, (   )))
-  // clang-format on
+// clang-format on
 #undef ON
 
   ErrorPtr operator()(Unreachable const *);
   ErrorPtr operator()(Return const *);
   ErrorPtr operator()(Drop const *);
   ErrorPtr operator()(Select const *);
-
-  ErrorPtr validateBlockResult(BlockResultType const &Type);
-  FunctionType convertBlockResult(BlockResultType const &Type);
-
   ErrorPtr operator()(Block const *);
   ErrorPtr operator()(Loop const *);
   ErrorPtr operator()(If const *);
-
   ErrorPtr operator()(Br const *);
   ErrorPtr operator()(BrIf const *);
   ErrorPtr operator()(BrTable const *);
-
   ErrorPtr operator()(Call const *);
   ErrorPtr operator()(CallIndirect const *);
-
   ErrorPtr operator()(LocalGet const *);
   ErrorPtr operator()(LocalSet const *);
   ErrorPtr operator()(LocalTee const *);
-
   ErrorPtr operator()(GlobalGet const *);
   ErrorPtr operator()(GlobalSet const *);
+
+private:
+  ErrorPtr validateBlockResult(BlockResultType const &Type);
+  FunctionType convertBlockResult(BlockResultType const &Type);
 };
 
-//////////////////////////////// Implementation ////////////////////////////////
 ErrorPtr ExprValidationVisitor::operator()(Unreachable const *) {
   // C |- unreachable: [t1*] -> [t2*]
   // always success
@@ -570,10 +560,11 @@ ErrorPtr ExprValidationVisitor::operator()(Return const *) {
   // --------------------------------
   //  C |- return: [t1* t*] -> [t2*]
   if (!Context.hasReturn())
-    return Context.BuildError(MalformedErrorKind::MISSING_CONTEXT_RETURN);
-  if (!TypeStack(Context.return_(), std::array<ValueType, 0>{})) {
+    return Trace.BuildError(MalformedErrorKind::MISSING_CONTEXT_RETURN);
+  if (!TypeStack(Context.return_(), BuildTypesArray())) {
+    auto Epsilon = TypeStack.getEpsilon();
     auto Actual = TypeStack.recover(ranges::size(Context.return_()));
-    return Context.BuildError(TypeStack.epsilon(), Context.return_(), Actual);
+    return Trace.BuildError(Epsilon, Context.return_(), Actual);
   }
   TypeStack.clear();
   TypeStack.setEpsilon();
@@ -585,16 +576,15 @@ ErrorPtr ExprValidationVisitor::operator()(Drop const *) {
   do {
     auto T = TypeStack.peek();
     if (!T.has_value()) break;
-    OperandStackElemArray<1> Parameters{*T};
-    OperandStackElemArray<0> Results{};
-    auto AlwaysSuccessful = TypeStack(Parameters, Results);
+    auto AlwaysSuccessful = TypeStack(BuildTypesArray(*T), BuildTypesArray());
     assert(AlwaysSuccessful);
     utility::ignore(AlwaysSuccessful);
     return nullptr;
   } while (false);
+  auto Epsilon = TypeStack.getEpsilon();
   auto Actual = TypeStack.recover(1);
-  OperandStackElemArray<1> Expecting{TypeVariable(0)};
-  return Context.BuildError(TypeStack.epsilon(), Expecting, Actual);
+  auto Expect = BuildTypesArray(TypeVariable(0));
+  return Trace.BuildError(Epsilon, Expect, Actual);
 }
 
 ErrorPtr ExprValidationVisitor::operator()(Select const *) {
@@ -602,55 +592,52 @@ ErrorPtr ExprValidationVisitor::operator()(Select const *) {
   do {
     auto T = TypeStack.peek(1);
     if (!T.has_value()) break;
-    OperandStackElemArray<3> Parameters{*T, *T, I32};
-    OperandStackElemArray<1> Results{*T};
-    if (!TypeStack(Parameters, Results)) break;
+    if (!TypeStack(BuildTypesArray(*T, *T, I32), BuildTypesArray(*T))) break;
     return nullptr;
   } while (false);
+  auto Epsilon = TypeStack.getEpsilon();
   auto Actual = TypeStack.recover(3);
-  OperandStackElemArray<3> Expecting{TypeVariable(0), TypeVariable(0), I32};
-  return Context.BuildError(TypeStack.epsilon(), Expecting, Actual);
+  auto Expect = BuildTypesArray(TypeVariable(0), TypeVariable(0), I32);
+  return Trace.BuildError(Epsilon, Expect, Actual);
 }
 
 ErrorPtr
 ExprValidationVisitor::validateBlockResult(BlockResultType const &Type) {
-  auto const TypeIDXFn = [this](TypeIDX const &Index) {
-    auto FunctionType = Context.types()[Index];
-    if (!FunctionType.has_value())
-      return Context.BuildError(MalformedErrorKind::TYPE_INDEX_OUT_OF_BOUND);
-    assert(validateType(**FunctionType)); // ensured by type section validation
-    return ErrorPtr(nullptr);
-  };
-  auto const ValueTypeFn = [this](ValueType const &T) {
-    if (!validateType(T))
-      return Context.BuildError(MalformedErrorKind::MALFORMED_VALUE_TYPE);
-    return ErrorPtr(nullptr);
-  };
-  auto const UnitTypeFn = [](BlockResultUnit const &) {
-    // always successful
-    return ErrorPtr(nullptr);
-  };
-  return std::visit(
-      utility::Overload{TypeIDXFn, ValueTypeFn, UnitTypeFn}, Type);
+  if (std::holds_alternative<TypeIDX>(Type)) {
+    auto FunctionTypePtr = Context.types()[std::get<TypeIDX>(Type)];
+    if (!FunctionTypePtr.has_value())
+      return Trace.BuildError(MalformedErrorKind::TYPE_INDEX_OUT_OF_BOUND);
+    assert(*FunctionTypePtr != nullptr);
+    assert(validate(**FunctionTypePtr));
+    return nullptr;
+  }
+  if (std::holds_alternative<ValueType>(Type)) {
+    if (!validate(std::get<ValueType>(Type)))
+      return Trace.BuildError(MalformedErrorKind::MALFORMED_VALUE_TYPE);
+    return nullptr;
+  }
+  if (std::holds_alternative<BlockResultUnit>(Type)) return nullptr;
+  SABLE_UNREACHABLE();
 }
 
 FunctionType
 ExprValidationVisitor::convertBlockResult(BlockResultType const &Type) {
-  auto const TypeIDXFn = [this](TypeIDX const &Index) -> FunctionType {
-    auto T = Context.types()[Index];
-    assert(T.has_value()); // ensured by validation
-    return **T;
-  };
-  auto const ValueTypeFn = [](ValueType const &T) -> FunctionType {
+  if (std::holds_alternative<TypeIDX>(Type)) {
+    auto FunctionTypePtr = Context.types()[std::get<TypeIDX>(Type)];
+    assert(FunctionTypePtr.has_value());
+    assert(*FunctionTypePtr != nullptr);
+    return **FunctionTypePtr;
+  }
+  if (std::holds_alternative<ValueType>(Type)) {
     std::array<ValueType, 0> Parameters{};
-    std::array<ValueType, 1> Results{T};
+    std::array<ValueType, 1> Results{std::get<ValueType>(Type)};
     return FunctionType(Parameters, Results);
-  };
-  auto const UnitTypeFn = [](BlockResultUnit const &) -> FunctionType {
-    return FunctionType(std::array<ValueType, 0>{}, std::array<ValueType, 0>{});
-  };
-  return std::visit(
-      utility::Overload{TypeIDXFn, ValueTypeFn, UnitTypeFn}, Type);
+  }
+  if (std::holds_alternative<BlockResultUnit>(Type)) {
+    std::array<ValueType, 0> Empty{};
+    return FunctionType(Empty, Empty);
+  }
+  SABLE_UNREACHABLE();
 }
 
 ErrorPtr ExprValidationVisitor::operator()(Block const *Inst) {
@@ -664,8 +651,9 @@ ErrorPtr ExprValidationVisitor::operator()(Block const *Inst) {
   auto Results = ConvertedType.getResultTypes();
   Context.labels().push(Results);
   if (!TypeStack(Parameters, Results)) {
+    auto Epsilon = TypeStack.getEpsilon();
     auto Actual = TypeStack.recover(ranges::size(Parameters));
-    return Context.BuildError(TypeStack.epsilon(), Parameters, Actual);
+    return Trace.BuildError(Epsilon, Parameters, Actual);
   }
   if (auto Error = duplicate()(Inst->Body, Parameters, Results)) return Error;
   Context.labels().pop();
@@ -683,8 +671,9 @@ ErrorPtr ExprValidationVisitor::operator()(Loop const *Inst) {
   auto Results = ConvertedType.getResultTypes();
   Context.labels().push(Parameters);
   if (!TypeStack(Parameters, Results)) {
+    auto Epsilon = TypeStack.getEpsilon();
     auto Actual = TypeStack.recover(ranges::size(Parameters));
-    return Context.BuildError(TypeStack.epsilon(), Parameters, Actual);
+    return Trace.BuildError(Epsilon, Parameters, Actual);
   }
   if (auto Error = duplicate()(Inst->Body, Parameters, Results)) return Error;
   Context.labels().pop();
@@ -705,8 +694,9 @@ ErrorPtr ExprValidationVisitor::operator()(If const *Inst) {
   auto IfParameters =
       ranges::views::concat(Parameters, ranges::views::single(I32));
   if (!TypeStack(IfParameters, Results)) {
-    auto Actual = TypeStack.recover(ranges::size(Parameters) + 1);
-    return Context.BuildError(TypeStack.epsilon(), IfParameters, Actual);
+    auto Epsilon = TypeStack.getEpsilon();
+    auto Actual = TypeStack.recover(ranges::size(IfParameters));
+    return Trace.BuildError(Epsilon, IfParameters, Actual);
   }
   if (auto Error = duplicate()(Inst->True, Parameters, Results)) return Error;
   if (Inst->False.has_value())
@@ -722,10 +712,11 @@ ErrorPtr ExprValidationVisitor::operator()(Br const *Inst) {
   //  C |- br l: [t1* t*] -> [t2*]
   auto Types = Context.labels()[Inst->Target];
   if (!Types.has_value())
-    return Context.BuildError(MalformedErrorKind::LABEL_INDEX_OUT_OF_BOUND);
-  if (!TypeStack(*Types, OperandStackElemArray<0>{})) {
+    return Trace.BuildError(MalformedErrorKind::LABEL_INDEX_OUT_OF_BOUND);
+  if (!TypeStack(*Types, BuildTypesArray())) {
+    auto Epsilon = TypeStack.getEpsilon();
     auto Actual = TypeStack.recover(ranges::size(*Types));
-    return Context.BuildError(TypeStack.epsilon(), *Types, Actual);
+    return Trace.BuildError(Epsilon, *Types, Actual);
   }
   TypeStack.clear();
   TypeStack.setEpsilon();
@@ -738,11 +729,13 @@ ErrorPtr ExprValidationVisitor::operator()(BrIf const *Inst) {
   //  C |- br_if l: [t* i32] -> [t*]
   auto Types = Context.labels()[Inst->Target];
   if (!Types.has_value())
-    return Context.BuildError(MalformedErrorKind::LABEL_INDEX_OUT_OF_BOUND);
-  auto BrIfTypes = ranges::views::concat(*Types, ranges::views::single(I32));
-  if (!TypeStack(BrIfTypes, *Types)) {
-    auto Actual = TypeStack.recover(ranges::size(*Types) + 1);
-    return Context.BuildError(TypeStack.epsilon(), BrIfTypes, Actual);
+    return Trace.BuildError(MalformedErrorKind::LABEL_INDEX_OUT_OF_BOUND);
+  auto BrIfParameters =
+      ranges::views::concat(*Types, ranges::views::single(I32));
+  if (!TypeStack(BrIfParameters, *Types)) {
+    auto Epsilon = TypeStack.getEpsilon();
+    auto Actual = TypeStack.recover(ranges::size(BrIfParameters));
+    return Trace.BuildError(Epsilon, BrIfParameters, Actual);
   }
   return nullptr;
 }
@@ -768,19 +761,20 @@ ErrorPtr ExprValidationVisitor::operator()(BrTable const *Inst) {
   //  C |- br_table l* ln: [t1* t* i32] -> [t2*]
   auto DefaultTypes = Context.labels()[Inst->DefaultTarget];
   if (!DefaultTypes.has_value())
-    return Context.BuildError(MalformedErrorKind::LABEL_INDEX_OUT_OF_BOUND);
+    return Trace.BuildError(MalformedErrorKind::LABEL_INDEX_OUT_OF_BOUND);
   for (auto const &Index : Inst->Targets) {
     auto Types = Context.labels()[Index];
     if (!Types.has_value())
-      return Context.BuildError(MalformedErrorKind::LABEL_INDEX_OUT_OF_BOUND);
+      return Trace.BuildError(MalformedErrorKind::LABEL_INDEX_OUT_OF_BOUND);
     if (!rangeEqual(*Types, *DefaultTypes))
-      return Context.BuildError(MalformedErrorKind::INVALID_BRANCH_TABLE);
+      return Trace.BuildError(MalformedErrorKind::INVALID_BRANCH_TABLE);
   }
-  auto BrTableTypes =
+  auto BrTableParameters =
       ranges::views::concat(*DefaultTypes, ranges::views::single(I32));
-  if (!TypeStack(BrTableTypes, OperandStackElemArray<0>{})) {
-    auto Actual = TypeStack.recover(ranges::size(*DefaultTypes) + 1);
-    return Context.BuildError(TypeStack.epsilon(), BrTableTypes, Actual);
+  if (!TypeStack(BrTableParameters, BuildTypesArray())) {
+    auto Epsilon = TypeStack.getEpsilon();
+    auto Actual = TypeStack.recover(ranges::size(BrTableParameters));
+    return Trace.BuildError(Epsilon, BrTableParameters, Actual);
   }
   TypeStack.clear();
   TypeStack.setEpsilon();
@@ -791,15 +785,15 @@ ErrorPtr ExprValidationVisitor::operator()(Call const *Inst) {
   //  C.funcs[x] = [t1*] -> [t2*]
   // -----------------------------
   //  C |- call x: [t1*] -> [t2*]
-  auto Function = Context.funcs()[Inst->Target];
+  auto Function = Context.functions()[Inst->Target];
   if (!Function.has_value())
-    return Context.BuildError(MalformedErrorKind::FUNC_INDEX_OUT_OF_BOUND);
-  auto const *Type = (*Function).getType();
-  auto Parameters = Type->getParamTypes();
-  auto Results = Type->getResultTypes();
+    return Trace.BuildError(MalformedErrorKind::FUNC_INDEX_OUT_OF_BOUND);
+  auto Parameters = (*Function).getType() /* FunctionType * */->getParamTypes();
+  auto Results = (*Function).getType() /* FunctionType * */->getResultTypes();
   if (!TypeStack(Parameters, Results)) {
+    auto Epsilon = TypeStack.getEpsilon();
     auto Actual = TypeStack.recover(ranges::size(Parameters));
-    return Context.BuildError(TypeStack.epsilon(), Parameters, Actual);
+    return Trace.BuildError(Epsilon, Parameters, Actual);
   }
   return nullptr;
 }
@@ -810,18 +804,18 @@ ErrorPtr ExprValidationVisitor::operator()(CallIndirect const *Inst) {
   //         C |- call_indirect x: [t1* i32] -> [t2*]
   auto Table = Context.tables()[static_cast<TableIDX>(0)];
   if (!Table.has_value())
-    return Context.BuildError(MalformedErrorKind::TABLE_INDEX_OUT_OF_BOUND);
+    return Trace.BuildError(MalformedErrorKind::TABLE_INDEX_OUT_OF_BOUND);
   auto Type = Context.types()[Inst->Type];
   if (!Type.has_value())
-    return Context.BuildError(MalformedErrorKind::TYPE_INDEX_OUT_OF_BOUND);
-  auto Parameters = (*Type)->getParamTypes();
-  auto Results = (*Type)->getResultTypes();
+    return Trace.BuildError(MalformedErrorKind::TYPE_INDEX_OUT_OF_BOUND);
+  auto Parameters = (*Type) /* FunctionType * */->getParamTypes();
+  auto Results = (*Type) /* FunctionType * */->getResultTypes();
   auto CallIndirectParameters =
-      ranges::view::concat(Parameters, ranges::view::single(I32));
+      ranges::views::concat(Parameters, ranges::views::single(I32));
   if (!TypeStack(CallIndirectParameters, Results)) {
-    auto Actual = TypeStack.recover(ranges::size(Parameters) + 1);
-    return Context.BuildError(
-        TypeStack.epsilon(), CallIndirectParameters, Actual);
+    auto Epsilon = TypeStack.getEpsilon();
+    auto Actual = TypeStack.recover(ranges::size(CallIndirectParameters));
+    return Trace.BuildError(Epsilon, CallIndirectParameters, Actual);
   }
   return nullptr;
 }
@@ -832,9 +826,9 @@ ErrorPtr ExprValidationVisitor::operator()(LocalGet const *Inst) {
   //  C |- local.get x: [] -> [t]
   auto Local = Context.locals()[Inst->Target];
   if (!Local.has_value())
-    return Context.BuildError(MalformedErrorKind::LOCAL_INDEX_OUT_OF_BOUND);
+    return Trace.BuildError(MalformedErrorKind::LOCAL_INDEX_OUT_OF_BOUND);
   auto AlwaysSuccessful =
-      TypeStack(OperandStackElemArray<0>{}, ranges::views::single(*Local));
+      TypeStack(BuildTypesArray(), ranges::views::single(*Local));
   assert(AlwaysSuccessful);
   utility::ignore(AlwaysSuccessful);
   return nullptr;
@@ -846,11 +840,12 @@ ErrorPtr ExprValidationVisitor::operator()(LocalSet const *Inst) {
   //  C |- local.set x: [t] -> []
   auto Local = Context.locals()[Inst->Target];
   if (!Local.has_value())
-    return Context.BuildError(MalformedErrorKind::LOCAL_INDEX_OUT_OF_BOUND);
-  if (!TypeStack(ranges::views::single(*Local), OperandStackElemArray<0>{})) {
+    return Trace.BuildError(MalformedErrorKind::LOCAL_INDEX_OUT_OF_BOUND);
+  if (!TypeStack(ranges::views::single(*Local), BuildTypesArray())) {
+    auto Epsilon = TypeStack.getEpsilon();
     auto Actual = TypeStack.recover(1);
     auto Expecting = ranges::views::single(*Local);
-    return Context.BuildError(TypeStack.epsilon(), Expecting, Actual);
+    return Trace.BuildError(Epsilon, Expecting, Actual);
   }
   return nullptr;
 }
@@ -861,11 +856,12 @@ ErrorPtr ExprValidationVisitor::operator()(LocalTee const *Inst) {
   //  C |- local.tee x: [t] -> [t]
   auto Local = Context.locals()[Inst->Target];
   if (!Local.has_value())
-    return Context.BuildError(MalformedErrorKind::LOCAL_INDEX_OUT_OF_BOUND);
+    return Trace.BuildError(MalformedErrorKind::LOCAL_INDEX_OUT_OF_BOUND);
   auto ParameterAndResult = ranges::views::single(*Local);
   if (!TypeStack(ParameterAndResult, ParameterAndResult)) {
+    auto Epsilon = TypeStack.getEpsilon();
     auto Actual = TypeStack.recover(1);
-    return Context.BuildError(TypeStack.epsilon(), ParameterAndResult, Actual);
+    return Trace.BuildError(Epsilon, ParameterAndResult, Actual);
   }
   return nullptr;
 }
@@ -876,10 +872,10 @@ ErrorPtr ExprValidationVisitor::operator()(GlobalGet const *Inst) {
   //  C |- global.get x: [] -> [t]
   auto Global = Context.globals()[Inst->Target];
   if (!Global.has_value())
-    return Context.BuildError(MalformedErrorKind::GLOBAL_INDEX_OUT_OF_BOUND);
+    return Trace.BuildError(MalformedErrorKind::GLOBAL_INDEX_OUT_OF_BOUND);
   auto Type = (*Global).getType() /* GlobalType const * */->getType();
   auto AlwaysSuccessful =
-      TypeStack(OperandStackElemArray<0>{}, ranges::views::single(Type));
+      TypeStack(BuildTypesArray(), ranges::views::single(Type));
   assert(AlwaysSuccessful);
   utility::ignore(AlwaysSuccessful);
   return nullptr;
@@ -891,27 +887,194 @@ ErrorPtr ExprValidationVisitor::operator()(GlobalSet const *Inst) {
   //  C |- global.set x: [t] -> []
   auto Global = Context.globals()[Inst->Target];
   if (!Global.has_value())
-    return Context.BuildError(MalformedErrorKind::GLOBAL_INDEX_OUT_OF_BOUND);
+    return Trace.BuildError(MalformedErrorKind::GLOBAL_INDEX_OUT_OF_BOUND);
   if (!(*Global).getType()->isVar())
-    return Context.BuildError(MalformedErrorKind::GLOBAL_MUST_BE_MUT);
+    return Trace.BuildError(MalformedErrorKind::GLOBAL_MUST_BE_MUT);
   auto Type = (*Global).getType() /* GlobalType const * */->getType();
   auto Parameters = ranges::views::single(Type);
-  if (!TypeStack(Parameters, OperandStackElemArray<0>{})) {
+  if (!TypeStack(Parameters, BuildTypesArray())) {
+    auto Epsilon = TypeStack.getEpsilon();
     auto Actual = TypeStack.recover(1);
-    return Context.BuildError(TypeStack.epsilon(), Parameters, Actual);
+    return Trace.BuildError(Epsilon, Parameters, Actual);
   }
   return nullptr;
 }
 } // namespace
 
-void validateThrow(Module const *M) {
-  for (auto const &Function : M->Functions) {
-    ValidationContext Context(*M, Function);
-    ExprValidationVisitor Visitor(Context);
-    auto const &Type = M->Types[static_cast<std::size_t>(Function.Type)];
-    auto Result = Visitor(
-        Function.Body, std::array<ValueType, 0>{}, Type.getResultTypes());
-    if (Result != nullptr) Result->signal();
+//////////////////////////////// TraceCollector ////////////////////////////////
+void TraceCollector::enterEntity(EntitySiteKind ESiteKind_, std::size_t N) {
+  ESiteKind = ESiteKind_;
+  ESiteIndex = N;
+  ISites.clear();
+}
+// clang-format off
+void TraceCollector::enterType(std::size_t N) 
+{ enterEntity(EntitySiteKind::Type, N); }
+void TraceCollector::enterFunction(std::size_t N)
+{ enterEntity(EntitySiteKind::Function, N); }
+void TraceCollector::enterTable(std::size_t N)
+{ enterEntity(EntitySiteKind::Table, N); }
+void TraceCollector::enterMemory(std::size_t N)
+{ enterEntity(EntitySiteKind::Memory, N); }
+void TraceCollector::enterGlobal(std::size_t N)
+{ enterEntity(EntitySiteKind::Global, N); }
+void TraceCollector::enterElement(std::size_t N)
+{ enterEntity(EntitySiteKind::Element, N); }
+void TraceCollector::enterData(std::size_t N)
+{ enterEntity(EntitySiteKind::Data, N); }
+void TraceCollector::enterImport(std::size_t N)
+{ enterEntity(EntitySiteKind::Import, N); }
+void TraceCollector::enterExport(std::size_t N)
+{ enterEntity(EntitySiteKind::Export, N); }
+// clang-format on
+
+void TraceCollector::pushInstSite(InstructionPtr const &InstPtr) {
+  ISites.push_back(std::addressof(InstPtr));
+}
+void TraceCollector::popInstSite() {
+  assert(!ISites.empty());
+  ISites.pop_back();
+}
+
+/////////// std::unique_ptr<ValidationError> validate(Module const &) //////////
+namespace {
+namespace detail {
+class ImportValidationVisitor {
+  TraceCollector &Trace;
+  std::size_t NumTypes;
+
+public:
+  ImportValidationVisitor(TraceCollector &Trace_, Module const &M)
+      : Trace(Trace_), NumTypes(ranges::size(M.Types)) {}
+  ErrorPtr operator()(TypeIDX const &N) {
+    auto CastedIndex = static_cast<std::size_t>(N);
+    if (!(CastedIndex < NumTypes))
+      return Trace.BuildError(MalformedErrorKind::TYPE_INDEX_OUT_OF_BOUND);
+    return nullptr;
   }
+  ErrorPtr operator()(TableType const &Type) {
+    if (!validate(Type))
+      return Trace.BuildError(MalformedErrorKind::MALFORMED_TABLE_TYPE);
+    return nullptr;
+  }
+  ErrorPtr operator()(MemoryType const &Type) {
+    if (!validate(Type))
+      return Trace.BuildError(MalformedErrorKind::MALFORMED_MEMORY_TYPE);
+    return nullptr;
+  }
+  ErrorPtr operator()(GlobalType const &Type) {
+    if (!validate(Type))
+      return Trace.BuildError(MalformedErrorKind::MALFORMED_GLOBAL_TYPE);
+    return nullptr;
+  }
+};
+} // namespace detail
+
+ErrorPtr validateImports(TraceCollector &Trace, Module const &M) {
+  detail::ImportValidationVisitor Visitor(Trace, M);
+  auto EnumerateView = ranges::views::enumerate(M.Imports);
+  for (auto const &[Index, Import] : EnumerateView) {
+    Trace.enterImport(Index);
+    if (auto Error = std::visit(Visitor, Import.Descriptor)) return Error;
+  }
+  return nullptr;
+}
+
+namespace detail {
+class ExportValidationVisitor {
+  TraceCollector &Trace;
+  std::size_t NumFuncs, NumTables, NumMemories, NumGlobals;
+
+  template <typename T, typename C>
+  std::size_t countEntity(Module const &M, C const &Container) {
+    return ranges::size(Container) +
+           ranges::count_if(M.Imports, [](entities::Import const &Import) {
+             return std::holds_alternative<T>(Import.Descriptor);
+           });
+  }
+
+  template <typename T>
+  ErrorPtr
+  check(T const &Index, std::size_t Bound, MalformedErrorKind EKind) const {
+    auto CastedIndex = static_cast<std::size_t>(Index);
+    if (!(CastedIndex < Bound)) return Trace.BuildError(EKind);
+    return nullptr;
+  }
+
+public:
+  ExportValidationVisitor(TraceCollector &Trace_, Module const &M)
+      : Trace(Trace_), NumFuncs(countEntity<TypeIDX>(M, M.Functions)),
+        NumTables(countEntity<TableType>(M, M.Tables)),
+        NumMemories(countEntity<MemoryType>(M, M.Memories)),
+        NumGlobals(countEntity<GlobalType>(M, M.Globals)) {}
+
+  ErrorPtr operator()(FuncIDX const &N) const {
+    return check(N, NumFuncs, MalformedErrorKind::FUNC_INDEX_OUT_OF_BOUND);
+  }
+  ErrorPtr operator()(TableIDX const &N) const {
+    return check(N, NumTables, MalformedErrorKind::TABLE_INDEX_OUT_OF_BOUND);
+  }
+  ErrorPtr operator()(MemIDX const &N) const {
+    return check(N, NumMemories, MalformedErrorKind::MEM_INDEX_OUT_OF_BOUND);
+  }
+  ErrorPtr operator()(GlobalIDX const &N) const {
+    return check(N, NumGlobals, MalformedErrorKind::GLOBAL_INDEX_OUT_OF_BOUND);
+  }
+};
+} // namespace detail
+
+ErrorPtr validateExports(TraceCollector &Trace, Module const &M) {
+  detail::ExportValidationVisitor Visitor(Trace, M);
+  auto EnumerateView = ranges::views::enumerate(M.Exports);
+  for (auto const &[Index, Export] : EnumerateView) {
+    Trace.enterExport(Index);
+    if (auto Error = std::visit(Visitor, Export.Descriptor)) return Error;
+  }
+  return nullptr;
+}
+
+ErrorPtr validateTypes(TraceCollector &Trace, Module const &M) {
+  auto EnumerateView = ranges::views::enumerate(M.Types);
+  for (auto const &[Index, Type] : EnumerateView) {
+    Trace.enterType(Index);
+    if (!validate(Type))
+      return Trace.BuildError(MalformedErrorKind::MALFORMED_FUNCTION_TYPE);
+  }
+  return nullptr;
+}
+
+ErrorPtr validateTables(TraceCollector &Trace, Module const &M) {
+  auto EnumerateView = ranges::views::enumerate(M.Tables);
+  for (auto const &[Index, Table] : EnumerateView) {
+    Trace.enterTable(Index);
+    if (!validate(Table.Type))
+      return Trace.BuildError(MalformedErrorKind::MALFORMED_TABLE_TYPE);
+  }
+  return nullptr;
+}
+
+ErrorPtr validateMemories(TraceCollector &Trace, Module const &M) {
+  auto EnumerateView = ranges::views::enumerate(M.Memories);
+  for (auto const &[Index, Memory] : EnumerateView) {
+    Trace.enterMemory(Index);
+    if (!validate(Memory.Type))
+      return Trace.BuildError(MalformedErrorKind::MALFORMED_MEMORY_TYPE);
+  }
+  return nullptr;
+}
+
+} // namespace
+
+ErrorPtr validate(Module const &M) {
+  /* validate import section and export section before construct the view, as
+   * the indices are assumed to be in-range in the ModuleView constructor */
+  TraceCollector Trace;
+  if (auto Error = validateImports(Trace, M)) return Error;
+  if (auto Error = validateExports(Trace, M)) return Error;
+  if (auto Error = validateTypes(Trace, M)) return Error;
+  if (auto Error = validateTables(Trace, M)) return Error;
+  if (auto Error = validateMemories(Trace, M)) return Error;
+
+  return nullptr;
 }
 } // namespace bytecode::validation

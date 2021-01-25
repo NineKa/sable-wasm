@@ -19,15 +19,5 @@ int main(int argc, char const *argv[]) {
   fmt::print("{}\n", Module.Functions[9].Body.size());
 
   using namespace bytecode::validation;
-  try {
-    validateThrow(std::addressof(Module));
-  } catch (TypeError const &Error) {
-    fmt::print("Type Error\n");
-    // fmt::print("{}\n", Error.getLatestInstSite()->asPointer()->getOpcode());
-    for (auto const &ValueType : Error.expecting())
-      fmt::print("{} ", ValueType);
-    fmt::print("\n");
-    for (auto const &ValueType : Error.actual()) fmt::print("{} ", ValueType);
-    fmt::print("\n");
-  } catch (ValidationError const &Error) { fmt::print("Validation Error\n"); }
+  validate(Module);
 }

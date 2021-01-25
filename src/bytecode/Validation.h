@@ -9,36 +9,53 @@
 #include <vector>
 
 namespace bytecode::validation {
-bool validateType(ValueType const &Type);
-bool validateType(TableType const &Type);
-bool validateType(MemoryType const &Type);
-bool validateType(FunctionType const &Type);
+bool validate(ValueType const &Type);
+bool validate(TableType const &Type);
+bool validate(MemoryType const &Type);
+bool validate(FunctionType const &Type);
+bool validate(GlobalType const &Type);
 
 class TypeVariable {
   std::size_t ID;
 
 public:
   explicit TypeVariable(std::size_t ID_) : ID(ID_) {}
-  std::size_t id() const { return ID; }
+  std::size_t getID() const { return ID; }
   bool operator==(TypeVariable const &) const = default;
   auto operator<=>(TypeVariable const &) const = default;
 };
 
 using OperandStackElement = std::variant<ValueType, TypeVariable>;
 
-class ValidationContext;
+enum class EntitySiteKind {
+  Type,
+  Function,
+  Table,
+  Memory,
+  Global,
+  Element,
+  Data,
+  Start,
+  Import,
+  Export
+};
+
 class ValidationError : std::runtime_error {
-  friend class ValidationContext;
-  bytecode::Module const *ModuleSite;
-  void const *EntitySite; // type erased entity site pointer
-  std::vector<InstructionPtr const *> Site;
+  EntitySiteKind ESiteKind;
+  std::size_t ESiteIndex;
+  std::vector<InstructionPtr const *> ISites;
 
 public:
-  ValidationError() : std::runtime_error("validation error") {}
-  using std::runtime_error::runtime_error;
+  template <ranges::input_range T>
+  ValidationError(
+      EntitySiteKind ESiteKind_, std::size_t ESiteIndex_, T const &ISites_)
+      : std::runtime_error("validation error"), ESiteKind(ESiteKind_),
+        ESiteIndex(ESiteIndex_),
+        ISites(ranges::to<std::vector<InstructionPtr const *>>(ISites_)) {}
+  EntitySiteKind getEntitySiteKind() const { return ESiteKind; }
+  std::size_t getEntitySiteIndex() const { return ESiteIndex; }
+  auto getInstSites() const { return ranges::views::all(ISites); }
   virtual void signal() = 0;
-
-  InstructionPtr const *getLatestInstSite() const { return Site.back(); }
 };
 
 class TypeError : public ValidationError {
@@ -47,17 +64,18 @@ class TypeError : public ValidationError {
   std::vector<OperandStackElement> Actual;
 
 public:
-  template <ranges::input_range T, ranges::input_range U>
-  TypeError(bool Epsilon_, T const &Expecting_, U const &Actual_)
-      : Epsilon(Epsilon_),
+  template <ranges::input_range S, ranges::input_range T, ranges::input_range U>
+  TypeError(
+      EntitySiteKind ESiteKind_, std::size_t ESiteIndex_, S const &ISites_,
+      bool Epsilon_, T const &Expecting_, U const &Actual_)
+      : ValidationError(ESiteKind_, ESiteIndex_, ISites_), Epsilon(Epsilon_),
         Expecting(ranges::to<decltype(Expecting)>(Expecting_)),
         Actual(ranges::to<decltype(Actual)>(Actual_)) {}
 
   void signal() override { throw *this; }
-
-  auto expecting() const { return ranges::views::all(Expecting); }
-  auto actual() const { return ranges::views::all(Actual); }
-  bool epsilon() const { return Epsilon; }
+  auto getExpectingTypes() const { return ranges::views::all(Expecting); }
+  auto getActualTypes() const { return ranges::views::all(Actual); }
+  bool getEpsilon() const { return Epsilon; }
 };
 
 enum class MalformedErrorKind {
@@ -66,6 +84,7 @@ enum class MalformedErrorKind {
   MALFORMED_VALUE_TYPE,
   MALFORMED_MEMORY_TYPE,
   MALFORMED_TABLE_TYPE,
+  MALFORMED_GLOBAL_TYPE,
   TYPE_INDEX_OUT_OF_BOUND,
   LABEL_INDEX_OUT_OF_BOUND,
   FUNC_INDEX_OUT_OF_BOUND,
@@ -82,33 +101,54 @@ class MalformedError : public ValidationError {
   MalformedErrorKind Kind;
 
 public:
-  MalformedError(MalformedErrorKind Kind_) : Kind(Kind_) {}
-  MalformedErrorKind kind() const { return Kind; }
-
+  template <ranges::input_range T>
+  MalformedError(
+      EntitySiteKind ESiteKind_, std::size_t ESiteIndex_, T const &ISites_,
+      MalformedErrorKind Kind_)
+      : ValidationError(ESiteKind_, ESiteIndex_, ISites_), Kind(Kind_) {}
   void signal() override { throw *this; }
+  MalformedErrorKind getKind() const { return Kind; }
 };
 
-bool validate(Module const *M);
-void validateThrow(Module const *M);
-} // namespace bytecode::validation
+class TraceCollector {
+  EntitySiteKind ESiteKind;
+  std::size_t ESiteIndex;
+  std::vector<InstructionPtr const *> ISites;
 
-////////////////////////////////// Formatters //////////////////////////////////
-namespace fmt {
-template <> struct formatter<bytecode::validation::OperandStackElement> {
-  using T = bytecode::validation::OperandStackElement;
-  template <typename C> auto parse(C &&CTX) { return CTX.begin(); }
-  template <typename C> auto format(T const &Element, C &&CTX) {
-    using ValueType = bytecode::ValueType;
-    using TypeVariable = bytecode::validation::TypeVariable;
-    if (std::holds_alternative<ValueType>(Element)) {
-      return fmt::format_to(CTX.out(), "{}", std::get<ValueType>(Element));
-    } else if (std::holds_alternative<TypeVariable>(Element)) {
-      auto const &TV = std::get<TypeVariable>(Element);
-      return fmt::format_to(CTX.out(), "t{}", TV.id());
-    } else
-      SABLE_UNREACHABLE();
+  template <typename T, typename... ArgTypes>
+  std::unique_ptr<ValidationError> BuildErrorImpl(ArgTypes &&...Args) {
+    return std::make_unique<T>(
+        ESiteKind, ESiteIndex, ISites, std::forward<ArgTypes>(Args)...);
   }
+
+  void enterEntity(EntitySiteKind ESiteKind_, std::size_t Index_);
+
+public:
+  template <ranges::input_range T, ranges::input_range U>
+  std::unique_ptr<ValidationError>
+  BuildError(bool Epsilon, T const &Expecting, U const &Actual) {
+    return BuildErrorImpl<TypeError>(Epsilon, Expecting, Actual);
+  }
+
+  std::unique_ptr<ValidationError> BuildError(MalformedErrorKind Kind) {
+    return BuildErrorImpl<MalformedError>(Kind);
+  }
+
+  void enterType(std::size_t Index);
+  void enterFunction(std::size_t Index);
+  void enterTable(std::size_t Index);
+  void enterMemory(std::size_t Index);
+  void enterGlobal(std::size_t Index);
+  void enterElement(std::size_t Index);
+  void enterData(std::size_t Index);
+  void enterImport(std::size_t Index);
+  void enterExport(std::size_t Index);
+
+  void pushInstSite(InstructionPtr const &InstPtr);
+  void popInstSite();
 };
-} // namespace fmt
+
+std::unique_ptr<ValidationError> validate(Module const &M);
+} // namespace bytecode::validation
 
 #endif

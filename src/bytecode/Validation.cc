@@ -15,6 +15,7 @@
 #include <optional>
 #include <span>
 #include <type_traits>
+#include <unordered_set>
 
 using namespace bytecode::valuetypes;
 using namespace bytecode::instructions;
@@ -199,40 +200,32 @@ public:
 namespace {
 class ExprValidationContext {
   ModuleView Module;
-  std::optional<entities::Function const *> EnclosingFunction;
+  std::optional<std::vector<ValueType>> Locals;
+  std::optional<std::vector<ValueType>> Returns;
   LabelStack Labels;
+
+protected:
+  ModuleView &getModuleView() { return Module; }
+  ModuleView const &getModuleView() const { return Module; }
 
 public:
   template <typename T> struct Wrapper {
     ExprValidationContext const &Context;
-    decltype(auto) operator[](T const &Index) {
-      return Context.Module.get(Index);
-    }
+    auto operator[](T const &Index) { return Context.Module.get(Index); }
   };
-
   struct LocalWrapper {
     ExprValidationContext const &Context;
     std::optional<ValueType> operator[](LocalIDX const &Index) {
-      if (!Context.EnclosingFunction.has_value()) return std::nullopt;
-      auto TypeIDX = (*Context.EnclosingFunction)->Type;
-      auto Parameters = Context.Module[TypeIDX]->getParamTypes();
-      auto const &Locals = (*Context.EnclosingFunction)->Locals;
+      if (!Context.Locals.has_value()) return std::nullopt;
       auto CastedIndex = static_cast<std::size_t>(Index);
-      if (CastedIndex < ranges::size(Parameters))
-        return Parameters[CastedIndex];
-      CastedIndex = CastedIndex - ranges::size(Parameters);
-      if (CastedIndex < ranges::size(Locals)) return Locals[CastedIndex];
-      return std::nullopt;
+      if (!(CastedIndex < (*Context.Locals).size())) return std::nullopt;
+      return (*Context.Locals)[CastedIndex];
     }
   };
 
   LabelStack &labels() { return Labels; }
-  bool hasReturn() const { return EnclosingFunction.has_value(); }
-  auto return_() const {
-    auto TypeIDX = (*EnclosingFunction)->Type;
-    auto const *Type = Module[TypeIDX];
-    return Type->getResultTypes();
-  }
+  bool hasReturn() const { return Returns.has_value(); }
+  auto return_() const { return ranges::views::all(*Returns); }
 
   auto types() const { return Wrapper<TypeIDX>{*this}; }
   auto functions() const { return Wrapper<FuncIDX>{*this}; }
@@ -242,18 +235,22 @@ public:
   auto locals() const { return LocalWrapper{*this}; }
 
   explicit ExprValidationContext(ModuleView MView)
-      : Module(std::move(MView)), EnclosingFunction(std::nullopt) {}
-  ExprValidationContext(ModuleView MView, entities::Function const &Function)
-      : Module(std::move(MView)), EnclosingFunction(std::addressof(Function)) {}
+      : Module(std::move(MView)), Locals(std::nullopt), Returns(std::nullopt) {}
+  template <ranges::input_range T, ranges::input_range U>
+  ExprValidationContext(ModuleView MView, T const &Locals_, U const &Returns_)
+      : Module(std::move(MView)),
+        Locals(ranges::to<std::vector<ValueType>>(Locals_)),
+        Returns(ranges::to<std::vector<ValueType>>(Returns_)) {}
 };
 } // namespace
 
 //////////////////////////// ExprValidationVisitor /////////////////////////////
 namespace {
+template <typename ContextT = ExprValidationContext>
 class ExprValidationVisitor
     : public InstVisitorBase<
-          ExprValidationVisitor, std::unique_ptr<ValidationError>> {
-  ExprValidationContext &Context;
+          ExprValidationVisitor<ContextT>, std::unique_ptr<ValidationError>> {
+  ContextT &Context;
   TraceCollector &Trace;
   OperandStack TypeStack;
 
@@ -547,7 +544,8 @@ private:
   FunctionType convertBlockResult(BlockResultType const &Type);
 };
 
-ErrorPtr ExprValidationVisitor::operator()(Unreachable const *) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(Unreachable const *) {
   // C |- unreachable: [t1*] -> [t2*]
   // always success
   TypeStack.clear();
@@ -555,7 +553,8 @@ ErrorPtr ExprValidationVisitor::operator()(Unreachable const *) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(Return const *) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(Return const *) {
   //         C.return = [t*]
   // --------------------------------
   //  C |- return: [t1* t*] -> [t2*]
@@ -571,12 +570,15 @@ ErrorPtr ExprValidationVisitor::operator()(Return const *) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(Drop const *) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(Drop const *) {
   // C |- drop: [t] -> []
   do {
-    auto T = TypeStack.peek();
-    if (!T.has_value()) break;
-    auto AlwaysSuccessful = TypeStack(BuildTypesArray(*T), BuildTypesArray());
+    auto PeekT = TypeStack.peek();
+    if (!PeekT.has_value()) break;
+    auto Parameters = BuildTypesArray(*PeekT);
+    auto Results = BuildTypesArray();
+    auto AlwaysSuccessful = TypeStack(Parameters, Results);
     assert(AlwaysSuccessful);
     utility::ignore(AlwaysSuccessful);
     return nullptr;
@@ -587,12 +589,15 @@ ErrorPtr ExprValidationVisitor::operator()(Drop const *) {
   return Trace.BuildError(Epsilon, Expect, Actual);
 }
 
-ErrorPtr ExprValidationVisitor::operator()(Select const *) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(Select const *) {
   // C |- select: [t t i32] -> [t]
   do {
-    auto T = TypeStack.peek(1);
-    if (!T.has_value()) break;
-    if (!TypeStack(BuildTypesArray(*T, *T, I32), BuildTypesArray(*T))) break;
+    auto PeekT = TypeStack.peek(1);
+    if (!PeekT.has_value()) break;
+    auto Parameters = BuildTypesArray(*PeekT, *PeekT, I32);
+    auto Results = BuildTypesArray(*PeekT);
+    if (!TypeStack(Parameters, Results)) break;
     return nullptr;
   } while (false);
   auto Epsilon = TypeStack.getEpsilon();
@@ -601,8 +606,9 @@ ErrorPtr ExprValidationVisitor::operator()(Select const *) {
   return Trace.BuildError(Epsilon, Expect, Actual);
 }
 
+template <typename T>
 ErrorPtr
-ExprValidationVisitor::validateBlockResult(BlockResultType const &Type) {
+ExprValidationVisitor<T>::validateBlockResult(BlockResultType const &Type) {
   if (std::holds_alternative<TypeIDX>(Type)) {
     auto FunctionTypePtr = Context.types()[std::get<TypeIDX>(Type)];
     if (!FunctionTypePtr.has_value())
@@ -620,8 +626,9 @@ ExprValidationVisitor::validateBlockResult(BlockResultType const &Type) {
   SABLE_UNREACHABLE();
 }
 
+template <typename T>
 FunctionType
-ExprValidationVisitor::convertBlockResult(BlockResultType const &Type) {
+ExprValidationVisitor<T>::convertBlockResult(BlockResultType const &Type) {
   if (std::holds_alternative<TypeIDX>(Type)) {
     auto FunctionTypePtr = Context.types()[std::get<TypeIDX>(Type)];
     assert(FunctionTypePtr.has_value());
@@ -640,7 +647,8 @@ ExprValidationVisitor::convertBlockResult(BlockResultType const &Type) {
   SABLE_UNREACHABLE();
 }
 
-ErrorPtr ExprValidationVisitor::operator()(Block const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(Block const *Inst) {
   //      C |- blocktype: [t1*] -> [t2*]
   //      C, labels[t2*] |- instr*: [t1*] -> [t2*]
   // -------------------------------------------------
@@ -660,7 +668,8 @@ ErrorPtr ExprValidationVisitor::operator()(Block const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(Loop const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(Loop const *Inst) {
   //     C |- blocktype: [t1*] -> [t2*]
   //     C, labels[t1*] |- instr*: [t1*] -> [t2*]
   // ------------------------------------------------
@@ -680,7 +689,8 @@ ErrorPtr ExprValidationVisitor::operator()(Loop const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(If const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(If const *Inst) {
   //           C |- blocktype: [t1*] -> [t2*]
   //           C, labels[t2*] |- instr1*: [t1*] -> [t2*]
   //           C, labels[t2*] |- instr2*: [t1*] -> [tr*]
@@ -706,7 +716,8 @@ ErrorPtr ExprValidationVisitor::operator()(If const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(Br const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(Br const *Inst) {
   //       C.labels[l] = [t*]
   // ------------------------------
   //  C |- br l: [t1* t*] -> [t2*]
@@ -723,7 +734,8 @@ ErrorPtr ExprValidationVisitor::operator()(Br const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(BrIf const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(BrIf const *Inst) {
   //       C.labels[l] = [t*]
   // --------------------------------
   //  C |- br_if l: [t* i32] -> [t*]
@@ -755,7 +767,8 @@ bool rangeEqual(T const &LHS, U const &RHS) {
 }
 } // namespace
 
-ErrorPtr ExprValidationVisitor::operator()(BrTable const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(BrTable const *Inst) {
   //  (C.labels[l] = [t*])*   C.labels[ln] = [t*]
   // ---------------------------------------------
   //  C |- br_table l* ln: [t1* t* i32] -> [t2*]
@@ -781,7 +794,8 @@ ErrorPtr ExprValidationVisitor::operator()(BrTable const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(Call const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(Call const *Inst) {
   //  C.funcs[x] = [t1*] -> [t2*]
   // -----------------------------
   //  C |- call x: [t1*] -> [t2*]
@@ -798,7 +812,8 @@ ErrorPtr ExprValidationVisitor::operator()(Call const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(CallIndirect const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(CallIndirect const *Inst) {
   //  C.tables[0] = limits funcref    C.types[x] = [t1*] -> [t2*]
   // -------------------------------------------------------------
   //         C |- call_indirect x: [t1* i32] -> [t2*]
@@ -820,7 +835,8 @@ ErrorPtr ExprValidationVisitor::operator()(CallIndirect const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(LocalGet const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(LocalGet const *Inst) {
   //       C.locals[x] = t
   // -----------------------------
   //  C |- local.get x: [] -> [t]
@@ -834,7 +850,8 @@ ErrorPtr ExprValidationVisitor::operator()(LocalGet const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(LocalSet const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(LocalSet const *Inst) {
   //       C.locals[x] = t
   // -----------------------------
   //  C |- local.set x: [t] -> []
@@ -850,7 +867,8 @@ ErrorPtr ExprValidationVisitor::operator()(LocalSet const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(LocalTee const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(LocalTee const *Inst) {
   //       C.locals[x] = t
   // ------------------------------
   //  C |- local.tee x: [t] -> [t]
@@ -866,7 +884,8 @@ ErrorPtr ExprValidationVisitor::operator()(LocalTee const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(GlobalGet const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(GlobalGet const *Inst) {
   //        C.globals[x] = t
   // ------------------------------
   //  C |- global.get x: [] -> [t]
@@ -881,7 +900,8 @@ ErrorPtr ExprValidationVisitor::operator()(GlobalGet const *Inst) {
   return nullptr;
 }
 
-ErrorPtr ExprValidationVisitor::operator()(GlobalSet const *Inst) {
+template <typename T>
+ErrorPtr ExprValidationVisitor<T>::operator()(GlobalSet const *Inst) {
   //     C.globals[x] = var t
   // ------------------------------
   //  C |- global.set x: [t] -> []
@@ -907,6 +927,13 @@ void TraceCollector::enterEntity(EntitySiteKind ESiteKind_, std::size_t N) {
   ESiteIndex = N;
   ISites.clear();
 }
+
+void TraceCollector::enterStart() {
+  ESiteKind = EntitySiteKind::Start;
+  ESiteIndex = 0;
+  ISites.clear();
+}
+
 // clang-format off
 void TraceCollector::enterType(std::size_t N) 
 { enterEntity(EntitySiteKind::Type, N); }
@@ -1043,6 +1070,29 @@ ErrorPtr validateTypes(TraceCollector &Trace, Module const &M) {
   return nullptr;
 }
 
+ErrorPtr validateFunctions(
+    TraceCollector &Trace, ModuleView const &MView, Module const &M) {
+  auto EnumerateView = ranges::views::enumerate(M.Functions);
+  for (auto const &[Index, Function] : EnumerateView) {
+    Trace.enterFunction(Index);
+    // assume type is in-range and valid (ensured by pre-condition)
+    auto const *TypePtr = MView[Function.Type];
+    for (auto const &ValueType : Function.Locals)
+      if (!validate(ValueType))
+        return Trace.BuildError(MalformedErrorKind::MALFORMED_LOCAL_VALUE_TYPE);
+    auto LocalView =
+        ranges::views::concat(TypePtr->getParamTypes(), Function.Locals);
+    auto ReturnView = TypePtr->getResultTypes();
+    ExprValidationContext Context(MView, LocalView, ReturnView);
+    ExprValidationVisitor ETypeVisitor(Context, Trace);
+    Context.labels().push(TypePtr->getResultTypes());
+    std::array<ValueType, 0> Parameters{};
+    if (auto Error = ETypeVisitor(Function.Body, Parameters, ReturnView))
+      return Error;
+  }
+  return nullptr;
+}
+
 ErrorPtr validateTables(TraceCollector &Trace, Module const &M) {
   auto EnumerateView = ranges::views::enumerate(M.Tables);
   for (auto const &[Index, Table] : EnumerateView) {
@@ -1063,17 +1113,169 @@ ErrorPtr validateMemories(TraceCollector &Trace, Module const &M) {
   return nullptr;
 }
 
+class ConstInstVisitor : public InstVisitorBase<ConstInstVisitor, bool> {
+  ModuleView const &View;
+
+public:
+  ConstInstVisitor(ModuleView const &View_) : View(View_) {}
+  bool operator()(I32Const const *) const { return true; }
+  bool operator()(I64Const const *) const { return true; }
+  bool operator()(F32Const const *) const { return true; }
+  bool operator()(F64Const const *) const { return true; }
+  bool operator()(GlobalGet const *Inst) const {
+    auto Global = View[Inst->Target];
+    return Global.getType()->isConst();
+  }
+  template <instruction T> bool operator()(T const *) const { return false; }
+};
+
+bool isConstExpr(ModuleView const &MView, Expression const &Expr) {
+  ConstInstVisitor Visitor(MView);
+  for (auto const &InstPtr : Expr) {
+    if (!Visitor.visit(InstPtr.asPointer())) return false;
+  }
+  return true;
+}
+
+namespace detail {
+class GlobalInitializerValidationContext : public ExprValidationContext {
+  using Base = ExprValidationContext;
+  Base &base() { return static_cast<Base &>(*this); }
+  Base const &base() const { return static_cast<Base const &>(*this); }
+  // hide ExprValidationContext::globals() const
+  using Base::globals;
+
+public:
+  using ExprValidationContext::ExprValidationContext;
+  struct GlobalWrapper {
+    GlobalInitializerValidationContext const &Context;
+    std::optional<views::Global> operator[](GlobalIDX const &Index) const {
+      auto Global = Context.base().globals()[Index];
+      if (!Global.has_value()) return std::nullopt;
+      if (!(*Global).isImported()) return std::nullopt;
+      return Global;
+    }
+  };
+  auto globals() const { return GlobalWrapper{*this}; }
+};
+} // namespace detail
+
+ErrorPtr validateGlobals(
+    TraceCollector &Trace, ModuleView const &MView, Module const &M) {
+  auto EnumerateView = ranges::views::enumerate(M.Globals);
+  for (auto const &[Index, Global] : EnumerateView) {
+    Trace.enterGlobal(Index);
+    detail::GlobalInitializerValidationContext Context(MView);
+    ExprValidationVisitor ETypeVisitor(Context, Trace);
+    if (!validate(Global.Type))
+      return Trace.BuildError(MalformedErrorKind::MALFORMED_GLOBAL_TYPE);
+    std::array<ValueType, 0> Parameters{};
+    std::array<ValueType, 1> Results{Global.Type.getType()};
+    if (auto Error = ETypeVisitor(Global.Initializer, Parameters, Results))
+      return Error;
+    if (!isConstExpr(MView, Global.Initializer))
+      return Trace.BuildError(MalformedErrorKind::NON_CONST_EXPRESSION);
+  };
+  return nullptr;
+}
+
+ErrorPtr validateElement(
+    TraceCollector &Trace, ModuleView const &MView, Module const &M) {
+  auto EnumerateView = ranges::views::enumerate(M.Elements);
+  for (auto const &[Index, Element] : EnumerateView) {
+    Trace.enterElement(Index);
+    if (!MView.get(Element.Table).has_value())
+      return Trace.BuildError(MalformedErrorKind::TABLE_INDEX_OUT_OF_BOUND);
+    // TODO: The element type elemtype must be funcref.
+    // The constrain is always true in the current WebAssembly specification
+    ExprValidationContext Context(MView);
+    ExprValidationVisitor ETypeVisitor(Context, Trace);
+    std::array<ValueType, 0> Parameters{};
+    std::array<ValueType, 1> Results{I32};
+    if (auto Error = ETypeVisitor(Element.Offset, Parameters, Results))
+      return Error;
+    if (!isConstExpr(MView, Element.Offset))
+      return Trace.BuildError(MalformedErrorKind::NON_CONST_EXPRESSION);
+    for (auto const &InitValue : Element.Initializer)
+      if (!(MView.get(InitValue).has_value()))
+        return Trace.BuildError(MalformedErrorKind::FUNC_INDEX_OUT_OF_BOUND);
+  }
+  return nullptr;
+}
+
+ErrorPtr
+validateData(TraceCollector &Trace, ModuleView const &MView, Module const &M) {
+  auto EnumerateView = ranges::views::enumerate(M.Data);
+  for (auto const &[Index, Data] : EnumerateView) {
+    Trace.enterData(Index);
+    if (!MView.get(Data.Memory).has_value())
+      return Trace.BuildError(MalformedErrorKind::MEM_INDEX_OUT_OF_BOUND);
+    ExprValidationContext Context(MView);
+    ExprValidationVisitor ETypeVisitor(Context, Trace);
+    std::array<ValueType, 0> Parameters{};
+    std::array<ValueType, 1> Results{I32};
+    if (auto Error = ETypeVisitor(Data.Offset, Parameters, Results))
+      return Error;
+    if (!isConstExpr(MView, Data.Offset))
+      return Trace.BuildError(MalformedErrorKind::NON_CONST_EXPRESSION);
+  }
+  return nullptr;
+}
+
+ErrorPtr
+validateStart(TraceCollector &Trace, ModuleView const &MView, Module const &M) {
+  if (!M.Start.has_value()) return nullptr;
+  Trace.enterStart();
+  auto StartFunc = MView.get(*M.Start);
+  if (!StartFunc.has_value())
+    return Trace.BuildError(MalformedErrorKind::FUNC_INDEX_OUT_OF_BOUND);
+  auto const *StartFuncTypePtr = (*StartFunc).getType();
+  if (*StartFuncTypePtr != FunctionType({}, {}))
+    return Trace.BuildError(MalformedErrorKind::INVALID_START_FUNC_TYPE);
+  return nullptr;
+}
 } // namespace
 
 ErrorPtr validate(Module const &M) {
+  TraceCollector Trace;
   /* validate import section and export section before construct the view, as
    * the indices are assumed to be in-range in the ModuleView constructor */
-  TraceCollector Trace;
+  if (auto Error = validateTypes(Trace, M)) return Error;
   if (auto Error = validateImports(Trace, M)) return Error;
   if (auto Error = validateExports(Trace, M)) return Error;
-  if (auto Error = validateTypes(Trace, M)) return Error;
+  /* same as above, the indices in function entity is assumed to be in-range
+   * during the construction of the ModuleView */
+  for (auto const &[Index, Function] : ranges::views::enumerate(M.Functions)) {
+    Trace.enterFunction(Index);
+    auto CastedIndex = static_cast<std::size_t>(Function.Type);
+    if (!(CastedIndex < ranges::size(M.Types)))
+      return Trace.BuildError(MalformedErrorKind::TYPE_INDEX_OUT_OF_BOUND);
+  }
+  ModuleView MView(M);
+  if (auto Error = validateFunctions(Trace, MView, M)) return Error;
   if (auto Error = validateTables(Trace, M)) return Error;
   if (auto Error = validateMemories(Trace, M)) return Error;
+  if (auto Error = validateGlobals(Trace, MView, M)) return Error;
+
+  if (auto Error = validateElement(Trace, MView, M)) return Error;
+  if (auto Error = validateData(Trace, MView, M)) return Error;
+  if (auto Error = validateStart(Trace, MView, M)) return Error;
+
+  if (ranges::size(MView.tables()) > 1) {
+    Trace.enterTable(1);
+    return Trace.BuildError(MalformedErrorKind::MORE_THAN_ONE_TABLE);
+  }
+  if (ranges::size(MView.memories()) > 1) {
+    Trace.enterMemory(1);
+    return Trace.BuildError(MalformedErrorKind::MORE_THAN_ONE_MEMORY);
+  }
+
+  std::unordered_set<std::string_view> ExportNames;
+  for (auto const &[Index, Export] : ranges::views::enumerate(M.Exports)) {
+    Trace.enterExport(Index);
+    if (ExportNames.contains(Export.Name))
+      return Trace.BuildError(MalformedErrorKind::NON_UNIQUE_EXPORT_NAME);
+  }
 
   return nullptr;
 }

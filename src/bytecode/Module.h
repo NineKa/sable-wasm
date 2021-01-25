@@ -151,7 +151,7 @@ class ModuleView {
   std::shared_ptr<ViewStorage> Storage;
 
 public:
-  ModuleView(Module const &M_);
+  explicit ModuleView(Module const &M_);
 
   auto types() const {
     auto TransformFn = [](FunctionType const &Type) {

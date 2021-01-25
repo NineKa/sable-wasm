@@ -19,5 +19,8 @@ int main(int argc, char const *argv[]) {
   fmt::print("{}\n", Module.Functions[9].Body.size());
 
   using namespace bytecode::validation;
-  validate(Module);
+
+  try {
+    if (auto Error = validate(Module)) Error->signal();
+  } catch (TypeError const &Error) { fmt::print("{}\n", Error); }
 }

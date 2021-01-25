@@ -85,6 +85,7 @@ enum class MalformedErrorKind {
   MALFORMED_MEMORY_TYPE,
   MALFORMED_TABLE_TYPE,
   MALFORMED_GLOBAL_TYPE,
+  MALFORMED_LOCAL_VALUE_TYPE,
   TYPE_INDEX_OUT_OF_BOUND,
   LABEL_INDEX_OUT_OF_BOUND,
   FUNC_INDEX_OUT_OF_BOUND,
@@ -94,7 +95,12 @@ enum class MalformedErrorKind {
   GLOBAL_INDEX_OUT_OF_BOUND,
   INVALID_BRANCH_TABLE,
   INVALID_ALIGN,
-  GLOBAL_MUST_BE_MUT
+  GLOBAL_MUST_BE_MUT,
+  NON_CONST_EXPRESSION,
+  INVALID_START_FUNC_TYPE,
+  MORE_THAN_ONE_TABLE,
+  MORE_THAN_ONE_MEMORY,
+  NON_UNIQUE_EXPORT_NAME
 };
 
 class MalformedError : public ValidationError {
@@ -143,6 +149,7 @@ public:
   void enterData(std::size_t Index);
   void enterImport(std::size_t Index);
   void enterExport(std::size_t Index);
+  void enterStart();
 
   void pushInstSite(InstructionPtr const &InstPtr);
   void popInstSite();
@@ -150,5 +157,48 @@ public:
 
 std::unique_ptr<ValidationError> validate(Module const &M);
 } // namespace bytecode::validation
+
+////////////////////////////////// Formatters //////////////////////////////////
+namespace fmt {
+template <> struct formatter<bytecode::validation::OperandStackElement> {
+  using value_type = bytecode::validation::OperandStackElement;
+  template <typename C> auto parse(C &&CTX) { return CTX.begin(); }
+  template <typename C> auto format(value_type const &Type, C &&CTX) {
+    using namespace bytecode::validation;
+    using namespace bytecode;
+    if (std::holds_alternative<ValueType>(Type)) {
+      return fmt::format_to(CTX.out(), "{}", std::get<ValueType>(Type));
+    } else if (std::holds_alternative<TypeVariable>(Type)) {
+      auto ID = std::get<TypeVariable>(Type).getID();
+      return fmt::format_to(CTX.out(), "t{}", ID);
+    } else
+      SABLE_UNREACHABLE();
+  }
+};
+
+template <> struct formatter<bytecode::validation::TypeError> {
+  using value_type = bytecode::validation::TypeError;
+  template <typename C> auto parse(C &&CTX) { return CTX.begin(); }
+  template <typename C> auto format(value_type const &Type, C &&CTX) {
+    char const *Separator = "";
+    auto Out = CTX.out();
+    Out = fmt::format_to(Out, "type error, expecting [");
+    for (auto const &ExpectType : Type.getExpectingTypes()) {
+      Out = fmt::format_to(Out, "{}{}", Separator, ExpectType);
+      Separator = ", ";
+    }
+    Separator = "";
+    Out = fmt::format_to(Out, "], but [");
+    for (auto const &ActualType : Type.getActualTypes()) {
+      Out = fmt::format_to(Out, "{}{}", Separator, ActualType);
+      Separator = ", ";
+    }
+    Out = fmt::format_to(Out, "] found.");
+    return Out;
+  }
+};
+
+template <> struct formatter<bytecode::validation::MalformedError> {};
+} // namespace fmt
 
 #endif

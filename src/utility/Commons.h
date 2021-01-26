@@ -1,9 +1,7 @@
 #ifndef SABLE_INCLUDE_GUARD_UTILITY_COMMONS
 #define SABLE_INCLUDE_GUARD_UTILITY_COMMONS
 
-#include <iterator>
-#include <ranges>
-#include <variant>
+#include <cstddef>
 
 #if !defined(__has_builtin)
 #define __has_builtin(x) 0

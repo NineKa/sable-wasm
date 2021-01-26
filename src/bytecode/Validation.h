@@ -78,29 +78,36 @@ public:
   bool getEpsilon() const { return Epsilon; }
 };
 
+// clang-format off
+#define SABLE_VALIDATION_MALFORMED_ERROR_KINDS                                 \
+  X(MISSING_CONTEXT_RETURN    , "return values have not been set yet"      )   \
+  X(MALFORMED_FUNCTION_TYPE   , "malformed function type"                  )   \
+  X(MALFORMED_VALUE_TYPE      , "malformed value type"                     )   \
+  X(MALFORMED_MEMORY_TYPE     , "malformed memory type"                    )   \
+  X(MALFORMED_TABLE_TYPE      , "malformed table type"                     )   \
+  X(MALFORMED_GLOBAL_TYPE     , "malformed global type"                    )   \
+  X(MALFORMED_LOCAL_VALUE_TYPE, "local has malformed value type"           )   \
+  X(TYPE_INDEX_OUT_OF_BOUND   , "type index out-of-bound"                  )   \
+  X(LABEL_INDEX_OUT_OF_BOUND  , "label index out-of-bound"                 )   \
+  X(FUNC_INDEX_OUT_OF_BOUND   , "function index out-of-bound"              )   \
+  X(TABLE_INDEX_OUT_OF_BOUND  , "table index out-of-bound"                 )   \
+  X(MEM_INDEX_OUT_OF_BOUND    , "memory index out-of-bound"                )   \
+  X(LOCAL_INDEX_OUT_OF_BOUND  , "local index out-of-bound"                 )   \
+  X(GLOBAL_INDEX_OUT_OF_BOUND , "global index out-of-bound"                )   \
+  X(INVALID_BRANCH_TABLE      , "label types in branch table do not argree")   \
+  X(INVALID_ALIGN             , "malformed alignment hint"                 )   \
+  X(GLOBAL_MUST_BE_MUT        , "global is not mutable"                    )   \
+  X(NON_CONST_EXPRESSION      , "expression is not constant"               )   \
+  X(INVALID_START_FUNC_TYPE   , "start function has mismatched type"       )   \
+  X(MORE_THAN_ONE_TABLE       , "at most one table is allowed"             )   \
+  X(MORE_THAN_ONE_MEMORY      , "at most one memory is allowed"            )   \
+  X(NON_UNIQUE_EXPORT_NAME    , "export name is not unqiue"                )
+// clang-format on
+
 enum class MalformedErrorKind {
-  MISSING_CONTEXT_RETURN,
-  MALFORMED_FUNCTION_TYPE,
-  MALFORMED_VALUE_TYPE,
-  MALFORMED_MEMORY_TYPE,
-  MALFORMED_TABLE_TYPE,
-  MALFORMED_GLOBAL_TYPE,
-  MALFORMED_LOCAL_VALUE_TYPE,
-  TYPE_INDEX_OUT_OF_BOUND,
-  LABEL_INDEX_OUT_OF_BOUND,
-  FUNC_INDEX_OUT_OF_BOUND,
-  TABLE_INDEX_OUT_OF_BOUND,
-  MEM_INDEX_OUT_OF_BOUND,
-  LOCAL_INDEX_OUT_OF_BOUND,
-  GLOBAL_INDEX_OUT_OF_BOUND,
-  INVALID_BRANCH_TABLE,
-  INVALID_ALIGN,
-  GLOBAL_MUST_BE_MUT,
-  NON_CONST_EXPRESSION,
-  INVALID_START_FUNC_TYPE,
-  MORE_THAN_ONE_TABLE,
-  MORE_THAN_ONE_MEMORY,
-  NON_UNIQUE_EXPORT_NAME
+#define X(Name, Message) Name,
+  SABLE_VALIDATION_MALFORMED_ERROR_KINDS
+#undef X
 };
 
 class MalformedError : public ValidationError {
@@ -168,28 +175,29 @@ template <> struct formatter<bytecode::validation::OperandStackElement> {
     using namespace bytecode;
     if (std::holds_alternative<ValueType>(Type)) {
       return fmt::format_to(CTX.out(), "{}", std::get<ValueType>(Type));
-    } else if (std::holds_alternative<TypeVariable>(Type)) {
+    }
+    if (std::holds_alternative<TypeVariable>(Type)) {
       auto ID = std::get<TypeVariable>(Type).getID();
       return fmt::format_to(CTX.out(), "t{}", ID);
-    } else
-      SABLE_UNREACHABLE();
+    }
+    SABLE_UNREACHABLE();
   }
 };
 
 template <> struct formatter<bytecode::validation::TypeError> {
   using value_type = bytecode::validation::TypeError;
   template <typename C> auto parse(C &&CTX) { return CTX.begin(); }
-  template <typename C> auto format(value_type const &Type, C &&CTX) {
+  template <typename C> auto format(value_type const &Error, C &&CTX) {
     char const *Separator = "";
     auto Out = CTX.out();
     Out = fmt::format_to(Out, "type error, expecting [");
-    for (auto const &ExpectType : Type.getExpectingTypes()) {
+    for (auto const &ExpectType : Error.getExpectingTypes()) {
       Out = fmt::format_to(Out, "{}{}", Separator, ExpectType);
       Separator = ", ";
     }
     Separator = "";
     Out = fmt::format_to(Out, "], but [");
-    for (auto const &ActualType : Type.getActualTypes()) {
+    for (auto const &ActualType : Error.getActualTypes()) {
       Out = fmt::format_to(Out, "{}{}", Separator, ActualType);
       Separator = ", ";
     }
@@ -198,7 +206,21 @@ template <> struct formatter<bytecode::validation::TypeError> {
   }
 };
 
-template <> struct formatter<bytecode::validation::MalformedError> {};
+template <> struct formatter<bytecode::validation::MalformedError> {
+  using value_type = bytecode::validation::MalformedError;
+  using MalformedErrorKind = bytecode::validation::MalformedErrorKind;
+  template <typename C> auto parse(C &&CTX) { return CTX.begin(); }
+  template <typename C> auto format(value_type const &Error, C &&CTX) {
+    switch (Error.getKind()) {
+#define X(Name, Message)                                                       \
+  case MalformedErrorKind::Name: return fmt::format_to(CTX.out(), Message);
+      SABLE_VALIDATION_MALFORMED_ERROR_KINDS
+#undef X
+    }
+  }
+};
+
+#undef SABLE_VALIDATION_MALFORMED_ERROR_KINDS
 } // namespace fmt
 
 #endif

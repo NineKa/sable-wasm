@@ -245,8 +245,29 @@ public:
 } // namespace
 
 //////////////////////////// ExprValidationVisitor /////////////////////////////
+// clang-format off
+template <typename T>
+concept validation_context = requires(T &CTX, T const &CCTX) {
+  { CTX.labels()     } ->std::convertible_to<LabelStack &>;
+  { CCTX.hasReturn() } ->std::convertible_to<bool>;
+  { CCTX.return_()   } ->ranges::input_range;
+  { CCTX.types()[std::declval<TypeIDX>()] }
+  -> std::convertible_to<std::optional<FunctionType const *>>;
+  { CCTX.functions()[std::declval<FuncIDX>()] }
+  -> std::convertible_to<std::optional<views::Function>>;
+  { CCTX.tables()[std::declval<TableIDX>()] }
+  -> std::convertible_to<std::optional<views::Table>>;
+  { CCTX.memories()[std::declval<MemIDX>()] }
+  -> std::convertible_to<std::optional<views::Memory>>;
+  { CCTX.globals()[std::declval<GlobalIDX>()] }
+  -> std::convertible_to<std::optional<views::Global>>;
+  { CCTX.locals()[std::declval<LocalIDX>()] }
+  -> std::convertible_to<std::optional<ValueType>>;
+};
+// clang-format on
+
 namespace {
-template <typename ContextT = ExprValidationContext>
+template <validation_context ContextT>
 class ExprValidationVisitor
     : public InstVisitorBase<
           ExprValidationVisitor<ContextT>, std::unique_ptr<ValidationError>> {
@@ -261,7 +282,7 @@ class ExprValidationVisitor
   }
 
 public:
-  ExprValidationVisitor(ExprValidationContext &Context_, TraceCollector &Trace_)
+  ExprValidationVisitor(ContextT &Context_, TraceCollector &Trace_)
       : Context(Context_), Trace(Trace_) {}
 
   ErrorPtr visit(InstructionPtr const &InstPtr) {
@@ -544,7 +565,7 @@ private:
   FunctionType convertBlockResult(BlockResultType const &Type);
 };
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(Unreachable const *) {
   // C |- unreachable: [t1*] -> [t2*]
   // always success
@@ -553,7 +574,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(Unreachable const *) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(Return const *) {
   //         C.return = [t*]
   // --------------------------------
@@ -570,7 +591,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(Return const *) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(Drop const *) {
   // C |- drop: [t] -> []
   do {
@@ -589,7 +610,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(Drop const *) {
   return Trace.BuildError(Epsilon, Expect, Actual);
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(Select const *) {
   // C |- select: [t t i32] -> [t]
   do {
@@ -606,7 +627,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(Select const *) {
   return Trace.BuildError(Epsilon, Expect, Actual);
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr
 ExprValidationVisitor<T>::validateBlockResult(BlockResultType const &Type) {
   if (std::holds_alternative<TypeIDX>(Type)) {
@@ -626,7 +647,7 @@ ExprValidationVisitor<T>::validateBlockResult(BlockResultType const &Type) {
   SABLE_UNREACHABLE();
 }
 
-template <typename T>
+template <validation_context T>
 FunctionType
 ExprValidationVisitor<T>::convertBlockResult(BlockResultType const &Type) {
   if (std::holds_alternative<TypeIDX>(Type)) {
@@ -647,7 +668,7 @@ ExprValidationVisitor<T>::convertBlockResult(BlockResultType const &Type) {
   SABLE_UNREACHABLE();
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(Block const *Inst) {
   //      C |- blocktype: [t1*] -> [t2*]
   //      C, labels[t2*] |- instr*: [t1*] -> [t2*]
@@ -668,7 +689,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(Block const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(Loop const *Inst) {
   //     C |- blocktype: [t1*] -> [t2*]
   //     C, labels[t1*] |- instr*: [t1*] -> [t2*]
@@ -689,7 +710,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(Loop const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(If const *Inst) {
   //           C |- blocktype: [t1*] -> [t2*]
   //           C, labels[t2*] |- instr1*: [t1*] -> [t2*]
@@ -716,7 +737,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(If const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(Br const *Inst) {
   //       C.labels[l] = [t*]
   // ------------------------------
@@ -734,7 +755,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(Br const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(BrIf const *Inst) {
   //       C.labels[l] = [t*]
   // --------------------------------
@@ -767,7 +788,7 @@ bool rangeEqual(T const &LHS, U const &RHS) {
 }
 } // namespace
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(BrTable const *Inst) {
   //  (C.labels[l] = [t*])*   C.labels[ln] = [t*]
   // ---------------------------------------------
@@ -794,7 +815,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(BrTable const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(Call const *Inst) {
   //  C.funcs[x] = [t1*] -> [t2*]
   // -----------------------------
@@ -812,7 +833,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(Call const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(CallIndirect const *Inst) {
   //  C.tables[0] = limits funcref    C.types[x] = [t1*] -> [t2*]
   // -------------------------------------------------------------
@@ -835,7 +856,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(CallIndirect const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(LocalGet const *Inst) {
   //       C.locals[x] = t
   // -----------------------------
@@ -850,7 +871,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(LocalGet const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(LocalSet const *Inst) {
   //       C.locals[x] = t
   // -----------------------------
@@ -867,7 +888,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(LocalSet const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(LocalTee const *Inst) {
   //       C.locals[x] = t
   // ------------------------------
@@ -884,7 +905,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(LocalTee const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(GlobalGet const *Inst) {
   //        C.globals[x] = t
   // ------------------------------
@@ -900,7 +921,7 @@ ErrorPtr ExprValidationVisitor<T>::operator()(GlobalGet const *Inst) {
   return nullptr;
 }
 
-template <typename T>
+template <validation_context T>
 ErrorPtr ExprValidationVisitor<T>::operator()(GlobalSet const *Inst) {
   //     C.globals[x] = var t
   // ------------------------------
@@ -1084,7 +1105,7 @@ ErrorPtr validateFunctions(
         ranges::views::concat(TypePtr->getParamTypes(), Function.Locals);
     auto ReturnView = TypePtr->getResultTypes();
     ExprValidationContext Context(MView, LocalView, ReturnView);
-    ExprValidationVisitor ETypeVisitor(Context, Trace);
+    ExprValidationVisitor<decltype(Context)> ETypeVisitor(Context, Trace);
     Context.labels().push(TypePtr->getResultTypes());
     std::array<ValueType, 0> Parameters{};
     if (auto Error = ETypeVisitor(Function.Body, Parameters, ReturnView))
@@ -1149,6 +1170,8 @@ public:
   using ExprValidationContext::ExprValidationContext;
   struct GlobalWrapper {
     GlobalInitializerValidationContext const &Context;
+    // in specification, if a global is refered in the global initilizaer
+    // expression, it must be a imported global
     std::optional<views::Global> operator[](GlobalIDX const &Index) const {
       auto Global = Context.base().globals()[Index];
       if (!Global.has_value()) return std::nullopt;
@@ -1166,7 +1189,7 @@ ErrorPtr validateGlobals(
   for (auto const &[Index, Global] : EnumerateView) {
     Trace.enterGlobal(Index);
     detail::GlobalInitializerValidationContext Context(MView);
-    ExprValidationVisitor ETypeVisitor(Context, Trace);
+    ExprValidationVisitor<decltype(Context)> ETypeVisitor(Context, Trace);
     if (!validate(Global.Type))
       return Trace.BuildError(MalformedErrorKind::MALFORMED_GLOBAL_TYPE);
     std::array<ValueType, 0> Parameters{};
@@ -1189,7 +1212,7 @@ ErrorPtr validateElement(
     // TODO: The element type elemtype must be funcref.
     // The constrain is always true in the current WebAssembly specification
     ExprValidationContext Context(MView);
-    ExprValidationVisitor ETypeVisitor(Context, Trace);
+    ExprValidationVisitor<decltype(Context)> ETypeVisitor(Context, Trace);
     std::array<ValueType, 0> Parameters{};
     std::array<ValueType, 1> Results{I32};
     if (auto Error = ETypeVisitor(Element.Offset, Parameters, Results))
@@ -1211,7 +1234,7 @@ validateData(TraceCollector &Trace, ModuleView const &MView, Module const &M) {
     if (!MView.get(Data.Memory).has_value())
       return Trace.BuildError(MalformedErrorKind::MEM_INDEX_OUT_OF_BOUND);
     ExprValidationContext Context(MView);
-    ExprValidationVisitor ETypeVisitor(Context, Trace);
+    ExprValidationVisitor<decltype(Context)> ETypeVisitor(Context, Trace);
     std::array<ValueType, 0> Parameters{};
     std::array<ValueType, 1> Results{I32};
     if (auto Error = ETypeVisitor(Data.Offset, Parameters, Results))
@@ -1275,6 +1298,7 @@ ErrorPtr validate(Module const &M) {
     Trace.enterExport(Index);
     if (ExportNames.contains(Export.Name))
       return Trace.BuildError(MalformedErrorKind::NON_UNIQUE_EXPORT_NAME);
+    ExportNames.emplace(Export.Name);
   }
 
   return nullptr;

@@ -1,26 +1,15 @@
-#include "bytecode/Module.h"
-#include "bytecode/Validation.h"
-#include "parser/ByteArrayReader.h"
-#include "parser/ModuleBuilderDelegate.h"
-#include "parser/Parser.h"
+#include "mir/Instruction.h"
+#include <fmt/format.h>
 
 #include <mio/mmap.hpp>
 
 int main(int argc, char const *argv[]) {
-  utility::ignore(argc, argv);
-  mio::basic_mmap_source<std::byte> Source("../test/viu.wasm");
-  parser::ByteArrayReader Reader(Source);
-  parser::ModuleBuilderDelegate D;
-  parser::Parser Parser(Reader, D);
-  Parser.parse();
+  (void)argc;
+  (void)argv;
 
-  auto &Module = D.getModule();
-  fmt::print("{}\n", Module.Imports.size());
-  fmt::print("{}\n", Module.Functions[9].Body.size());
-
-  using namespace bytecode::validation;
-
-  try {
-    if (auto Error = validate(Module)) Error->signal();
-  } catch (TypeError const &Error) { fmt::print("{}\n", Error); }
+  using namespace mir;
+  using namespace mir::instructions;
+  fmt::print(
+      "{}\n{}\n{}\n", sizeof(InstResultType), sizeof(instructions::Unreachable),
+      sizeof(bytecode::ValueType));
 }

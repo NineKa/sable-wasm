@@ -15,9 +15,11 @@
 
 namespace bytecode {
 
+// clang-format off
 using ImportDescriptor =
-    std::variant<TypeIDX, TableType, MemoryType, GlobalType>;
+  std::variant<TypeIDX, TableType, MemoryType, GlobalType>;
 using ExportDescriptor = std::variant<FuncIDX, TableIDX, MemIDX, GlobalIDX>;
+// clang-format on
 
 namespace entities {
 struct Function {

@@ -4,7 +4,7 @@ project(sable-wasm)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 add_compile_options(-fno-rtti)
-add_compile_options(-Wall -Werror -Wextra -pedantic -Wfatal-errors)
+add_compile_options(-Wall -Wextra -pedantic -Werror -Wfatal-errors)
 
 add_compile_options($<$<CONFIG:RELEASE>:-flto>)
 add_link_options($<$<CONFIG:RELEASE>:-flto>)

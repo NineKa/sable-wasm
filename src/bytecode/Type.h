@@ -31,10 +31,10 @@ public:
 };
 
 namespace valuetypes {
-constexpr ValueType I32(ValueTypeKind::I32);
-constexpr ValueType I64(ValueTypeKind::I64);
-constexpr ValueType F32(ValueTypeKind::F32);
-constexpr ValueType F64(ValueTypeKind::F64);
+inline constexpr ValueType I32(ValueTypeKind::I32);
+inline constexpr ValueType I64(ValueTypeKind::I64);
+inline constexpr ValueType F32(ValueTypeKind::F32);
+inline constexpr ValueType F64(ValueTypeKind::F64);
 } // namespace valuetypes
 
 class FunctionType {

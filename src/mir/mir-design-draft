@@ -1,0 +1,47 @@
+Unreachable
+Branch
+  Mode  : [ Unconditional, Conditional, Dispatch ]
+  Op    : Instruction *
+Return
+
+Call:
+  Op    : <Instruction *>*
+CallIndirect: 
+  Type  : bytecode::FunctionType
+Select:
+  True  : Instruction *
+  False : Instruction *
+  Op    : Instruction *
+
+LocalGet 
+  Index : bytecode::LocalIDX
+LocalSet
+  Index : bytecode::LocalIDX
+  Value : Instruction *
+GlobalGet
+  Index : bytecode::GlobalIDX
+GlobalSet
+  Index : bytecode::GlobalIDX 
+  Value : Instruction * 
+
+Constant:
+  Value : variant<I32, I64, F32, F64>
+
+IComparsion:
+  Op    : []
+
+Load 
+  Type  : bytecode::ValueType
+  Width : [ 8, 16, 32 ]
+  Signed: boolean
+Store
+  Width : [ 8, 16, 32 ]
+MemorySize
+MemoryGrow
+  Op    : Instruction *
+MemoryGuard
+  Op    : Instruction *
+
+Cast:
+  Mode  : [ Conversion, Reinterpret, SaturatedConversion ]
+  Type  : bytecode::ValueType

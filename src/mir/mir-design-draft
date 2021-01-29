@@ -1,19 +1,24 @@
 Unreachable
 Branch
-  Mode  : [ Unconditional, Conditional, Dispatch ]
-  Op    : Instruction *
+  Mode  : [ Unconditional, Conditional ]
+  Op    : BasicBlock *
+BranchTable:
+  DefaultTarget : BasicBlock *
+  DispatchTargets : <BasicBlock *>
 Return
+  Values: <Instruction *>*
+
 
 Call:
   Op    : <Instruction *>*
-CallIndirect: 
+CallIndirect:
   Type  : bytecode::FunctionType
 Select:
   True  : Instruction *
   False : Instruction *
   Op    : Instruction *
 
-LocalGet 
+LocalGet
   Index : bytecode::LocalIDX
 LocalSet
   Index : bytecode::LocalIDX
@@ -21,16 +26,31 @@ LocalSet
 GlobalGet
   Index : bytecode::GlobalIDX
 GlobalSet
-  Index : bytecode::GlobalIDX 
-  Value : Instruction * 
+  Index : bytecode::GlobalIDX
+  Value : Instruction *
 
 Constant:
   Value : variant<I32, I64, F32, F64>
 
-IComparsion:
-  Op    : []
+IntUnaryOp
+  Op    : [ Eqz, Clz, Ctz, Popcnt ]
+  N     : Instruction *
+IntBinaryOp
+  Op    : [ Eq, Ne, LtS, LtU, GtS, GtU, LeS, LeU, GeS, GeU,
+            Add, Sub, Mul, DivS, DivU, RemS, RemU, And, Or, Xor,
+            Shl, ShrS, ShrU, Rotl, Rotr ]
+  LHS   : Instruction *
+  RHS   : Instruction *
 
-Load 
+FPUnaryOp
+  Op    : [ Abs, Neg, Ceil, Floor, Trunc, Nearest, Sqrt ]
+  N     : Instruction *
+FPBinaryOp
+  Op    : [ Eq, Ne, Lt, Gt, Le, Ge, Add, Sub, Mul, Div, Min, Max, CopySign ]
+  LHS   : Instruction *
+  RHS   : Instruction *
+
+Load
   Type  : bytecode::ValueType
   Width : [ 8, 16, 32 ]
   Signed: boolean
@@ -43,5 +63,12 @@ MemoryGuard
   Op    : Instruction *
 
 Cast:
-  Mode  : [ Conversion, Reinterpret, SaturatedConversion ]
+  Mode  : [ Conversion,
+            Reinterpret,
+            SaturatedConversion ]
   Type  : bytecode::ValueType
+Extend:
+  Width : [ 8, 16, 32 ]
+
+Phi
+  Flow  : <Instruction *>*

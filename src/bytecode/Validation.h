@@ -216,6 +216,7 @@ template <> struct formatter<bytecode::validation::MalformedError> {
   case MalformedErrorKind::Name: return fmt::format_to(CTX.out(), Message);
       SABLE_VALIDATION_MALFORMED_ERROR_KINDS
 #undef X
+    default: SABLE_UNREACHABLE();
     }
   }
 };

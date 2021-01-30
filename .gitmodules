@@ -13,3 +13,6 @@
 [submodule "lib/range-v3"]
 	path = lib/range-v3
 	url = git@github.com:ericniebler/range-v3.git
+[submodule "lib/memory"]
+	path = lib/memory
+	url = git@github.com:foonathan/memory.git

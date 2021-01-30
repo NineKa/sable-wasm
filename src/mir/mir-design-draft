@@ -3,10 +3,11 @@ Branch
   Mode  : [ Unconditional, Conditional ]
   Op    : BasicBlock *
 BranchTable:
+  Operand : Instruction *
   DefaultTarget : BasicBlock *
   DispatchTargets : <BasicBlock *>
 Return
-  Values: <Instruction *>*
+  Values: Instruction *
 
 
 Call:
@@ -56,6 +57,7 @@ Load
   Signed: boolean
 Store
   Width : [ 8, 16, 32 ]
+
 MemorySize
 MemoryGrow
   Op    : Instruction *
@@ -72,3 +74,6 @@ Extend:
 
 Phi
   Flow  : <Instruction *>*
+
+Unpack
+Pack

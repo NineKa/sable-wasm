@@ -31,14 +31,6 @@ int main(int argc, char const *argv[]) {
   using namespace mir::instructions;
 
   BasicBlock BB;
-  auto *I1 = BB.append<Constant>(10);
-  auto *I2 = BB.append<Constant>(10);
-  (void)I1;
-  auto *I = BB.append<IntBinaryOp>(IntBinaryOperator::Add, nullptr, I2);
-
-  for (auto *Inst : I->getOperands()) { fmt::print("{}\n", fmt::ptr(Inst)); }
-  for (auto *Inst : I1->getUsedSites())
-    fmt::print("I1 Site: {}\n", fmt::ptr(Inst));
-  for (auto *Inst : I2->getUsedSites())
-    fmt::print("I2 Site: {}\n", fmt::ptr(Inst));
+  auto *Inst = BB.append<Branch>(&BB);
+  fmt::print("{}\n", fmt::ptr(Inst));
 }

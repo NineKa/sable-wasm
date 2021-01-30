@@ -8,3 +8,4 @@ AllowShortIfStatementsOnASingleLine: Always
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortLoopsOnASingleLine: true
 AllowShortBlocksOnASingleLine: Always
+BreakInheritanceList: AfterColon

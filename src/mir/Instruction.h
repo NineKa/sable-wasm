@@ -59,7 +59,12 @@ enum class InstructionKind : std::uint8_t {
   IntUnaryOp,
   IntBinaryOp,
   FPUnaryOp,
-  FPBinaryOp
+  FPBinaryOp,
+  Load,
+  Store,
+  MemorySize,
+  MemoryGrow,
+  MemoryGuard
 };
 
 class Instruction :
@@ -381,6 +386,11 @@ class GlobalGet : public Instruction {
 
 public:
   GlobalGet(BasicBlock *Parent_, Global *Target_);
+  GlobalGet(GlobalGet const &) = delete;
+  GlobalGet(GlobalGet &&) noexcept = delete;
+  GlobalGet &operator=(GlobalGet const &) = delete;
+  GlobalGet &operator=(GlobalGet &&) noexcept = delete;
+  ~GlobalGet() noexcept override;
   Global *getTarget() const;
   void setTarget(Global *Target_);
   void detach_definition(Global *Global_) noexcept override;
@@ -394,6 +404,11 @@ class GlobalSet : public Instruction {
 
 public:
   GlobalSet(BasicBlock *Parent_, Global *Target_, Instruction *Operand_);
+  GlobalSet(GlobalSet const &) = delete;
+  GlobalSet(GlobalSet &&) noexcept = delete;
+  GlobalSet &operator=(GlobalSet const &) = delete;
+  GlobalSet &operator=(GlobalSet &&) noexcept = delete;
+  ~GlobalSet() noexcept override;
   Global *getTarget() const;
   void setTarget(Global *Target_);
   Instruction *getOperand() const;
@@ -433,6 +448,11 @@ class IntUnaryOp : public Instruction {
 public:
   IntUnaryOp(
       BasicBlock *Parent_, IntUnaryOperator Operator_, Instruction *Operand_);
+  IntUnaryOp(IntUnaryOp const &) = delete;
+  IntUnaryOp(IntUnaryOp &&) noexcept = delete;
+  IntUnaryOp &operator=(IntUnaryOp const &) = delete;
+  IntUnaryOp &operator=(IntUnaryOp &&) noexcept = delete;
+  ~IntUnaryOp() noexcept override;
   IntUnaryOperator getOperator() const;
   void setOperator(IntUnaryOperator Operator_);
   Instruction *getOperand() const;
@@ -458,6 +478,11 @@ public:
   IntBinaryOp(
       BasicBlock *Parent_, IntBinaryOperator Operator_, Instruction *LHS_,
       Instruction *RHS_);
+  IntBinaryOp(IntBinaryOp const &) = delete;
+  IntBinaryOp(IntBinaryOp &&) noexcept = delete;
+  IntBinaryOp &operator=(IntBinaryOp const &) = delete;
+  IntBinaryOp &operator=(IntBinaryOp &&) noexcept = delete;
+  ~IntBinaryOp() noexcept override;
   IntBinaryOperator getOperator() const;
   void setOperator(IntBinaryOperator Operator_);
   Instruction *getLHS() const;
@@ -480,6 +505,11 @@ class FPUnaryOp : public Instruction {
 public:
   FPUnaryOp(
       BasicBlock *Parent_, FPUnaryOperator Operator_, Instruction *Operand_);
+  FPUnaryOp(FPUnaryOp const &) = delete;
+  FPUnaryOp(FPUnaryOp &&) = delete;
+  FPUnaryOp &operator=(FPUnaryOp const &) = delete;
+  FPUnaryOp &operator=(FPUnaryOp &&) noexcept = delete;
+  ~FPUnaryOp() noexcept override;
   FPUnaryOperator getOperator() const;
   void setOperator(FPUnaryOperator Operator_);
   Instruction *getOperand() const;
@@ -503,6 +533,11 @@ public:
   FPBinaryOp(
       BasicBlock *Parent_, FPBinaryOperator Operator_, Instruction *LHS_,
       Instruction *RHS_);
+  FPBinaryOp(FPBinaryOp const &) = delete;
+  FPBinaryOp(FPBinaryOp &&) noexcept = delete;
+  FPBinaryOp &operator=(FPBinaryOp const &) = delete;
+  FPBinaryOp &operator=(FPBinaryOp &&) noexcept = delete;
+  ~FPBinaryOp() noexcept override;
   FPBinaryOperator getOperator() const;
   void setOperator(FPBinaryOperator Operator_);
   Instruction *getLHS() const;
@@ -510,6 +545,103 @@ public:
   Instruction *getRHS() const;
   void setRHS(Instruction *RHS_);
   void detach_definition(Instruction *Operand_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
+////////////////////////////////// Load ////////////////////////////////////////
+class Load : public Instruction {
+  Memory *LinearMemory;
+  bytecode::ValueType Type;
+  Instruction *Address;
+  unsigned LoadWidth;
+
+public:
+  Load(
+      BasicBlock *Parent_, Memory *LinearMemory_, bytecode::ValueType Type_,
+      Instruction *Address_, unsigned LoadWidth_);
+  Load(Load const &) = delete;
+  Load(Load &&) noexcept = delete;
+  Load &operator=(Load const &) = delete;
+  Load &operator=(Load &&) noexcept = delete;
+  ~Load() noexcept override;
+  Memory *getLinearMemory() const;
+  void setLinearMemory(Memory *LinearMemory_);
+  bytecode::ValueType const &getType() const;
+  void setType(bytecode::ValueType const &Type_);
+  Instruction *getAddress() const;
+  void setAddress(Instruction *Address_);
+  unsigned getLoadWidth() const;
+  void setLoadWidth(unsigned LoadWidth_);
+  void detach_definition(Instruction *Operand_) noexcept override;
+  void detach_definition(Memory *Memory_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
+///////////////////////////////// Store ////////////////////////////////////////
+class Store : public Instruction {
+  Memory *LinearMemory;
+  Instruction *Address;
+  Instruction *Operand;
+  unsigned StoreWidth;
+
+public:
+  Store(
+      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
+      Instruction *Operand_, unsigned StoreWidth_);
+  Store(Store const &) = delete;
+  Store(Store &&) noexcept = delete;
+  Store &operator=(Store const &) = delete;
+  Store &operator=(Store &&) noexcept = delete;
+  ~Store() noexcept override;
+  Memory *getLinearMemory() const;
+  void setLinearMemory(Memory *LinearMemory_);
+  Instruction *getAddress() const;
+  void setAddress(Instruction *Address_);
+  Instruction *getOperand() const;
+  void setOperand(Instruction *Operand_);
+  unsigned getStoreWidth() const;
+  void setStoreWidth(unsigned StoreWidth_);
+  void detach_definition(Instruction *Operand_) noexcept override;
+  void detach_definition(Memory *Memory_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
+////////////////////////////// MemorySize //////////////////////////////////////
+class MemorySize : public Instruction {
+  Memory *LinearMemory;
+
+public:
+  MemorySize(BasicBlock *Parent_, Memory *LinearMemory_);
+  MemorySize(MemorySize const &) = delete;
+  MemorySize(MemorySize &&) noexcept = delete;
+  MemorySize &operator=(MemorySize const &) = delete;
+  MemorySize &operator=(MemorySize &&) noexcept = delete;
+  ~MemorySize() noexcept override;
+  Memory *getLinearMemory() const;
+  void setLinearMemory(Memory *LinearMemory_);
+  void detach_definition(Memory *Memory_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
+////////////////////////////// MemoryGrow //////////////////////////////////////
+class MemoryGrow : public Instruction {
+  Memory *LinearMemory;
+  Instruction *GrowSize;
+
+public:
+  MemoryGrow(
+      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_);
+  MemoryGrow(MemoryGrow const &) = delete;
+  MemoryGrow(MemoryGrow &&) noexcept = delete;
+  MemoryGrow &operator=(MemoryGrow const &) = delete;
+  MemoryGrow &operator=(MemoryGrow &&) noexcept = delete;
+  ~MemoryGrow() noexcept override;
+  Memory *getLinearMemory() const;
+  void setLinearMemory(Memory *LinearMemory_);
+  Instruction *getGrowSize() const;
+  void setGrowSize(Instruction *GrowSize_);
+  void detach_definition(Instruction *Operand_) noexcept override;
+  void detach_definition(Memory *Memory_) noexcept override;
   static bool classof(Instruction *Inst);
 };
 } // namespace mir::instructions

@@ -384,6 +384,10 @@ GlobalGet::GlobalGet(BasicBlock *Parent_, Global *Target_)
   setTarget(Target_);
 }
 
+GlobalGet::~GlobalGet() noexcept {
+  if (Target != nullptr) Target->remove_use(this);
+}
+
 Global *GlobalGet::getTarget() const { return Target; }
 
 void GlobalGet::setTarget(Global *Target_) {
@@ -408,6 +412,11 @@ GlobalSet::GlobalSet(
     : Instruction(IKind::GlobalSet, Parent_), Target(), Operand() {
   setTarget(Target_);
   setOperand(Operand_);
+}
+
+GlobalSet::~GlobalSet() noexcept {
+  if (Target != nullptr) Target->remove_use(this);
+  if (Operand != nullptr) Operand->remove_use(this);
 }
 
 Global *GlobalSet::getTarget() const { return Target; }
@@ -480,6 +489,10 @@ IntUnaryOp::IntUnaryOp(
   setOperand(Operand_);
 }
 
+IntUnaryOp::~IntUnaryOp() noexcept {
+  if (Operand != nullptr) Operand->remove_use(this);
+}
+
 IntUnaryOperator IntUnaryOp::getOperator() const { return Operator; }
 Instruction *IntUnaryOp::getOperand() const { return Operand; }
 
@@ -511,6 +524,11 @@ IntBinaryOp::IntBinaryOp(
       RHS() {
   setLHS(LHS_);
   setRHS(RHS_);
+}
+
+IntBinaryOp::~IntBinaryOp() noexcept {
+  if (LHS != nullptr) LHS->remove_use(this);
+  if (RHS != nullptr) RHS->remove_use(this);
 }
 
 IntBinaryOperator IntBinaryOp::getOperator() const { return Operator; }
@@ -550,6 +568,10 @@ FPUnaryOp::FPUnaryOp(
   setOperand(Operand_);
 }
 
+FPUnaryOp::~FPUnaryOp() noexcept {
+  if (Operand != nullptr) Operand->remove_use(this);
+}
+
 FPUnaryOperator FPUnaryOp::getOperator() const { return Operator; }
 Instruction *FPUnaryOp::getOperand() const { return Operand; }
 void FPUnaryOp::setOperator(FPUnaryOperator Operator_) { Operator = Operator_; }
@@ -580,6 +602,11 @@ FPBinaryOp::FPBinaryOp(
   setRHS(RHS_);
 }
 
+FPBinaryOp::~FPBinaryOp() noexcept {
+  if (LHS != nullptr) LHS->remove_use(this);
+  if (RHS != nullptr) RHS->remove_use(this);
+}
+
 FPBinaryOperator FPBinaryOp::getOperator() const { return Operator; }
 Instruction *FPBinaryOp::getLHS() const { return LHS; }
 Instruction *FPBinaryOp::getRHS() const { return RHS; }
@@ -608,5 +635,182 @@ void FPBinaryOp::detach_definition(Instruction *Operand_) noexcept {
 
 bool FPBinaryOp::classof(Instruction *Inst) {
   return Inst->getKind() == IKind::FPBinaryOp;
+}
+
+////////////////////////////////// Load ////////////////////////////////////////
+Load::Load(
+    BasicBlock *Parent_, Memory *LinearMemory_, bytecode::ValueType Type_,
+    Instruction *Address_, unsigned int LoadWidth_)
+    : Instruction(IKind::Load, Parent_), LinearMemory(), Type(Type_), Address(),
+      LoadWidth(LoadWidth_) {
+  setLinearMemory(LinearMemory_);
+  setAddress(Address_);
+}
+
+Load::~Load() noexcept {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+  if (Address != nullptr) Address->remove_use(this);
+}
+
+bytecode::ValueType const &Load::getType() const { return Type; }
+Memory *Load::getLinearMemory() const { return LinearMemory; }
+Instruction *Load::getAddress() const { return Address; }
+unsigned Load::getLoadWidth() const { return LoadWidth; }
+void Load::setType(bytecode::ValueType const &Type_) { Type = Type_; }
+void Load::setLoadWidth(unsigned LoadWidth_) { LoadWidth = LoadWidth_; }
+
+void Load::setLinearMemory(Memory *LinearMemory_) {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+  if (LinearMemory_ != nullptr) LinearMemory_->remove_use(this);
+  LinearMemory = LinearMemory_;
+}
+
+void Load::setAddress(Instruction *Address_) {
+  if (Address != nullptr) Address->remove_use(this);
+  if (Address_ != nullptr) Address_->add_use(this);
+  Address = Address_;
+}
+
+void Load::detach_definition(Instruction *Operand_) noexcept {
+  assert(Address == Operand_);
+  utility::ignore(Operand_);
+  Address = nullptr;
+}
+
+void Load::detach_definition(Memory *Memory_) noexcept {
+  assert(LinearMemory == Memory_);
+  utility::ignore(Memory_);
+  LinearMemory = nullptr;
+}
+
+bool Load::classof(Instruction *Inst) { return Inst->getKind() == IKind::Load; }
+
+///////////////////////////////// Store ////////////////////////////////////////
+Store::Store(
+    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
+    Instruction *Operand_, unsigned int StoreWidth_)
+    : Instruction(IKind::Store, Parent_), LinearMemory(), Address(), Operand(),
+      StoreWidth(StoreWidth_) {
+  setLinearMemory(LinearMemory_);
+  setAddress(Address_);
+  setOperand(Operand_);
+}
+
+Store::~Store() noexcept {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+  if (Address != nullptr) Address->remove_use(this);
+  if (Operand != nullptr) Operand->remove_use(this);
+}
+
+Memory *Store::getLinearMemory() const { return LinearMemory; }
+Instruction *Store::getAddress() const { return Address; }
+Instruction *Store::getOperand() const { return Operand; }
+unsigned int Store::getStoreWidth() const { return StoreWidth; }
+void Store::setStoreWidth(unsigned StoreWidth_) { StoreWidth = StoreWidth_; }
+
+void Store::setLinearMemory(Memory *LinearMemory_) {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+  if (LinearMemory_ != nullptr) LinearMemory_->add_use(this);
+  LinearMemory = LinearMemory_;
+}
+
+void Store::setAddress(Instruction *Address_) {
+  if (Address != nullptr) Address->remove_use(this);
+  if (Address_ != nullptr) Address_->add_use(this);
+  Address = Address_;
+}
+
+void Store::setOperand(Instruction *Operand_) {
+  if (Operand != nullptr) Operand->remove_use(this);
+  if (Operand_ != nullptr) Operand_->add_use(this);
+  Operand = Operand_;
+}
+
+void Store::detach_definition(Instruction *Operand_) noexcept {
+  assert((Operand_ == Address) || (Operand_ == Operand));
+  if (Operand_ == Address) Address = nullptr;
+  if (Operand_ == Operand) Operand = nullptr;
+}
+
+void Store::detach_definition(Memory *Memory_) noexcept {
+  assert(LinearMemory == Memory_);
+  utility::ignore(Memory_);
+  LinearMemory = nullptr;
+}
+
+bool Store::classof(Instruction *Inst) {
+  return Inst->getKind() == IKind::Store;
+}
+
+////////////////////////////// MemorySize //////////////////////////////////////
+MemorySize::MemorySize(BasicBlock *Parent_, Memory *LinearMemory_)
+    : Instruction(IKind::MemorySize, Parent_), LinearMemory() {
+  setLinearMemory(LinearMemory_);
+}
+
+MemorySize::~MemorySize() noexcept {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+}
+
+Memory *MemorySize::getLinearMemory() const { return LinearMemory; }
+
+void MemorySize::setLinearMemory(Memory *LinearMemory_) {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+  if (LinearMemory_ != nullptr) LinearMemory_->add_use(this);
+  LinearMemory = LinearMemory_;
+}
+
+void MemorySize::detach_definition(Memory *Memory_) noexcept {
+  assert(LinearMemory == Memory_);
+  utility::ignore(Memory_);
+  LinearMemory = nullptr;
+}
+
+bool MemorySize::classof(Instruction *Inst) {
+  return Inst->getKind() == IKind::MemorySize;
+}
+
+////////////////////////////// MemoryGrow //////////////////////////////////////
+MemoryGrow::MemoryGrow(
+    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_)
+    : Instruction(IKind::MemoryGrow, Parent_), LinearMemory(), GrowSize() {
+  setLinearMemory(LinearMemory_);
+  setGrowSize(GrowSize_);
+}
+
+MemoryGrow::~MemoryGrow() noexcept {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+  if (GrowSize != nullptr) GrowSize->remove_use(this);
+}
+
+Memory *MemoryGrow::getLinearMemory() const { return LinearMemory; }
+Instruction *MemoryGrow::getGrowSize() const { return GrowSize; }
+
+void MemoryGrow::setLinearMemory(Memory *LinearMemory_) {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+  if (LinearMemory_ != nullptr) LinearMemory_->add_use(this);
+  LinearMemory = LinearMemory_;
+}
+
+void MemoryGrow::setGrowSize(Instruction *GrowSize_) {
+  if (GrowSize != nullptr) GrowSize->remove_use(this);
+  if (GrowSize_ != nullptr) GrowSize_->add_use(this);
+  GrowSize = GrowSize_;
+}
+
+void MemoryGrow::detach_definition(Instruction *Operand_) noexcept {
+  assert(GrowSize == Operand_);
+  utility::ignore(Operand_);
+  GrowSize = nullptr;
+}
+
+void MemoryGrow::detach_definition(Memory *Memory_) noexcept {
+  assert(LinearMemory == Memory_);
+  utility::ignore(Memory_);
+  LinearMemory = nullptr;
+}
+
+bool MemoryGrow::classof(Instruction *Inst) {
+  return Inst->getKind() == IKind::MemoryGrow;
 }
 } // namespace mir::instructions

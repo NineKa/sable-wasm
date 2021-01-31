@@ -33,4 +33,6 @@ int main(int argc, char const *argv[]) {
   BasicBlock BB;
   auto *Inst = BB.append<Branch>(&BB);
   fmt::print("{}\n", fmt::ptr(Inst));
+
+  fmt::print("{}\n", sizeof(MemorySize));
 }

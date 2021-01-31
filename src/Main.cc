@@ -1,5 +1,6 @@
-
 #include "mir/Instruction.h"
+#include "mir/MIRPrinter.h"
+#include "mir/Module.h"
 #include <fmt/format.h>
 
 #include "bytecode/Validation.h"
@@ -30,9 +31,11 @@ int main(int argc, char const *argv[]) {
   using namespace mir;
   using namespace mir::instructions;
 
-  BasicBlock BB;
-  auto *Inst = BB.append<Branch>(&BB);
-  fmt::print("{}\n", fmt::ptr(Inst));
-
-  fmt::print("{}\n", sizeof(MemorySize));
+  BasicBlock BB(nullptr);
+  auto *I0 = BB.append<Constant>(std::int32_t(1));
+  auto *I1 = BB.append<Constant>(std::int32_t(2));
+  auto *I3 = BB.append<IntBinaryOp>(IntBinaryOperator::Add, I0, I1);
+  fmt::print("{}\n", I3->getLHS() == nullptr);
+  BB.erase(I0);
+  fmt::print("{}\n", I3->getLHS() == nullptr);
 }

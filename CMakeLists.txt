@@ -26,6 +26,8 @@ add_library(sablewasm
         src/bytecode/Module.cc
         src/bytecode/Validation.cc
         src/mir/Instruction.cc
+        src/mir/LLVMCodegen.cc
+        src/mir/MIRCodegen.cc
         src/parser/ExprBuilderDelegate.cc
         src/parser/customsections/Name.cc)
 

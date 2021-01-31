@@ -64,7 +64,12 @@ enum class InstructionKind : std::uint8_t {
   Store,
   MemorySize,
   MemoryGrow,
-  MemoryGuard
+  MemoryGuard,
+  Cast,
+  Extend,
+  Pack,
+  Unpack,
+  Phi
 };
 
 class Instruction :
@@ -85,6 +90,10 @@ public:
   virtual ~Instruction() noexcept = default;
   BasicBlock *getParent() const { return Parent; }
   InstructionKind getKind() const { return Kind; }
+
+  auto getUsedSites() {
+    return ranges::subrange(use_site_begin(), use_site_end());
+  }
 
   // called when defined entity is removed from IR
   // a proper instruction should also remove them from operands (set to nullptr)
@@ -107,87 +116,29 @@ class BasicBlock :
   llvm::ilist<Instruction> Instructions;
 
 public:
-  // explicit BasicBlock(Function *Parent);
-  auto getUsedSites() {
-    return ranges::subrange(use_site_begin(), use_site_end());
-  }
+  explicit BasicBlock(Function *Parent_);
 
   template <std::derived_from<Instruction> T, typename... ArgTypes>
-  Instruction *append(ArgTypes &&...Args) {
+  T *append(ArgTypes &&...Args) {
     auto *Inst = new T(this, std::forward<ArgTypes>(Args)...); // NOLINT
     Instructions.push_back(Inst);
     return Inst;
   }
 
+  void erase(Instruction *Inst) { Instructions.erase(Inst); }
+
   Function *getParent() const { return Parent; }
-};
 
-class Local :
-    public llvm::ilist_node_with_parent<Local, Function>,
-    public detail::UseSiteTraceable<Local, Instruction> {
-  Function *Parent;
-  bytecode::ValueType Type;
+  using iterator = decltype(Instructions)::iterator;
+  using const_iterator = decltype(Instructions)::const_iterator;
+  iterator begin() { return Instructions.begin(); }
+  iterator end() { return Instructions.end(); }
+  const_iterator begin() const { return Instructions.begin(); }
+  const_iterator end() const { return Instructions.end(); }
 
-public:
-  explicit Local(Function *Parent_, bytecode::ValueType Type_);
-  Function *getParent() const { return Parent; }
-  bytecode::ValueType const &getType() { return Type; }
-};
-
-class Function :
-    public llvm::ilist_node_with_parent<Function, Module>,
-    public detail::UseSiteTraceable<Function, Instruction> {
-  Module *Parent;
-  bytecode::FunctionType Type;
-  llvm::ilist<BasicBlock> BasicBlocks;
-  llvm::ilist<Local> Locals;
-
-public:
-  explicit Function(Module *Parent);
-  Module *getParent() const { return Parent; }
-  bytecode::FunctionType const &getType() const { return Type; }
-
-  static llvm::ilist<BasicBlock> Function::*getSublistAccess(BasicBlock *) {
-    return &Function::BasicBlocks;
+  auto getUsedSites() {
+    return ranges::subrange(use_site_begin(), use_site_end());
   }
-  static llvm::ilist<Local> Function::*getSublistAccess(Local *) {
-    return &Function::Locals;
-  }
-};
-
-class Global :
-    public llvm::ilist_node_with_parent<Global, Module>,
-    public detail::UseSiteTraceable<Global, Instruction> {
-  Module *Parent;
-  bytecode::GlobalType Type;
-
-public:
-  explicit Global(Module *Parent_);
-  Module *getParent() const { return Parent; }
-  bytecode::GlobalType const &getType() const { return Type; }
-};
-
-class Memory :
-    public llvm::ilist_node_with_parent<Memory, Module>,
-    public detail::UseSiteTraceable<Memory, Instruction> {
-  Module *Parent;
-  bytecode::MemoryType Type;
-
-public:
-  explicit Memory(Module *Parent_);
-  Module *getParent() const { return Parent; }
-  bytecode::MemoryType const &getType() const { return Type; }
-};
-
-class Table :
-    public llvm::ilist_node_with_parent<Table, Module>,
-    public detail::UseSiteTraceable<Table, Instruction> {
-  Module *Parent;
-  bytecode::TableType Type;
-
-public:
-  explicit Table(Module *Parent_);
-  Module *getParent() const { return Parent; }
 };
 } // namespace mir
 
@@ -203,9 +154,12 @@ public:
 class Branch : public Instruction {
   Instruction *Condition;
   BasicBlock *Target;
+  BasicBlock *FalseTarget;
 
 public:
-  Branch(BasicBlock *Parent_, Instruction *Condition_, BasicBlock *Target_);
+  Branch(
+      BasicBlock *Parent_, Instruction *Condition_, BasicBlock *TargetTrue_,
+      BasicBlock *TargetFalse_);
   Branch(BasicBlock *Parent_, BasicBlock *Target_);
   Branch(Branch const &) = delete;
   Branch(Branch &&) noexcept = delete;
@@ -218,6 +172,8 @@ public:
   void setCondition(Instruction *Condition_);
   BasicBlock *getTarget() const;
   void setTarget(BasicBlock *Target_);
+  BasicBlock *getFalseTarget() const;
+  void setFalseTarget(BasicBlock *FalseTarget_);
   void detach_definition(Instruction *Operand_) noexcept override;
   void detach_definition(BasicBlock *Target_) noexcept override;
   static bool classof(Instruction *Inst);
@@ -256,12 +212,14 @@ class Return : public Instruction {
   Instruction *Operand;
 
 public:
+  explicit Return(BasicBlock *Parent_);
   Return(BasicBlock *Parent_, Instruction *Operand_);
   Return(Return const &) = delete;
   Return(Return &&) noexcept = delete;
   Return &operator=(Return const &) = delete;
   Return &operator=(Return &&) noexcept = delete;
   ~Return() noexcept override;
+  bool hasReturnValue() const;
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
   void detach_definition(Instruction *Operand_) noexcept override;
@@ -644,6 +602,132 @@ public:
   void detach_definition(Memory *Memory_) noexcept override;
   static bool classof(Instruction *Inst);
 };
+
+////////////////////////////// MemoryGuard /////////////////////////////////////
+class MemoryGuard : public Instruction {
+  Memory *LinearMemory;
+  Instruction *Address;
+
+public:
+  MemoryGuard(
+      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_);
+  MemoryGuard(MemoryGuard const &) = delete;
+  MemoryGuard(MemoryGuard &&) noexcept = delete;
+  MemoryGuard &operator=(MemoryGuard const &) = delete;
+  MemoryGuard &operator=(MemoryGuard &&) noexcept = delete;
+  ~MemoryGuard() noexcept override;
+  Memory *getLinearMemory() const;
+  void setLinearMemory(Memory *LinearMemory_);
+  Instruction *getAddress() const;
+  void setAddress(Instruction *Address_);
+  void detach_definition(Instruction *Operand_) noexcept override;
+  void detach_definition(Memory *Memory_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
+////////////////////////////////// Cast ////////////////////////////////////////
+enum class CastMode { Conversion, Reinterpret, SaturatedConversion };
+class Cast : public Instruction {
+  CastMode Mode;
+  bytecode::ValueType Type;
+  Instruction *Operand;
+  bool IsSigned;
+
+public:
+  Cast(
+      BasicBlock *Parent_, CastMode Mode_, bytecode::ValueType Type_,
+      Instruction *Operand_, bool IsSigned_);
+  Cast(Cast const &) = delete;
+  Cast(Cast &&) noexcept = delete;
+  Cast &operator=(Cast const &) = delete;
+  Cast &operator=(Cast &&) noexcept = delete;
+  ~Cast() noexcept override;
+  CastMode getMode() const;
+  void setMode(CastMode Mode_);
+  bytecode::ValueType const &getType() const;
+  void setType(bytecode::ValueType const &Type_);
+  Instruction *getOperand() const;
+  void setOperand(Instruction *Operand_);
+  bool getIsSigned() const;
+  void setIsSigned(bool IsSigned_);
+  void detach_definition(Instruction *Operand_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
+///////////////////////////////// Extend ///////////////////////////////////////
+class Extend : public Instruction {
+  Instruction *Operand;
+  unsigned FromWidth;
+
+public:
+  Extend(BasicBlock *Parent_, Instruction *Operand_, unsigned FromWidth_);
+  Extend(Extend const &) = delete;
+  Extend(Extend &&) noexcept = delete;
+  Extend &operator=(Extend const &) = delete;
+  Extend &operator=(Extend &&) noexcept = delete;
+  ~Extend() noexcept override;
+  Instruction *getOperand() const;
+  void setOperand(Instruction *Operand_);
+  unsigned getFromWidth() const;
+  void setFromWidth(unsigned FromWidth_);
+  void detach_definition(Instruction *Operand_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
+///////////////////////////////// Packed ///////////////////////////////////////
+class Pack : public Instruction {
+  std::vector<Instruction *> Arguments;
+
+public:
+  Pack(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_);
+  Pack(Pack const &) = delete;
+  Pack(Pack &&) noexcept = delete;
+  Pack &operator=(Pack const &) = delete;
+  Pack &operator=(Pack &&) noexcept = delete;
+  ~Pack() noexcept override;
+  llvm::ArrayRef<Instruction *> getArguments() const;
+  void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
+  void detach_definition(Instruction *Operand_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
+///////////////////////////////// Unpack ///////////////////////////////////////
+class Unpack : public Instruction {
+  unsigned Index;
+  Instruction *Operand;
+
+public:
+  Unpack(BasicBlock *Parent_, unsigned Index_, Instruction *Operand_);
+  Unpack(Unpack const &) = delete;
+  Unpack(Unpack &&) = delete;
+  Unpack &operator=(Unpack const &) = delete;
+  Unpack &operator=(Unpack &&) noexcept = delete;
+  ~Unpack() noexcept override;
+  unsigned getIndex() const;
+  void setIndex(unsigned Index_);
+  Instruction *getOperand() const;
+  void setOperand(Instruction *Operand_);
+  void detach_definition(Instruction *Operand_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
+/////////////////////////////////// Phi ////////////////////////////////////////
+class Phi : public Instruction {
+  std::vector<Instruction *> Arguments;
+
+public:
+  Phi(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_);
+  Phi(Phi const &) = delete;
+  Phi(Phi &&) noexcept = delete;
+  Phi &operator=(Phi const &) = delete;
+  Phi &operator=(Phi &&) noexcept = delete;
+  ~Phi() noexcept override;
+  llvm::ArrayRef<Instruction *> getArguments() const;
+  void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
+  void detach_definition(Instruction *Operand_) noexcept override;
+  static bool classof(Instruction *Inst);
+};
+
 } // namespace mir::instructions
 
 namespace mir {
@@ -654,11 +738,41 @@ concept instruction = std::derived_from<T, Instruction> &&requires(T Inst) {
 };
 
 template <typename Derived, typename RetType = void, bool Const = true>
-class InstVisitor {
+class InstVisitorBase {
   Derived &derived() { return static_cast<Derived &>(*this); }
   template <typename T> using Ptr = std::conditional_t<Const, T const *, T *>;
   template <instruction T> RetType castAndCall(Ptr<Instruction> Inst) {
-    return derived()(static_cast<Ptr<T>>(Inst));
+    using IKind = InstructionKind;
+    using namespace instructions;
+    switch (Inst->getKind()) {
+    case IKind::Unreachable: return castAndCall<Unreachable>(Inst);
+    case IKind::Branch: return castAndCall<Branch>(Inst);
+    case IKind::BranchTable: return castAndCall<BranchTable>(Inst);
+    case IKind::Return: return castAndCall<Return>(Inst);
+    case IKind::Call: return castAndCall<Call>(Inst);
+    case IKind::CallIndirect: return castAndCall<CallIndirect>(Inst);
+    case IKind::Select: return castAndCall<Select>(Inst);
+    case IKind::LocalGet: return castAndCall<LocalGet>(Inst);
+    case IKind::LocalSet: return castAndCall<LocalSet>(Inst);
+    case IKind::GlobalGet: return castAndCall<GlobalGet>(Inst);
+    case IKind::GlobalSet: return castAndCall<GlobalSet>(Inst);
+    case IKind::Constant: return castAndCall<Constant>(Inst);
+    case IKind::IntUnaryOp: return castAndCall<IntUnaryOp>(Inst);
+    case IKind::IntBinaryOp: return castAndCall<IntBinaryOp>(Inst);
+    case IKind::FPUnaryOp: return castAndCall<FPUnaryOp>(Inst);
+    case IKind::FPBinaryOp: return castAndCall<FPBinaryOp>(Inst);
+    case IKind::Load: return castAndCall<Load>(Inst);
+    case IKind::Store: return castAndCall<Store>(Inst);
+    case IKind::MemorySize: return castAndCall<MemorySize>(Inst);
+    case IKind::MemoryGrow: return castAndCall<MemoryGrow>(Inst);
+    case IKind::MemoryGuard: return castAndCall<MemoryGuard>(Inst);
+    case IKind::Cast: return castAndCall<Cast>(Inst);
+    case IKind::Extend: return castAndCall<Extend>(Inst);
+    case IKind::Pack: return castAndCall<Pack>(Inst);
+    case IKind::Unpack: return castAndCall<Unpack>(Inst);
+    case IKind::Phi: return castAndCall<Phi>(Inst);
+    default: SABLE_UNREACHABLE();
+    }
   }
 
 public:

@@ -1,8 +1,13 @@
 #include "Instruction.h"
+#include "Module.h"
 
 #include <range/v3/algorithm/contains.hpp>
 #include <range/v3/algorithm/copy.hpp>
 #include <range/v3/algorithm/replace.hpp>
+
+namespace mir {
+BasicBlock::BasicBlock(Function *Parent_) : Parent(Parent_) {}
+} // namespace mir
 
 namespace mir::instructions {
 using IKind = InstructionKind;
@@ -16,26 +21,32 @@ bool Unreachable::classof(Instruction *Inst) {
 
 //////////////////////////////////// Branch ////////////////////////////////////
 Branch::Branch(
-    BasicBlock *Parent_, Instruction *Condition_, BasicBlock *Target_)
-    : Instruction(IKind::Branch, Parent_), Condition(), Target() {
+    BasicBlock *Parent_, Instruction *Condition_, BasicBlock *Target_,
+    BasicBlock *FalseTarget_)
+    : Instruction(IKind::Branch, Parent_), Condition(), Target(),
+      FalseTarget() {
   setCondition(Condition_);
   setTarget(Target_);
+  setFalseTarget(FalseTarget_);
 }
 
 Branch::Branch(BasicBlock *Parent_, BasicBlock *Target_)
-    : Instruction(IKind::Branch, Parent_), Condition(), Target() {
+    : Instruction(IKind::Branch, Parent_), Condition(), Target(),
+      FalseTarget() {
   setTarget(Target_);
 }
 
 Branch::~Branch() noexcept {
   if (Condition != nullptr) Condition->remove_use(this);
   if (Target != nullptr) Target->remove_use(this);
+  if (FalseTarget != nullptr) FalseTarget->remove_use(this);
 }
 
 bool Branch::isConditional() const { return Condition != nullptr; }
 bool Branch::isUnconditional() const { return Condition == nullptr; }
 Instruction *Branch::getCondition() const { return Condition; }
 BasicBlock *Branch::getTarget() const { return Target; }
+BasicBlock *Branch::getFalseTarget() const { return FalseTarget; }
 
 void Branch::setCondition(Instruction *Condition_) {
   if (Condition != nullptr) Condition->remove_use(this);
@@ -49,6 +60,12 @@ void Branch::setTarget(BasicBlock *Target_) {
   Target = Target_;
 }
 
+void Branch::setFalseTarget(BasicBlock *FalseTarget_) {
+  if (FalseTarget != nullptr) FalseTarget->remove_use(this);
+  if (FalseTarget_ != nullptr) FalseTarget_->add_use(this);
+  FalseTarget = FalseTarget_;
+}
+
 void Branch::detach_definition(Instruction *Operand_) noexcept {
   assert(Condition == Operand_);
   utility::ignore(Operand_);
@@ -56,9 +73,9 @@ void Branch::detach_definition(Instruction *Operand_) noexcept {
 }
 
 void Branch::detach_definition(BasicBlock *Target_) noexcept {
-  assert(Target == Target_);
-  utility::ignore(Target_);
-  Target = nullptr;
+  assert((Target == Target_) || (FalseTarget == Target_));
+  if (Target_ == Target) Target = nullptr;
+  if (Target_ == FalseTarget) FalseTarget = nullptr;
 }
 
 bool Branch::classof(Instruction *Inst) {
@@ -132,6 +149,9 @@ bool BranchTable::classof(Instruction *Inst) {
 }
 
 /////////////////////////////////// Return /////////////////////////////////////
+Return::Return(BasicBlock *Parent_)
+    : Instruction(IKind::Return, Parent_), Operand(nullptr) {}
+
 Return::Return(BasicBlock *Parent_, Instruction *Operand_)
     : Instruction(IKind::Return, Parent_), Operand() {
   setOperand(Operand_);
@@ -141,6 +161,7 @@ Return::~Return() noexcept {
   if (Operand != nullptr) Operand->remove_use(this);
 }
 
+bool Return::hasReturnValue() const { return Operand == nullptr; }
 Instruction *Return::getOperand() const { return Operand; }
 
 void Return::setOperand(Instruction *Operand_) {
@@ -813,4 +834,202 @@ void MemoryGrow::detach_definition(Memory *Memory_) noexcept {
 bool MemoryGrow::classof(Instruction *Inst) {
   return Inst->getKind() == IKind::MemoryGrow;
 }
+
+////////////////////////////// MemoryGuard /////////////////////////////////////
+MemoryGuard::MemoryGuard(
+    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_)
+    : Instruction(IKind::MemoryGuard, Parent_), LinearMemory(), Address() {
+  setLinearMemory(LinearMemory_);
+  setAddress(Address_);
+}
+
+MemoryGuard::~MemoryGuard() noexcept {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+  if (Address != nullptr) Address->remove_use(this);
+}
+
+Memory *MemoryGuard::getLinearMemory() const { return LinearMemory; }
+Instruction *MemoryGuard::getAddress() const { return Address; }
+
+void MemoryGuard::setLinearMemory(Memory *LinearMemory_) {
+  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
+  if (LinearMemory_ != nullptr) LinearMemory_->add_use(this);
+  LinearMemory = LinearMemory_;
+}
+
+void MemoryGuard::setAddress(Instruction *Address_) {
+  if (Address != nullptr) Address->remove_use(this);
+  if (Address_ != nullptr) Address_->add_use(this);
+  Address = Address_;
+}
+
+void MemoryGuard::detach_definition(Instruction *Operand_) noexcept {
+  assert(Address == Operand_);
+  utility::ignore(Operand_);
+  Address = nullptr;
+}
+
+void MemoryGuard::detach_definition(Memory *Memory_) noexcept {
+  assert(LinearMemory == Memory_);
+  utility::ignore(Memory_);
+  LinearMemory = nullptr;
+}
+
+bool MemoryGuard::classof(Instruction *Inst) {
+  return Inst->getKind() == IKind::MemoryGuard;
+}
+
+////////////////////////////////// Cast ////////////////////////////////////////
+Cast::Cast(
+    BasicBlock *Parent_, CastMode Mode_, bytecode::ValueType Type_,
+    Instruction *Operand_, bool IsSigned_)
+    : Instruction(IKind::Cast, Parent_), Mode(Mode_), Type(Type_), Operand(),
+      IsSigned(IsSigned_) {
+  setOperand(Operand_);
+}
+
+Cast::~Cast() noexcept {
+  if (Operand != nullptr) Operand->remove_use(this);
+}
+
+CastMode Cast::getMode() const { return Mode; }
+bytecode::ValueType const &Cast::getType() const { return Type; }
+Instruction *Cast::getOperand() const { return Operand; }
+bool Cast::getIsSigned() const { return IsSigned; }
+void Cast::setMode(CastMode Mode_) { Mode = Mode_; }
+void Cast::setType(const bytecode::ValueType &Type_) { Type = Type_; }
+void Cast::setIsSigned(bool IsSigned_) { IsSigned = IsSigned_; }
+
+void Cast::setOperand(Instruction *Operand_) {
+  if (Operand != nullptr) Operand->remove_use(this);
+  if (Operand_ != nullptr) Operand_->add_use(this);
+  Operand = Operand_;
+}
+
+void Cast::detach_definition(Instruction *Operand_) noexcept {
+  assert(Operand == Operand_);
+  utility::ignore(Operand_);
+  Operand = nullptr;
+}
+
+bool Cast::classof(Instruction *Inst) { return Inst->getKind() == IKind::Cast; }
+
+///////////////////////////////// Extend ///////////////////////////////////////
+Extend::Extend(
+    BasicBlock *Parent_, Instruction *Operand_, unsigned int FromWidth_)
+    : Instruction(IKind::Extend, Parent_), Operand(), FromWidth(FromWidth_) {
+  setOperand(Operand_);
+}
+
+Extend::~Extend() noexcept {
+  if (Operand != nullptr) Operand->remove_use(this);
+}
+
+Instruction *Extend::getOperand() const { return Operand; }
+unsigned Extend::getFromWidth() const { return FromWidth; }
+void Extend::setFromWidth(unsigned FromWidth_) { FromWidth = FromWidth_; }
+
+void Extend::setOperand(Instruction *Operand_) {
+  if (Operand != nullptr) Operand->remove_use(this);
+  if (Operand_ != nullptr) Operand_->add_use(this);
+  Operand = Operand_;
+}
+
+void Extend::detach_definition(Instruction *Operand_) noexcept {
+  assert(Operand == Operand_);
+  utility::ignore(Operand_);
+  Operand = nullptr;
+}
+
+bool Extend::classof(Instruction *Inst) {
+  return Inst->getKind() == IKind::Extend;
+}
+
+////////////////////////////////// Pack ////////////////////////////////////////
+Pack::Pack(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_)
+    : Instruction(IKind::Pack, Parent_) {
+  setArguments(Arguments_);
+}
+
+Pack::~Pack() noexcept {
+  for (auto *Argument : Arguments)
+    if (Argument != nullptr) Argument->remove_use(this);
+}
+
+llvm::ArrayRef<Instruction *> Pack::getArguments() const { return Arguments; }
+
+void Pack::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
+  for (auto *Argument : Arguments)
+    if (Argument != nullptr) Argument->remove_use(this);
+  for (auto *Argument : Arguments_)
+    if (Argument != nullptr) Argument->add_use(this);
+  Arguments.resize(Arguments_.size());
+  ranges::copy(Arguments_, Arguments.begin());
+}
+
+void Pack::detach_definition(Instruction *Operand_) noexcept {
+  assert(ranges::contains(Arguments, Operand_));
+  ranges::replace(Arguments, Operand_, nullptr);
+}
+
+bool Pack::classof(Instruction *Inst) { return Inst->getKind() == IKind::Pack; }
+
+///////////////////////////////// Unpack ///////////////////////////////////////
+Unpack::Unpack(BasicBlock *Parent_, unsigned int Index_, Instruction *Operand_)
+    : Instruction(IKind::Unpack, Parent_), Index(Index_), Operand() {
+  setOperand(Operand_);
+}
+
+Unpack::~Unpack() noexcept {
+  if (Operand != nullptr) Operand->remove_use(this);
+}
+
+unsigned Unpack::getIndex() const { return Index; }
+Instruction *Unpack::getOperand() const { return Operand; }
+void Unpack::setIndex(unsigned int Index_) { Index = Index_; }
+
+void Unpack::setOperand(Instruction *Operand_) {
+  if (Operand != nullptr) Operand->remove_use(this);
+  if (Operand_ != nullptr) Operand_->add_use(this);
+  Operand = Operand_;
+}
+
+void Unpack::detach_definition(Instruction *Operand_) noexcept {
+  assert(Operand == Operand_);
+  utility::ignore(Operand_);
+  Operand = nullptr;
+}
+
+bool Unpack::classof(Instruction *Inst) {
+  return Inst->getKind() == IKind::Unpack;
+}
+
+/////////////////////////////////// Phi ////////////////////////////////////////
+Phi::Phi(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_)
+    : Instruction(IKind::Phi, Parent_) {
+  setArguments(Arguments_);
+}
+
+Phi::~Phi() noexcept {
+  for (auto *Argument : Arguments)
+    if (Argument != nullptr) Argument->remove_use(this);
+}
+
+llvm::ArrayRef<Instruction *> Phi::getArguments() const { return Arguments; }
+
+void Phi::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
+  for (auto *Argument : Arguments)
+    if (Argument != nullptr) Argument->remove_use(this);
+  for (auto *Argument : Arguments_)
+    if (Argument != nullptr) Argument->add_use(this);
+  Arguments.resize(Arguments_.size());
+  ranges::copy(Arguments_, Arguments.begin());
+}
+
+void Phi::detach_definition(Instruction *Operand_) noexcept {
+  assert(ranges::contains(Arguments, Operand_));
+  ranges::replace(Arguments, Operand_, nullptr);
+}
+
+bool Phi::classof(Instruction *Inst) { return Inst->getKind() == IKind::Phi; }
 } // namespace mir::instructions

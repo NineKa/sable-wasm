@@ -119,7 +119,7 @@ public:
   explicit BasicBlock(Function *Parent_);
 
   template <std::derived_from<Instruction> T, typename... ArgTypes>
-  T *append(ArgTypes &&...Args) {
+  T *BuildInst(ArgTypes &&...Args) {
     auto *Inst = new T(this, std::forward<ArgTypes>(Args)...); // NOLINT
     Instructions.push_back(Inst);
     return Inst;
@@ -139,6 +139,8 @@ public:
   auto getUsedSites() {
     return ranges::subrange(use_site_begin(), use_site_end());
   }
+
+  static llvm::ilist<Instruction> BasicBlock::*getSublistAccess(Instruction *);
 };
 } // namespace mir
 

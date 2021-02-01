@@ -7,6 +7,11 @@
 
 namespace mir {
 BasicBlock::BasicBlock(Function *Parent_) : Parent(Parent_) {}
+
+llvm::ilist<Instruction> BasicBlock::*
+BasicBlock::getSublistAccess(Instruction *) {
+  return &BasicBlock::Instructions;
+}
 } // namespace mir
 
 namespace mir::instructions {

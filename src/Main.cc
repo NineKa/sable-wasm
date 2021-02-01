@@ -32,10 +32,19 @@ int main(int argc, char const *argv[]) {
   using namespace mir::instructions;
 
   BasicBlock BB(nullptr);
-  auto *I0 = BB.append<Constant>(std::int32_t(1));
-  auto *I1 = BB.append<Constant>(std::int32_t(2));
-  auto *I3 = BB.append<IntBinaryOp>(IntBinaryOperator::Add, I0, I1);
-  fmt::print("{}\n", I3->getLHS() == nullptr);
-  BB.erase(I0);
-  fmt::print("{}\n", I3->getLHS() == nullptr);
+  Instruction *I0 = BB.BuildInst<Constant>(std::int32_t(1));
+  auto *I1 = BB.BuildInst<Constant>(std::int32_t(2));
+  auto *I3 = BB.BuildInst<IntBinaryOp>(IntBinaryOperator::Add, I0, I1);
+  fmt::print("{}\n", fmt::ptr(I0->getNextNode()));
+  (void)I0;
+  (void)I1;
+  (void)I3;
+
+  Function F(nullptr, bytecode::FunctionType({}, {bytecode::valuetypes::I32}));
+  auto *L0 = F.BuildLocal(bytecode::valuetypes::F32);
+  F.BuildLocal(bytecode::valuetypes::F64, L0);
+
+  for (auto const &L : F.getLocals()) {
+    fmt::print("{}  {}\n", L.getType(), L.isParameter());
+  }
 }

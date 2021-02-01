@@ -14,5 +14,6 @@ Checks: '
   -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
   -cppcoreguidelines-avoid-magic-numbers, 
   -misc-non-private-member-variables-in-classes,
-  -cppcoreguidelines-pro-bounds-pointer-arithmetic'
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-owning-memory'
 HeaderFilterRegex: '.*/src/.*'

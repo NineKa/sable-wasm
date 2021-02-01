@@ -16,11 +16,41 @@ class Function :
   bytecode::FunctionType Type;
   llvm::ilist<BasicBlock> BasicBlocks;
   llvm::ilist<Local> Locals;
+  std::optional<bytecode::views::Function> BytecodeView;
 
 public:
-  explicit Function(Module *Parent);
+  Function(Module *Parent_, bytecode::FunctionType Type_);
   Module *getParent() const { return Parent; }
   bytecode::FunctionType const &getType() const { return Type; }
+
+  using bb_iterator = decltype(BasicBlocks)::iterator;
+  using bb_const_iterator = decltype(BasicBlocks)::const_iterator;
+  bb_iterator basic_block_begin() { return BasicBlocks.begin(); }
+  bb_iterator basic_block_end() { return BasicBlocks.end(); }
+  bb_const_iterator basic_block_begin() const { return BasicBlocks.begin(); }
+  bb_const_iterator basic_block_end() const { return BasicBlocks.end(); }
+
+  auto getBasicBlocks() {
+    return ranges::subrange(basic_block_begin(), basic_block_end());
+  }
+  auto getBasicBlocks() const {
+    return ranges::subrange(basic_block_begin(), basic_block_end());
+  }
+
+  using local_iterator = decltype(Locals)::iterator;
+  using local_const_iterator = decltype(Locals)::const_iterator;
+  local_iterator local_begin() { return Locals.begin(); }
+  local_iterator local_end() { return Locals.end(); }
+  local_const_iterator local_begin() const { return Locals.begin(); }
+  local_const_iterator local_end() const { return Locals.end(); }
+
+  auto getLocals() { return ranges::subrange(local_begin(), local_end()); }
+  auto getLocals() const {
+    return ranges::subrange(local_begin(), local_end());
+  }
+
+  BasicBlock *BuildBasicBlock(BasicBlock *Before = nullptr);
+  Local *BuildLocal(bytecode::ValueType Type_, Local *Before = nullptr);
 
   static llvm::ilist<BasicBlock> Function::*getSublistAccess(BasicBlock *) {
     return &Function::BasicBlocks;
@@ -35,11 +65,17 @@ class Local :
     public detail::UseSiteTraceable<Local, Instruction> {
   Function *Parent;
   bytecode::ValueType Type;
+  bool IsParameter;
+
+  friend class Function;
+  struct IsParameterTag {};
+  Local(IsParameterTag, Function *Parent_, bytecode::ValueType Type_);
 
 public:
-  explicit Local(Function *Parent_, bytecode::ValueType Type_);
+  Local(Function *Parent_, bytecode::ValueType Type_);
   Function *getParent() const { return Parent; }
-  bytecode::ValueType const &getType() { return Type; }
+  bool isParameter() const { return IsParameter; }
+  bytecode::ValueType const &getType() const { return Type; }
 };
 
 class Global :
@@ -47,6 +83,7 @@ class Global :
     public detail::UseSiteTraceable<Global, Instruction> {
   Module *Parent;
   bytecode::GlobalType Type;
+  std::optional<bytecode::views::Global> BytecodeView;
 
 public:
   explicit Global(Module *Parent_);
@@ -71,10 +108,24 @@ class Table :
     public detail::UseSiteTraceable<Table, Instruction> {
   Module *Parent;
   bytecode::TableType Type;
+  std::optional<bytecode::views::Table> BytecodeView;
 
 public:
   explicit Table(Module *Parent_);
   Module *getParent() const { return Parent; }
+};
+
+class Module {
+  llvm::ilist<Function> Functions;
+  llvm::ilist<Global> Globals;
+  llvm::ilist<Memory> Memories;
+  llvm::ilist<Table> Tables;
+
+public:
+  static llvm::ilist<Function> Module::*getSublistAccess(Function *);
+  static llvm::ilist<Global> Module::*getSublistAccess(Global *);
+  static llvm::ilist<Memory> Module::*getSublistAccess(Memory *);
+  static llvm::ilist<Table> Module::*getSublistAccess(Table *);
 };
 } // namespace mir
 

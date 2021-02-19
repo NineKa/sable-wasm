@@ -22,8 +22,7 @@ class ASTNode {
   std::string Name;
 
 public:
-  ASTNode(ASTNodeKind Kind_, std::string Name_)
-      : Kind(Kind_), Name(std::move(Name_)) {}
+  ASTNode(ASTNodeKind Kind_) : Kind(Kind_), Name() {}
   ASTNode(ASTNode const &) = delete;
   ASTNode(ASTNode &&) noexcept = delete;
   ASTNode &operator=(ASTNode const &) = delete;

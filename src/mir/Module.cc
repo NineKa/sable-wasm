@@ -1,10 +1,8 @@
 #include "Module.h"
 
 namespace mir {
-Function::Function(
-    Module *Parent_, bytecode::FunctionType Type_, llvm::Twine Name_)
-    : ASTNode(ASTNodeKind::Function, Name_.str()), Parent(Parent_),
-      Type(std::move(Type_)) {
+Function::Function(Module *Parent_, bytecode::FunctionType Type_)
+    : ASTNode(ASTNodeKind::Function), Parent(Parent_), Type(std::move(Type_)) {
   for (auto const &ValueType : Type.getParamTypes()) {
     auto *AllocatedParameter =
         new Local(Local::IsParameterTag{}, this, ValueType);
@@ -61,26 +59,24 @@ Local *Function::BuildLocal(bytecode::ValueType Type_, Local *Before) {
   return AllocatedLocal;
 }
 
-Local::Local(
-    IsParameterTag, Function *Parent_, bytecode::ValueType Type_,
-    llvm::Twine Name_)
-    : ASTNode(ASTNodeKind::Local, Name_.str()), Parent(Parent_), Type(Type_),
+Local::Local(IsParameterTag, Function *Parent_, bytecode::ValueType Type_)
+    : ASTNode(ASTNodeKind::Local), Parent(Parent_), Type(Type_),
       IsParameter(true) {}
 
-Local::Local(Function *Parent_, bytecode::ValueType Type_, llvm::Twine Name_)
-    : ASTNode(ASTNodeKind::Local, Name_.str()), Parent(Parent_), Type(Type_),
+Local::Local(Function *Parent_, bytecode::ValueType Type_)
+    : ASTNode(ASTNodeKind::Local), Parent(Parent_), Type(Type_),
       IsParameter(false) {}
 
-Global::Global(Module *Parent_, bytecode::GlobalType Type_, llvm::Twine Name_)
-    : ASTNode(ASTNodeKind::Global, Name_.str()), Parent(Parent_), Type(Type_) {}
+Global::Global(Module *Parent_, bytecode::GlobalType Type_)
+    : ASTNode(ASTNodeKind::Global), Parent(Parent_), Type(Type_) {}
 
-Memory::Memory(Module *Parent_, bytecode::MemoryType Type_, llvm::Twine Name_)
-    : ASTNode(ASTNodeKind::Memory, Name_.str()), Parent(Parent_), Type(Type_) {}
+Memory::Memory(Module *Parent_, bytecode::MemoryType Type_)
+    : ASTNode(ASTNodeKind::Memory), Parent(Parent_), Type(Type_) {}
 
-Table::Table(Module *Parent_, bytecode::TableType Type_, llvm::Twine Name_)
-    : ASTNode(ASTNodeKind::Table, Name_.str()), Parent(Parent_), Type(Type_) {}
+Table::Table(Module *Parent_, bytecode::TableType Type_)
+    : ASTNode(ASTNodeKind::Table), Parent(Parent_), Type(Type_) {}
 
-Module::Module(llvm::Twine Name_) : ASTNode(ASTNodeKind::Module, Name_.str()) {}
+Module::Module() : ASTNode(ASTNodeKind::Module) {}
 
 Function *Module::BuildFunction(bytecode::FunctionType Type_) {
   auto *AllocatedFunction = new Function(this, std::move(Type_));

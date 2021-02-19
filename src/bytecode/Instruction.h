@@ -199,7 +199,7 @@ using Expression = std::vector<InstructionPtr>;
     BOOST_PP_LIST_FOR_EACH(                                                    \
         MAKE_MEMBER_DECL, _, BOOST_PP_ARRAY_TO_LIST(MemberArray))              \
                                                                                \
-    static constexpr bool classof(Instruction const *Other) {                  \
+    static bool classof(Instruction const *Other) {                            \
       assert(Other != nullptr);                                                \
       return inst_trait<Name>::opcode() == Other->getOpcode();                 \
     }                                                                          \

@@ -6,8 +6,8 @@
 #include <range/v3/algorithm/replace.hpp>
 
 namespace mir {
-BasicBlock::BasicBlock(Function *Parent_, llvm::Twine Name_)
-    : ASTNode(ASTNodeKind::BasicBlock, Name_.str()), Parent(Parent_) {}
+BasicBlock::BasicBlock(Function *Parent_)
+    : ASTNode(ASTNodeKind::BasicBlock), Parent(Parent_) {}
 
 llvm::ilist<Instruction> BasicBlock::*
 BasicBlock::getSublistAccess(Instruction *) {
@@ -18,8 +18,8 @@ BasicBlock::getSublistAccess(Instruction *) {
 namespace mir::instructions {
 using IKind = InstructionKind;
 ///////////////////////////////// Unreachable //////////////////////////////////
-Unreachable::Unreachable(BasicBlock *Parent, llvm::Twine Name_)
-    : Instruction(IKind::Unreachable, Parent, Name_) {}
+Unreachable::Unreachable(BasicBlock *Parent_)
+    : Instruction(IKind::Unreachable, Parent_) {}
 
 bool Unreachable::classof(Instruction *Inst) {
   return Inst->getInstructionKind() == IKind::Unreachable;
@@ -28,16 +28,16 @@ bool Unreachable::classof(Instruction *Inst) {
 //////////////////////////////////// Branch ////////////////////////////////////
 Branch::Branch(
     BasicBlock *Parent_, Instruction *Condition_, BasicBlock *Target_,
-    BasicBlock *FalseTarget_, llvm::Twine Name_)
-    : Instruction(IKind::Branch, Parent_, Name_), Condition(), Target(),
+    BasicBlock *FalseTarget_)
+    : Instruction(IKind::Branch, Parent_), Condition(), Target(),
       FalseTarget() {
   setCondition(Condition_);
   setTarget(Target_);
   setFalseTarget(FalseTarget_);
 }
 
-Branch::Branch(BasicBlock *Parent_, BasicBlock *Target_, llvm::Twine Name_)
-    : Instruction(IKind::Branch, Parent_, Name_), Condition(), Target(),
+Branch::Branch(BasicBlock *Parent_, BasicBlock *Target_)
+    : Instruction(IKind::Branch, Parent_), Condition(), Target(),
       FalseTarget() {
   setTarget(Target_);
 }
@@ -91,9 +91,8 @@ bool Branch::classof(Instruction *Inst) {
 ///////////////////////////////// BranchTable //////////////////////////////////
 BranchTable::BranchTable(
     BasicBlock *Parent_, Instruction *Operand_, BasicBlock *DefaultTarget_,
-    llvm::ArrayRef<BasicBlock *> Targets_, llvm::Twine Name_)
-    : Instruction(IKind::BranchTable, Parent_, Name_), Operand(),
-      DefaultTarget() {
+    llvm::ArrayRef<BasicBlock *> Targets_)
+    : Instruction(IKind::BranchTable, Parent_), Operand(), DefaultTarget() {
   setOperand(Operand_);
   setDefaultTarget(DefaultTarget_);
   setTargets(Targets_);
@@ -149,11 +148,11 @@ bool BranchTable::classof(Instruction *Inst) {
 }
 
 /////////////////////////////////// Return /////////////////////////////////////
-Return::Return(BasicBlock *Parent_, llvm::Twine Name_)
-    : Instruction(IKind::Return, Parent_, Name_), Operand(nullptr) {}
+Return::Return(BasicBlock *Parent_)
+    : Instruction(IKind::Return, Parent_), Operand(nullptr) {}
 
-Return::Return(BasicBlock *Parent_, Instruction *Operand_, llvm::Twine Name_)
-    : Instruction(IKind::Return, Parent_, Name_), Operand() {
+Return::Return(BasicBlock *Parent_, Instruction *Operand_)
+    : Instruction(IKind::Return, Parent_), Operand() {
   setOperand(Operand_);
 }
 
@@ -183,8 +182,8 @@ bool Return::classof(Instruction *Inst) {
 //////////////////////////////////// Call //////////////////////////////////////
 Call::Call(
     BasicBlock *Parent_, Function *Target_,
-    llvm::ArrayRef<Instruction *> Arguments_, llvm::Twine Name_)
-    : Instruction(IKind::Call, Parent_, Name_), Target() {
+    llvm::ArrayRef<Instruction *> Arguments_)
+    : Instruction(IKind::Call, Parent_), Target() {
   setTarget(Target_);
   setArguments(Arguments_);
 }
@@ -231,9 +230,9 @@ bool Call::classof(Instruction *Inst) {
 /////////////////////////////// CallIndirect ///////////////////////////////////
 CallIndirect::CallIndirect(
     BasicBlock *Parent_, Table *IndirectTable_, Instruction *Operand_,
-    bytecode::FunctionType ExpectType_, llvm::Twine Name_)
-    : Instruction(IKind::CallIndirect, Parent_, Name_), IndirectTable(),
-      Operand(), ExpectType(std::move(ExpectType_)) {
+    bytecode::FunctionType ExpectType_)
+    : Instruction(IKind::CallIndirect, Parent_), IndirectTable(), Operand(),
+      ExpectType(std::move(ExpectType_)) {
   setIndirectTable(IndirectTable_);
   setOperand(Operand_);
 }
@@ -284,8 +283,8 @@ bool CallIndirect::classof(Instruction *Inst) {
 ////////////////////////////////// Select //////////////////////////////////////
 Select::Select(
     BasicBlock *Parent_, Instruction *Condition_, Instruction *True_,
-    Instruction *False_, llvm::Twine Name_)
-    : Instruction(IKind::Select, Parent_, Name_), Condition(), True(), False() {
+    Instruction *False_)
+    : Instruction(IKind::Select, Parent_), Condition(), True(), False() {
   setCondition(Condition_);
   setTrue(True_);
   setFalse(False_);
@@ -331,8 +330,8 @@ bool Select::classof(Instruction *Inst) {
 }
 
 //////////////////////////////// LocalGet //////////////////////////////////////
-LocalGet::LocalGet(BasicBlock *Parent_, Local *Target_, llvm::Twine Name_)
-    : Instruction(IKind::LocalGet, Parent_, Name_), Target() {
+LocalGet::LocalGet(BasicBlock *Parent_, Local *Target_)
+    : Instruction(IKind::LocalGet, Parent_), Target() {
   setTarget(Target_);
 }
 
@@ -359,10 +358,8 @@ bool LocalGet::classof(Instruction *Inst) {
 }
 
 //////////////////////////////// LocalSet //////////////////////////////////////
-LocalSet::LocalSet(
-    BasicBlock *Parent_, Local *Target_, Instruction *Operand_,
-    llvm::Twine Name_)
-    : Instruction(IKind::LocalSet, Parent_, Name_), Target(), Operand() {
+LocalSet::LocalSet(BasicBlock *Parent_, Local *Target_, Instruction *Operand_)
+    : Instruction(IKind::LocalSet, Parent_), Target(), Operand() {
   setTarget(Target_);
   setOperand(Operand_);
 }
@@ -404,8 +401,8 @@ bool LocalSet::classof(Instruction *Inst) {
 }
 
 //////////////////////////////// GlobalGet /////////////////////////////////////
-GlobalGet::GlobalGet(BasicBlock *Parent_, Global *Target_, llvm::Twine Name_)
-    : Instruction(IKind::GlobalGet, Parent_, Name_), Target() {
+GlobalGet::GlobalGet(BasicBlock *Parent_, Global *Target_)
+    : Instruction(IKind::GlobalGet, Parent_), Target() {
   setTarget(Target_);
 }
 
@@ -433,9 +430,8 @@ bool GlobalGet::classof(Instruction *Inst) {
 
 //////////////////////////////// GlobalSet /////////////////////////////////////
 GlobalSet::GlobalSet(
-    BasicBlock *Parent_, Global *Target_, Instruction *Operand_,
-    llvm::Twine Name_)
-    : Instruction(IKind::GlobalSet, Parent_, Name_), Target(), Operand() {
+    BasicBlock *Parent_, Global *Target_, Instruction *Operand_)
+    : Instruction(IKind::GlobalSet, Parent_), Target(), Operand() {
   setTarget(Target_);
   setOperand(Operand_);
 }
@@ -477,14 +473,14 @@ bool GlobalSet::classof(Instruction *Inst) {
 }
 
 ///////////////////////////////// Constant /////////////////////////////////////
-Constant::Constant(BasicBlock *Parent_, std::int32_t Value_, llvm::Twine Name_)
-    : Instruction(IKind::Constant, Parent_, Name_), Value(Value_) {}
-Constant::Constant(BasicBlock *Parent_, std::int64_t Value_, llvm::Twine Name_)
-    : Instruction(IKind::Constant, Parent_, Name_), Value(Value_) {}
-Constant::Constant(BasicBlock *Parent_, float Value_, llvm::Twine Name_)
-    : Instruction(IKind::Constant, Parent_, Name_), Value(Value_) {}
-Constant::Constant(BasicBlock *Parent_, double Value_, llvm::Twine Name_)
-    : Instruction(IKind::Constant, Parent_, Name_), Value(Value_) {}
+Constant::Constant(BasicBlock *Parent_, std::int32_t Value_)
+    : Instruction(IKind::Constant, Parent_), Value(Value_) {}
+Constant::Constant(BasicBlock *Parent_, std::int64_t Value_)
+    : Instruction(IKind::Constant, Parent_), Value(Value_) {}
+Constant::Constant(BasicBlock *Parent_, float Value_)
+    : Instruction(IKind::Constant, Parent_), Value(Value_) {}
+Constant::Constant(BasicBlock *Parent_, double Value_)
+    : Instruction(IKind::Constant, Parent_), Value(Value_) {}
 
 std::int32_t Constant::getI32() const { return std::get<std::int32_t>(Value); }
 void Constant::setI32(std::int32_t Value_) { Value = Value_; }
@@ -510,10 +506,8 @@ bool Constant::classof(Instruction *Inst) {
 
 /////////////////////////////// IntUnaryOp /////////////////////////////////////
 IntUnaryOp::IntUnaryOp(
-    BasicBlock *Parent_, IntUnaryOperator Operator_, Instruction *Operand_,
-    llvm::Twine Name_)
-    : Instruction(IKind::IntUnaryOp, Parent_, Name_), Operator(Operator_),
-      Operand() {
+    BasicBlock *Parent_, IntUnaryOperator Operator_, Instruction *Operand_)
+    : Instruction(IKind::IntUnaryOp, Parent_), Operator(Operator_), Operand() {
   setOperand(Operand_);
 }
 
@@ -547,9 +541,9 @@ bool IntUnaryOp::classof(Instruction *Inst) {
 /////////////////////////////// IntBinaryOp ////////////////////////////////////
 IntBinaryOp::IntBinaryOp(
     BasicBlock *Parent_, IntBinaryOperator Operator_, Instruction *LHS_,
-    Instruction *RHS_, llvm::Twine Name_)
-    : Instruction(IKind::IntBinaryOp, Parent_, Name_), Operator(Operator_),
-      LHS(), RHS() {
+    Instruction *RHS_)
+    : Instruction(IKind::IntBinaryOp, Parent_), Operator(Operator_), LHS(),
+      RHS() {
   setLHS(LHS_);
   setRHS(RHS_);
 }
@@ -591,10 +585,8 @@ bool IntBinaryOp::classof(Instruction *Inst) {
 
 //////////////////////////////// FPUnaryOp /////////////////////////////////////
 FPUnaryOp::FPUnaryOp(
-    BasicBlock *Parent_, FPUnaryOperator Operator_, Instruction *Operand_,
-    llvm::Twine Name_)
-    : Instruction(IKind::FPUnaryOp, Parent_, Name_), Operator(Operator_),
-      Operand() {
+    BasicBlock *Parent_, FPUnaryOperator Operator_, Instruction *Operand_)
+    : Instruction(IKind::FPUnaryOp, Parent_), Operator(Operator_), Operand() {
   setOperand(Operand_);
 }
 
@@ -625,9 +617,9 @@ bool FPUnaryOp::classof(Instruction *Inst) {
 /////////////////////////////// FPBinaryOp /////////////////////////////////////
 FPBinaryOp::FPBinaryOp(
     BasicBlock *Parent_, FPBinaryOperator Operator_, Instruction *LHS_,
-    Instruction *RHS_, llvm::Twine Name_)
-    : Instruction(IKind::FPBinaryOp, Parent_, Name_), Operator(Operator_),
-      LHS(), RHS() {
+    Instruction *RHS_)
+    : Instruction(IKind::FPBinaryOp, Parent_), Operator(Operator_), LHS(),
+      RHS() {
   setLHS(LHS_);
   setRHS(RHS_);
 }
@@ -670,9 +662,9 @@ bool FPBinaryOp::classof(Instruction *Inst) {
 ////////////////////////////////// Load ////////////////////////////////////////
 Load::Load(
     BasicBlock *Parent_, Memory *LinearMemory_, bytecode::ValueType Type_,
-    Instruction *Address_, unsigned int LoadWidth_, llvm::Twine Name_)
-    : Instruction(IKind::Load, Parent_, Name_), LinearMemory(), Type(Type_),
-      Address(), LoadWidth(LoadWidth_) {
+    Instruction *Address_, unsigned int LoadWidth_)
+    : Instruction(IKind::Load, Parent_), LinearMemory(), Type(Type_), Address(),
+      LoadWidth(LoadWidth_) {
   setLinearMemory(LinearMemory_);
   setAddress(Address_);
 }
@@ -720,9 +712,9 @@ bool Load::classof(Instruction *Inst) {
 ///////////////////////////////// Store ////////////////////////////////////////
 Store::Store(
     BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
-    Instruction *Operand_, unsigned int StoreWidth_, llvm::Twine Name_)
-    : Instruction(IKind::Store, Parent_, Name_), LinearMemory(), Address(),
-      Operand(), StoreWidth(StoreWidth_) {
+    Instruction *Operand_, unsigned int StoreWidth_)
+    : Instruction(IKind::Store, Parent_), LinearMemory(), Address(), Operand(),
+      StoreWidth(StoreWidth_) {
   setLinearMemory(LinearMemory_);
   setAddress(Address_);
   setOperand(Operand_);
@@ -775,9 +767,8 @@ bool Store::classof(Instruction *Inst) {
 }
 
 ////////////////////////////// MemorySize //////////////////////////////////////
-MemorySize::MemorySize(
-    BasicBlock *Parent_, Memory *LinearMemory_, llvm::Twine Name_)
-    : Instruction(IKind::MemorySize, Parent_, Name_), LinearMemory() {
+MemorySize::MemorySize(BasicBlock *Parent_, Memory *LinearMemory_)
+    : Instruction(IKind::MemorySize, Parent_), LinearMemory() {
   setLinearMemory(LinearMemory_);
 }
 
@@ -805,10 +796,8 @@ bool MemorySize::classof(Instruction *Inst) {
 
 ////////////////////////////// MemoryGrow //////////////////////////////////////
 MemoryGrow::MemoryGrow(
-    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_,
-    llvm::Twine Name_)
-    : Instruction(IKind::MemoryGrow, Parent_, Name_), LinearMemory(),
-      GrowSize() {
+    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_)
+    : Instruction(IKind::MemoryGrow, Parent_), LinearMemory(), GrowSize() {
   setLinearMemory(LinearMemory_);
   setGrowSize(GrowSize_);
 }
@@ -851,10 +840,8 @@ bool MemoryGrow::classof(Instruction *Inst) {
 
 ////////////////////////////// MemoryGuard /////////////////////////////////////
 MemoryGuard::MemoryGuard(
-    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
-    llvm::Twine Name_)
-    : Instruction(IKind::MemoryGuard, Parent_, Name_), LinearMemory(),
-      Address() {
+    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_)
+    : Instruction(IKind::MemoryGuard, Parent_), LinearMemory(), Address() {
   setLinearMemory(LinearMemory_);
   setAddress(Address_);
 }
@@ -898,9 +885,9 @@ bool MemoryGuard::classof(Instruction *Inst) {
 ////////////////////////////////// Cast ////////////////////////////////////////
 Cast::Cast(
     BasicBlock *Parent_, CastMode Mode_, bytecode::ValueType Type_,
-    Instruction *Operand_, bool IsSigned_, llvm::Twine Name_)
-    : Instruction(IKind::Cast, Parent_, Name_), Mode(Mode_), Type(Type_),
-      Operand(), IsSigned(IsSigned_) {
+    Instruction *Operand_, bool IsSigned_)
+    : Instruction(IKind::Cast, Parent_), Mode(Mode_), Type(Type_), Operand(),
+      IsSigned(IsSigned_) {
   setOperand(Operand_);
 }
 
@@ -934,10 +921,8 @@ bool Cast::classof(Instruction *Inst) {
 
 ///////////////////////////////// Extend ///////////////////////////////////////
 Extend::Extend(
-    BasicBlock *Parent_, Instruction *Operand_, unsigned int FromWidth_,
-    llvm::Twine Name_)
-    : Instruction(IKind::Extend, Parent_, Name_), Operand(),
-      FromWidth(FromWidth_) {
+    BasicBlock *Parent_, Instruction *Operand_, unsigned int FromWidth_)
+    : Instruction(IKind::Extend, Parent_), Operand(), FromWidth(FromWidth_) {
   setOperand(Operand_);
 }
 
@@ -966,10 +951,8 @@ bool Extend::classof(Instruction *Inst) {
 }
 
 ////////////////////////////////// Pack ////////////////////////////////////////
-Pack::Pack(
-    BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_,
-    llvm::Twine Name_)
-    : Instruction(IKind::Pack, Parent_, Name_) {
+Pack::Pack(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_)
+    : Instruction(IKind::Pack, Parent_) {
   setArguments(Arguments_);
 }
 
@@ -999,10 +982,8 @@ bool Pack::classof(Instruction *Inst) {
 }
 
 ///////////////////////////////// Unpack ///////////////////////////////////////
-Unpack::Unpack(
-    BasicBlock *Parent_, unsigned int Index_, Instruction *Operand_,
-    llvm::Twine Name_)
-    : Instruction(IKind::Unpack, Parent_, Name_), Index(Index_), Operand() {
+Unpack::Unpack(BasicBlock *Parent_, unsigned int Index_, Instruction *Operand_)
+    : Instruction(IKind::Unpack, Parent_), Index(Index_), Operand() {
   setOperand(Operand_);
 }
 
@@ -1031,10 +1012,8 @@ bool Unpack::classof(Instruction *Inst) {
 }
 
 /////////////////////////////////// Phi ////////////////////////////////////////
-Phi::Phi(
-    BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_,
-    llvm::Twine Name_)
-    : Instruction(IKind::Phi, Parent_, Name_) {
+Phi::Phi(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_)
+    : Instruction(IKind::Phi, Parent_) {
   setArguments(Arguments_);
 }
 

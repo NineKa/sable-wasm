@@ -21,8 +21,7 @@ class Function :
   llvm::ilist<Local> Locals;
 
 public:
-  Function(
-      Module *Parent_, bytecode::FunctionType Type_, llvm::Twine Name_ = "");
+  Function(Module *Parent_, bytecode::FunctionType Type_);
 
   Module *getParent() const { return Parent; }
   bytecode::FunctionType const &getType() const { return Type; }
@@ -84,12 +83,10 @@ class Local :
 
   friend class Function;
   struct IsParameterTag {};
-  Local(
-      IsParameterTag, Function *Parent_, bytecode::ValueType Type_,
-      llvm::Twine Name_ = "");
+  Local(IsParameterTag, Function *Parent_, bytecode::ValueType Type_);
 
 public:
-  Local(Function *Parent_, bytecode::ValueType Type_, llvm::Twine Name_ = "");
+  Local(Function *Parent_, bytecode::ValueType Type_);
   Function *getParent() const { return Parent; }
   bytecode::ValueType const &getType() const { return Type; }
   bool isParameter() const { return IsParameter; }
@@ -103,7 +100,7 @@ class Global :
   bytecode::GlobalType Type;
 
 public:
-  Global(Module *Parent_, bytecode::GlobalType Type_, llvm::Twine Name_ = "");
+  Global(Module *Parent_, bytecode::GlobalType Type_);
   Module *getParent() const { return Parent; }
   bytecode::GlobalType const &getType() const { return Type; }
 };
@@ -116,7 +113,7 @@ class Memory :
   bytecode::MemoryType Type;
 
 public:
-  Memory(Module *Parent_, bytecode::MemoryType Type_, llvm::Twine Name_ = "");
+  Memory(Module *Parent_, bytecode::MemoryType Type_);
   Module *getParent() const { return Parent; }
   bytecode::MemoryType const &getType() const { return Type; }
 };
@@ -130,7 +127,7 @@ class Table :
   std::optional<bytecode::views::Table> BytecodeView;
 
 public:
-  Table(Module *Parent_, bytecode::TableType Type_, llvm::Twine Name_ = "");
+  Table(Module *Parent_, bytecode::TableType Type_);
   Module *getParent() const { return Parent; }
   bytecode::TableType const &getType() const { return Type; }
 };
@@ -142,7 +139,7 @@ class Module : public ASTNode {
   llvm::ilist<Table> Tables;
 
 public:
-  explicit Module(llvm::Twine Name_ = "");
+  Module();
   using func_iterator = decltype(Functions)::iterator;
   using func_const_iterator = decltype(Functions)::const_iterator;
   func_iterator function_begin() { return Functions.begin(); }

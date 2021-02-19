@@ -5,7 +5,6 @@
 #include "ASTNode.h"
 
 #include <llvm/ADT/ArrayRef.h>
-#include <llvm/ADT/Twine.h>
 #include <llvm/ADT/ilist.h>
 #include <llvm/ADT/ilist_node.h>
 
@@ -82,10 +81,8 @@ class Instruction :
   BasicBlock *Parent = nullptr;
 
 protected:
-  explicit Instruction(
-      InstructionKind Kind_, BasicBlock *Parent_, llvm::Twine Name_)
-      : ASTNode(ASTNodeKind::Instruction, Name_.str()), Kind(Kind_),
-        Parent(Parent_) {}
+  explicit Instruction(InstructionKind Kind_, BasicBlock *Parent_)
+      : ASTNode(ASTNodeKind::Instruction), Kind(Kind_), Parent(Parent_) {}
 
 public:
   Instruction(Instruction const &) = delete;
@@ -147,7 +144,7 @@ class BasicBlock :
   llvm::ilist<Instruction> Instructions;
 
 public:
-  explicit BasicBlock(Function *Parent_, llvm::Twine Name = "");
+  explicit BasicBlock(Function *Parent_);
 
   template <std::derived_from<Instruction> T, typename... ArgTypes>
   T *BuildInst(ArgTypes &&...Args) {
@@ -190,7 +187,7 @@ namespace mir::instructions {
 ///////////////////////////////// Unreachable //////////////////////////////////
 class Unreachable : public Instruction {
 public:
-  explicit Unreachable(BasicBlock *Parent_, llvm::Twine Name_ = "");
+  explicit Unreachable(BasicBlock *Parent_);
   static bool classof(Instruction *Inst);
 };
 
@@ -203,8 +200,8 @@ class Branch : public Instruction {
 public:
   Branch(
       BasicBlock *Parent_, Instruction *Condition_, BasicBlock *TargetTrue_,
-      BasicBlock *TargetFalse_, llvm::Twine Name_ = "");
-  Branch(BasicBlock *Parent_, BasicBlock *Target_, llvm::Twine Name_ = "");
+      BasicBlock *TargetFalse_);
+  Branch(BasicBlock *Parent_, BasicBlock *Target_);
   Branch(Branch const &) = delete;
   Branch(Branch &&) noexcept = delete;
   Branch &operator=(Branch const &) = delete;
@@ -232,7 +229,7 @@ class BranchTable : public Instruction {
 public:
   BranchTable(
       BasicBlock *Parent_, Instruction *Operand_, BasicBlock *DefaultTarget_,
-      llvm::ArrayRef<BasicBlock *> Targets_, llvm::Twine Name_ = "");
+      llvm::ArrayRef<BasicBlock *> Targets_);
   BranchTable(BranchTable const &) = delete;
   BranchTable(BranchTable &&) noexcept = delete;
   BranchTable &operator=(BranchTable const &) = delete;
@@ -254,8 +251,8 @@ class Return : public Instruction {
   Instruction *Operand;
 
 public:
-  explicit Return(BasicBlock *Parent_, llvm::Twine Name_ = "");
-  Return(BasicBlock *Parent_, Instruction *Operand_, llvm::Twine Name_ = "");
+  explicit Return(BasicBlock *Parent_);
+  Return(BasicBlock *Parent_, Instruction *Operand_);
   Return(Return const &) = delete;
   Return(Return &&) noexcept = delete;
   Return &operator=(Return const &) = delete;
@@ -276,7 +273,7 @@ class Call : public Instruction {
 public:
   Call(
       BasicBlock *Parent_, Function *Target_,
-      llvm::ArrayRef<Instruction *> Arguments_, llvm::Twine Name_ = "");
+      llvm::ArrayRef<Instruction *> Arguments_);
   Call(Call const &) = delete;
   Call(Call &&) noexcept = delete;
   Call &operator=(Call const &) = delete;
@@ -300,7 +297,7 @@ class CallIndirect : public Instruction {
 public:
   CallIndirect(
       BasicBlock *Parent_, Table *IndirectTable_, Instruction *Operand_,
-      bytecode::FunctionType ExpectType_, llvm::Twine Name_ = "");
+      bytecode::FunctionType ExpectType_);
   CallIndirect(CallIndirect const &) = delete;
   CallIndirect(CallIndirect &&) noexcept = delete;
   CallIndirect &operator=(CallIndirect const &) = delete;
@@ -326,7 +323,7 @@ class Select : public Instruction {
 public:
   Select(
       BasicBlock *Parent_, Instruction *Condition_, Instruction *True_,
-      Instruction *False_, llvm::Twine Name_ = "");
+      Instruction *False_);
   Select(Select const &) = delete;
   Select(Select &&) noexcept = delete;
   Select &operator=(Select const &) = delete;
@@ -347,7 +344,7 @@ class LocalGet : public Instruction {
   Local *Target;
 
 public:
-  LocalGet(BasicBlock *Parent_, Local *Target_, llvm::Twine Name_ = "");
+  LocalGet(BasicBlock *Parent_, Local *Target_);
   LocalGet(LocalGet const &) = delete;
   LocalGet(LocalGet &&) noexcept = delete;
   LocalGet &operator=(LocalGet const &) = delete;
@@ -365,9 +362,7 @@ class LocalSet : public Instruction {
   Instruction *Operand;
 
 public:
-  LocalSet(
-      BasicBlock *Parent_, Local *Target_, Instruction *Operand_,
-      llvm::Twine Name_ = "");
+  LocalSet(BasicBlock *Parent_, Local *Target_, Instruction *Operand_);
   LocalSet(LocalSet const &) = delete;
   LocalSet(LocalSet &&) noexcept = delete;
   LocalSet &operator=(LocalSet const &) = delete;
@@ -387,7 +382,7 @@ class GlobalGet : public Instruction {
   Global *Target;
 
 public:
-  GlobalGet(BasicBlock *Parent_, Global *Target_, llvm::Twine Name_ = "");
+  GlobalGet(BasicBlock *Parent_, Global *Target_);
   GlobalGet(GlobalGet const &) = delete;
   GlobalGet(GlobalGet &&) noexcept = delete;
   GlobalGet &operator=(GlobalGet const &) = delete;
@@ -405,9 +400,7 @@ class GlobalSet : public Instruction {
   Instruction *Operand;
 
 public:
-  GlobalSet(
-      BasicBlock *Parent_, Global *Target_, Instruction *Operand_,
-      llvm::Twine Name_ = "");
+  GlobalSet(BasicBlock *Parent_, Global *Target_, Instruction *Operand_);
   GlobalSet(GlobalSet const &) = delete;
   GlobalSet(GlobalSet &&) noexcept = delete;
   GlobalSet &operator=(GlobalSet const &) = delete;
@@ -427,10 +420,10 @@ class Constant : public Instruction {
   std::variant<std::int32_t, std::int64_t, float, double> Value;
 
 public:
-  Constant(BasicBlock *Parent_, std::int32_t Value_, llvm::Twine Name_ = "");
-  Constant(BasicBlock *Parent_, std::int64_t Value_, llvm::Twine Name_ = "");
-  Constant(BasicBlock *Parent_, float Value_, llvm::Twine Name_ = "");
-  Constant(BasicBlock *Parent_, double Value_, llvm::Twine Name_ = "");
+  Constant(BasicBlock *Parent_, std::int32_t Value_);
+  Constant(BasicBlock *Parent_, std::int64_t Value_);
+  Constant(BasicBlock *Parent_, float Value_);
+  Constant(BasicBlock *Parent_, double Value_);
   std::int32_t getI32() const;
   void setI32(std::int32_t Value_);
   std::int64_t getI64() const;
@@ -451,8 +444,7 @@ class IntUnaryOp : public Instruction {
 
 public:
   IntUnaryOp(
-      BasicBlock *Parent_, IntUnaryOperator Operator_, Instruction *Operand_,
-      llvm::Twine Name_ = "");
+      BasicBlock *Parent_, IntUnaryOperator Operator_, Instruction *Operand_);
   IntUnaryOp(IntUnaryOp const &) = delete;
   IntUnaryOp(IntUnaryOp &&) noexcept = delete;
   IntUnaryOp &operator=(IntUnaryOp const &) = delete;
@@ -482,7 +474,7 @@ class IntBinaryOp : public Instruction {
 public:
   IntBinaryOp(
       BasicBlock *Parent_, IntBinaryOperator Operator_, Instruction *LHS_,
-      Instruction *RHS_, llvm::Twine Name_ = "");
+      Instruction *RHS_);
   IntBinaryOp(IntBinaryOp const &) = delete;
   IntBinaryOp(IntBinaryOp &&) noexcept = delete;
   IntBinaryOp &operator=(IntBinaryOp const &) = delete;
@@ -509,8 +501,7 @@ class FPUnaryOp : public Instruction {
 
 public:
   FPUnaryOp(
-      BasicBlock *Parent_, FPUnaryOperator Operator_, Instruction *Operand_,
-      llvm::Twine Name_ = "");
+      BasicBlock *Parent_, FPUnaryOperator Operator_, Instruction *Operand_);
   FPUnaryOp(FPUnaryOp const &) = delete;
   FPUnaryOp(FPUnaryOp &&) = delete;
   FPUnaryOp &operator=(FPUnaryOp const &) = delete;
@@ -538,7 +529,7 @@ class FPBinaryOp : public Instruction {
 public:
   FPBinaryOp(
       BasicBlock *Parent_, FPBinaryOperator Operator_, Instruction *LHS_,
-      Instruction *RHS_, llvm::Twine Name_ = "");
+      Instruction *RHS_);
   FPBinaryOp(FPBinaryOp const &) = delete;
   FPBinaryOp(FPBinaryOp &&) noexcept = delete;
   FPBinaryOp &operator=(FPBinaryOp const &) = delete;
@@ -564,7 +555,7 @@ class Load : public Instruction {
 public:
   Load(
       BasicBlock *Parent_, Memory *LinearMemory_, bytecode::ValueType Type_,
-      Instruction *Address_, unsigned LoadWidth_, llvm::Twine Name_ = "");
+      Instruction *Address_, unsigned LoadWidth_);
   Load(Load const &) = delete;
   Load(Load &&) noexcept = delete;
   Load &operator=(Load const &) = delete;
@@ -593,7 +584,7 @@ class Store : public Instruction {
 public:
   Store(
       BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
-      Instruction *Operand_, unsigned StoreWidth_, llvm::Twine Name_ = "");
+      Instruction *Operand_, unsigned StoreWidth_);
   Store(Store const &) = delete;
   Store(Store &&) noexcept = delete;
   Store &operator=(Store const &) = delete;
@@ -617,8 +608,7 @@ class MemorySize : public Instruction {
   Memory *LinearMemory;
 
 public:
-  MemorySize(
-      BasicBlock *Parent_, Memory *LinearMemory_, llvm::Twine Name_ = "");
+  MemorySize(BasicBlock *Parent_, Memory *LinearMemory_);
   MemorySize(MemorySize const &) = delete;
   MemorySize(MemorySize &&) noexcept = delete;
   MemorySize &operator=(MemorySize const &) = delete;
@@ -637,8 +627,7 @@ class MemoryGrow : public Instruction {
 
 public:
   MemoryGrow(
-      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_,
-      llvm::Twine Name_ = "");
+      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_);
   MemoryGrow(MemoryGrow const &) = delete;
   MemoryGrow(MemoryGrow &&) noexcept = delete;
   MemoryGrow &operator=(MemoryGrow const &) = delete;
@@ -660,8 +649,7 @@ class MemoryGuard : public Instruction {
 
 public:
   MemoryGuard(
-      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
-      llvm::Twine Name_ = "");
+      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_);
   MemoryGuard(MemoryGuard const &) = delete;
   MemoryGuard(MemoryGuard &&) noexcept = delete;
   MemoryGuard &operator=(MemoryGuard const &) = delete;
@@ -687,7 +675,7 @@ class Cast : public Instruction {
 public:
   Cast(
       BasicBlock *Parent_, CastMode Mode_, bytecode::ValueType Type_,
-      Instruction *Operand_, bool IsSigned_, llvm::Twine Name_ = "");
+      Instruction *Operand_, bool IsSigned_);
   Cast(Cast const &) = delete;
   Cast(Cast &&) noexcept = delete;
   Cast &operator=(Cast const &) = delete;
@@ -711,9 +699,7 @@ class Extend : public Instruction {
   unsigned FromWidth;
 
 public:
-  Extend(
-      BasicBlock *Parent_, Instruction *Operand_, unsigned FromWidth_,
-      llvm::Twine Name_ = "");
+  Extend(BasicBlock *Parent_, Instruction *Operand_, unsigned FromWidth_);
   Extend(Extend const &) = delete;
   Extend(Extend &&) noexcept = delete;
   Extend &operator=(Extend const &) = delete;
@@ -732,9 +718,7 @@ class Pack : public Instruction {
   std::vector<Instruction *> Arguments;
 
 public:
-  Pack(
-      BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_,
-      llvm::Twine Name_ = "");
+  Pack(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_);
   Pack(Pack const &) = delete;
   Pack(Pack &&) noexcept = delete;
   Pack &operator=(Pack const &) = delete;
@@ -752,9 +736,7 @@ class Unpack : public Instruction {
   Instruction *Operand;
 
 public:
-  Unpack(
-      BasicBlock *Parent_, unsigned Index_, Instruction *Operand_,
-      llvm::Twine Name_ = "");
+  Unpack(BasicBlock *Parent_, unsigned Index_, Instruction *Operand_);
   Unpack(Unpack const &) = delete;
   Unpack(Unpack &&) = delete;
   Unpack &operator=(Unpack const &) = delete;
@@ -773,8 +755,7 @@ class Phi : public Instruction {
   std::vector<Instruction *> Arguments;
 
 public:
-  Phi(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_,
-      llvm::Twine Name_ = "");
+  Phi(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_);
   Phi(Phi const &) = delete;
   Phi(Phi &&) noexcept = delete;
   Phi &operator=(Phi const &) = delete;

@@ -11,6 +11,8 @@
 
 #include <mio/mmap.hpp>
 
+#include "mir/ASTNode.h"
+
 int main(int argc, char const *argv[]) {
   (void)argc;
   (void)argv;

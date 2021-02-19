@@ -2,8 +2,10 @@
 #define SABLE_INCLUDE_GUARD_MIR_IR
 
 #include "../bytecode/Type.h"
+#include "ASTNode.h"
 
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/Twine.h>
 #include <llvm/ADT/ilist.h>
 #include <llvm/ADT/ilist_node.h>
 
@@ -73,23 +75,26 @@ enum class InstructionKind : std::uint8_t {
 };
 
 class Instruction :
+    public ASTNode,
     public llvm::ilist_node_with_parent<Instruction, BasicBlock>,
     public detail::UseSiteTraceable<Instruction, Instruction> {
   InstructionKind Kind;
   BasicBlock *Parent = nullptr;
 
 protected:
-  explicit Instruction(InstructionKind Kind_, BasicBlock *BB)
-      : Kind(Kind_), Parent(BB) {}
+  explicit Instruction(
+      InstructionKind Kind_, BasicBlock *Parent_, llvm::Twine Name_)
+      : ASTNode(ASTNodeKind::Instruction, Name_.str()), Kind(Kind_),
+        Parent(Parent_) {}
 
 public:
   Instruction(Instruction const &) = delete;
   Instruction(Instruction &&) noexcept = delete;
   Instruction &operator=(Instruction const &) = delete;
   Instruction &operator=(Instruction &&) noexcept = delete;
-  virtual ~Instruction() noexcept = default;
+  ~Instruction() noexcept override = default;
   BasicBlock *getParent() const { return Parent; }
-  InstructionKind getKind() const { return Kind; }
+  InstructionKind getInstructionKind() const { return Kind; }
 
   auto getUsedSites() {
     return ranges::subrange(use_site_begin(), use_site_end());
@@ -107,16 +112,42 @@ public:
   virtual void detach_definition(Global *) noexcept {}
   virtual void detach_definition(Memory *) noexcept {}
   virtual void detach_definition(Table *) noexcept {}
+
+  static bool classof(ASTNode const *Node) {
+    return Node->getASTNodeKind() == ASTNodeKind::Instruction;
+  }
 };
 
+template <typename T>
+concept instruction = ast_node<T> &&
+    std::derived_from<T, Instruction> &&requires() {
+  { T::classof(std::declval<Instruction const *>()) }
+  ->std::convertible_to<bool>;
+};
+
+template <instruction T> bool is_a(Instruction const *Inst) {
+  return T::classof(Inst);
+}
+
+template <instruction T> T *dyn_cast(Instruction *Inst) {
+  assert(is_a<T>(Inst));
+  return static_cast<T *>(Inst);
+}
+
+template <instruction T> T const *dyn_cast(Instruction const *Inst) {
+  assert(is_a<T>(Inst));
+  return static_cast<T const *>(Inst);
+}
+
 class BasicBlock :
+    public ASTNode,
     public llvm::ilist_node_with_parent<BasicBlock, Function>,
     public detail::UseSiteTraceable<BasicBlock, Instruction> {
   Function *Parent;
   llvm::ilist<Instruction> Instructions;
 
 public:
-  explicit BasicBlock(Function *Parent_);
+  explicit BasicBlock(Function *Parent_, llvm::Twine Name = "");
 
   template <std::derived_from<Instruction> T, typename... ArgTypes>
   T *BuildInst(ArgTypes &&...Args) {
@@ -148,6 +179,10 @@ public:
   }
 
   static llvm::ilist<Instruction> BasicBlock::*getSublistAccess(Instruction *);
+
+  static bool classof(ASTNode const *Node) {
+    return Node->getASTNodeKind() == ASTNodeKind::BasicBlock;
+  }
 };
 } // namespace mir
 
@@ -155,7 +190,7 @@ namespace mir::instructions {
 ///////////////////////////////// Unreachable //////////////////////////////////
 class Unreachable : public Instruction {
 public:
-  explicit Unreachable(BasicBlock *Parent_);
+  explicit Unreachable(BasicBlock *Parent_, llvm::Twine Name_ = "");
   static bool classof(Instruction *Inst);
 };
 
@@ -168,8 +203,8 @@ class Branch : public Instruction {
 public:
   Branch(
       BasicBlock *Parent_, Instruction *Condition_, BasicBlock *TargetTrue_,
-      BasicBlock *TargetFalse_);
-  Branch(BasicBlock *Parent_, BasicBlock *Target_);
+      BasicBlock *TargetFalse_, llvm::Twine Name_ = "");
+  Branch(BasicBlock *Parent_, BasicBlock *Target_, llvm::Twine Name_ = "");
   Branch(Branch const &) = delete;
   Branch(Branch &&) noexcept = delete;
   Branch &operator=(Branch const &) = delete;
@@ -197,9 +232,7 @@ class BranchTable : public Instruction {
 public:
   BranchTable(
       BasicBlock *Parent_, Instruction *Operand_, BasicBlock *DefaultTarget_,
-      llvm::ArrayRef<BasicBlock *> Targets_);
-  BranchTable(
-      BasicBlock *Parent_, Instruction *Operand_, BasicBlock *DefaultTarget_);
+      llvm::ArrayRef<BasicBlock *> Targets_, llvm::Twine Name_ = "");
   BranchTable(BranchTable const &) = delete;
   BranchTable(BranchTable &&) noexcept = delete;
   BranchTable &operator=(BranchTable const &) = delete;
@@ -221,8 +254,8 @@ class Return : public Instruction {
   Instruction *Operand;
 
 public:
-  explicit Return(BasicBlock *Parent_);
-  Return(BasicBlock *Parent_, Instruction *Operand_);
+  explicit Return(BasicBlock *Parent_, llvm::Twine Name_ = "");
+  Return(BasicBlock *Parent_, Instruction *Operand_, llvm::Twine Name_ = "");
   Return(Return const &) = delete;
   Return(Return &&) noexcept = delete;
   Return &operator=(Return const &) = delete;
@@ -243,7 +276,7 @@ class Call : public Instruction {
 public:
   Call(
       BasicBlock *Parent_, Function *Target_,
-      llvm::ArrayRef<Instruction *> Arguments_);
+      llvm::ArrayRef<Instruction *> Arguments_, llvm::Twine Name_ = "");
   Call(Call const &) = delete;
   Call(Call &&) noexcept = delete;
   Call &operator=(Call const &) = delete;
@@ -267,7 +300,7 @@ class CallIndirect : public Instruction {
 public:
   CallIndirect(
       BasicBlock *Parent_, Table *IndirectTable_, Instruction *Operand_,
-      bytecode::FunctionType ExpectType_);
+      bytecode::FunctionType ExpectType_, llvm::Twine Name_ = "");
   CallIndirect(CallIndirect const &) = delete;
   CallIndirect(CallIndirect &&) noexcept = delete;
   CallIndirect &operator=(CallIndirect const &) = delete;
@@ -293,7 +326,7 @@ class Select : public Instruction {
 public:
   Select(
       BasicBlock *Parent_, Instruction *Condition_, Instruction *True_,
-      Instruction *False_);
+      Instruction *False_, llvm::Twine Name_ = "");
   Select(Select const &) = delete;
   Select(Select &&) noexcept = delete;
   Select &operator=(Select const &) = delete;
@@ -314,7 +347,7 @@ class LocalGet : public Instruction {
   Local *Target;
 
 public:
-  LocalGet(BasicBlock *Parent_, Local *Target_);
+  LocalGet(BasicBlock *Parent_, Local *Target_, llvm::Twine Name_ = "");
   LocalGet(LocalGet const &) = delete;
   LocalGet(LocalGet &&) noexcept = delete;
   LocalGet &operator=(LocalGet const &) = delete;
@@ -332,7 +365,9 @@ class LocalSet : public Instruction {
   Instruction *Operand;
 
 public:
-  LocalSet(BasicBlock *Parent_, Local *Target_, Instruction *Operand_);
+  LocalSet(
+      BasicBlock *Parent_, Local *Target_, Instruction *Operand_,
+      llvm::Twine Name_ = "");
   LocalSet(LocalSet const &) = delete;
   LocalSet(LocalSet &&) noexcept = delete;
   LocalSet &operator=(LocalSet const &) = delete;
@@ -352,7 +387,7 @@ class GlobalGet : public Instruction {
   Global *Target;
 
 public:
-  GlobalGet(BasicBlock *Parent_, Global *Target_);
+  GlobalGet(BasicBlock *Parent_, Global *Target_, llvm::Twine Name_ = "");
   GlobalGet(GlobalGet const &) = delete;
   GlobalGet(GlobalGet &&) noexcept = delete;
   GlobalGet &operator=(GlobalGet const &) = delete;
@@ -370,7 +405,9 @@ class GlobalSet : public Instruction {
   Instruction *Operand;
 
 public:
-  GlobalSet(BasicBlock *Parent_, Global *Target_, Instruction *Operand_);
+  GlobalSet(
+      BasicBlock *Parent_, Global *Target_, Instruction *Operand_,
+      llvm::Twine Name_ = "");
   GlobalSet(GlobalSet const &) = delete;
   GlobalSet(GlobalSet &&) noexcept = delete;
   GlobalSet &operator=(GlobalSet const &) = delete;
@@ -390,10 +427,10 @@ class Constant : public Instruction {
   std::variant<std::int32_t, std::int64_t, float, double> Value;
 
 public:
-  Constant(BasicBlock *Parent_, std::int32_t Value_);
-  Constant(BasicBlock *Parent_, std::int64_t Value_);
-  Constant(BasicBlock *Parent_, float Value_);
-  Constant(BasicBlock *Parent_, double Value_);
+  Constant(BasicBlock *Parent_, std::int32_t Value_, llvm::Twine Name_ = "");
+  Constant(BasicBlock *Parent_, std::int64_t Value_, llvm::Twine Name_ = "");
+  Constant(BasicBlock *Parent_, float Value_, llvm::Twine Name_ = "");
+  Constant(BasicBlock *Parent_, double Value_, llvm::Twine Name_ = "");
   std::int32_t getI32() const;
   void setI32(std::int32_t Value_);
   std::int64_t getI64() const;
@@ -414,7 +451,8 @@ class IntUnaryOp : public Instruction {
 
 public:
   IntUnaryOp(
-      BasicBlock *Parent_, IntUnaryOperator Operator_, Instruction *Operand_);
+      BasicBlock *Parent_, IntUnaryOperator Operator_, Instruction *Operand_,
+      llvm::Twine Name_ = "");
   IntUnaryOp(IntUnaryOp const &) = delete;
   IntUnaryOp(IntUnaryOp &&) noexcept = delete;
   IntUnaryOp &operator=(IntUnaryOp const &) = delete;
@@ -444,7 +482,7 @@ class IntBinaryOp : public Instruction {
 public:
   IntBinaryOp(
       BasicBlock *Parent_, IntBinaryOperator Operator_, Instruction *LHS_,
-      Instruction *RHS_);
+      Instruction *RHS_, llvm::Twine Name_ = "");
   IntBinaryOp(IntBinaryOp const &) = delete;
   IntBinaryOp(IntBinaryOp &&) noexcept = delete;
   IntBinaryOp &operator=(IntBinaryOp const &) = delete;
@@ -471,7 +509,8 @@ class FPUnaryOp : public Instruction {
 
 public:
   FPUnaryOp(
-      BasicBlock *Parent_, FPUnaryOperator Operator_, Instruction *Operand_);
+      BasicBlock *Parent_, FPUnaryOperator Operator_, Instruction *Operand_,
+      llvm::Twine Name_ = "");
   FPUnaryOp(FPUnaryOp const &) = delete;
   FPUnaryOp(FPUnaryOp &&) = delete;
   FPUnaryOp &operator=(FPUnaryOp const &) = delete;
@@ -499,7 +538,7 @@ class FPBinaryOp : public Instruction {
 public:
   FPBinaryOp(
       BasicBlock *Parent_, FPBinaryOperator Operator_, Instruction *LHS_,
-      Instruction *RHS_);
+      Instruction *RHS_, llvm::Twine Name_ = "");
   FPBinaryOp(FPBinaryOp const &) = delete;
   FPBinaryOp(FPBinaryOp &&) noexcept = delete;
   FPBinaryOp &operator=(FPBinaryOp const &) = delete;
@@ -525,7 +564,7 @@ class Load : public Instruction {
 public:
   Load(
       BasicBlock *Parent_, Memory *LinearMemory_, bytecode::ValueType Type_,
-      Instruction *Address_, unsigned LoadWidth_);
+      Instruction *Address_, unsigned LoadWidth_, llvm::Twine Name_ = "");
   Load(Load const &) = delete;
   Load(Load &&) noexcept = delete;
   Load &operator=(Load const &) = delete;
@@ -554,7 +593,7 @@ class Store : public Instruction {
 public:
   Store(
       BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
-      Instruction *Operand_, unsigned StoreWidth_);
+      Instruction *Operand_, unsigned StoreWidth_, llvm::Twine Name_ = "");
   Store(Store const &) = delete;
   Store(Store &&) noexcept = delete;
   Store &operator=(Store const &) = delete;
@@ -578,7 +617,8 @@ class MemorySize : public Instruction {
   Memory *LinearMemory;
 
 public:
-  MemorySize(BasicBlock *Parent_, Memory *LinearMemory_);
+  MemorySize(
+      BasicBlock *Parent_, Memory *LinearMemory_, llvm::Twine Name_ = "");
   MemorySize(MemorySize const &) = delete;
   MemorySize(MemorySize &&) noexcept = delete;
   MemorySize &operator=(MemorySize const &) = delete;
@@ -597,7 +637,8 @@ class MemoryGrow : public Instruction {
 
 public:
   MemoryGrow(
-      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_);
+      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_,
+      llvm::Twine Name_ = "");
   MemoryGrow(MemoryGrow const &) = delete;
   MemoryGrow(MemoryGrow &&) noexcept = delete;
   MemoryGrow &operator=(MemoryGrow const &) = delete;
@@ -619,7 +660,8 @@ class MemoryGuard : public Instruction {
 
 public:
   MemoryGuard(
-      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_);
+      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
+      llvm::Twine Name_ = "");
   MemoryGuard(MemoryGuard const &) = delete;
   MemoryGuard(MemoryGuard &&) noexcept = delete;
   MemoryGuard &operator=(MemoryGuard const &) = delete;
@@ -645,7 +687,7 @@ class Cast : public Instruction {
 public:
   Cast(
       BasicBlock *Parent_, CastMode Mode_, bytecode::ValueType Type_,
-      Instruction *Operand_, bool IsSigned_);
+      Instruction *Operand_, bool IsSigned_, llvm::Twine Name_ = "");
   Cast(Cast const &) = delete;
   Cast(Cast &&) noexcept = delete;
   Cast &operator=(Cast const &) = delete;
@@ -669,7 +711,9 @@ class Extend : public Instruction {
   unsigned FromWidth;
 
 public:
-  Extend(BasicBlock *Parent_, Instruction *Operand_, unsigned FromWidth_);
+  Extend(
+      BasicBlock *Parent_, Instruction *Operand_, unsigned FromWidth_,
+      llvm::Twine Name_ = "");
   Extend(Extend const &) = delete;
   Extend(Extend &&) noexcept = delete;
   Extend &operator=(Extend const &) = delete;
@@ -688,7 +732,9 @@ class Pack : public Instruction {
   std::vector<Instruction *> Arguments;
 
 public:
-  Pack(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_);
+  Pack(
+      BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_,
+      llvm::Twine Name_ = "");
   Pack(Pack const &) = delete;
   Pack(Pack &&) noexcept = delete;
   Pack &operator=(Pack const &) = delete;
@@ -706,7 +752,9 @@ class Unpack : public Instruction {
   Instruction *Operand;
 
 public:
-  Unpack(BasicBlock *Parent_, unsigned Index_, Instruction *Operand_);
+  Unpack(
+      BasicBlock *Parent_, unsigned Index_, Instruction *Operand_,
+      llvm::Twine Name_ = "");
   Unpack(Unpack const &) = delete;
   Unpack(Unpack &&) = delete;
   Unpack &operator=(Unpack const &) = delete;
@@ -725,7 +773,8 @@ class Phi : public Instruction {
   std::vector<Instruction *> Arguments;
 
 public:
-  Phi(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_);
+  Phi(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_,
+      llvm::Twine Name_ = "");
   Phi(Phi const &) = delete;
   Phi(Phi &&) noexcept = delete;
   Phi &operator=(Phi const &) = delete;
@@ -740,52 +789,51 @@ public:
 } // namespace mir::instructions
 
 namespace mir {
-template <typename T>
-concept instruction = std::derived_from<T, Instruction> &&requires(T Inst) {
-  { T::classof(std::declval<Instruction const *>()) }
-  ->std::convertible_to<bool>;
-};
 
 template <typename Derived, typename RetType = void, bool Const = true>
 class InstVisitorBase {
   Derived &derived() { return static_cast<Derived &>(*this); }
   template <typename T> using Ptr = std::conditional_t<Const, T const *, T *>;
   template <instruction T> RetType castAndCall(Ptr<Instruction> Inst) {
-    using IKind = InstructionKind;
-    using namespace instructions;
-    switch (Inst->getKind()) {
-    case IKind::Unreachable: return castAndCall<Unreachable>(Inst);
-    case IKind::Branch: return castAndCall<Branch>(Inst);
-    case IKind::BranchTable: return castAndCall<BranchTable>(Inst);
-    case IKind::Return: return castAndCall<Return>(Inst);
-    case IKind::Call: return castAndCall<Call>(Inst);
-    case IKind::CallIndirect: return castAndCall<CallIndirect>(Inst);
-    case IKind::Select: return castAndCall<Select>(Inst);
-    case IKind::LocalGet: return castAndCall<LocalGet>(Inst);
-    case IKind::LocalSet: return castAndCall<LocalSet>(Inst);
-    case IKind::GlobalGet: return castAndCall<GlobalGet>(Inst);
-    case IKind::GlobalSet: return castAndCall<GlobalSet>(Inst);
-    case IKind::Constant: return castAndCall<Constant>(Inst);
-    case IKind::IntUnaryOp: return castAndCall<IntUnaryOp>(Inst);
-    case IKind::IntBinaryOp: return castAndCall<IntBinaryOp>(Inst);
-    case IKind::FPUnaryOp: return castAndCall<FPUnaryOp>(Inst);
-    case IKind::FPBinaryOp: return castAndCall<FPBinaryOp>(Inst);
-    case IKind::Load: return castAndCall<Load>(Inst);
-    case IKind::Store: return castAndCall<Store>(Inst);
-    case IKind::MemorySize: return castAndCall<MemorySize>(Inst);
-    case IKind::MemoryGrow: return castAndCall<MemoryGrow>(Inst);
-    case IKind::MemoryGuard: return castAndCall<MemoryGuard>(Inst);
-    case IKind::Cast: return castAndCall<Cast>(Inst);
-    case IKind::Extend: return castAndCall<Extend>(Inst);
-    case IKind::Pack: return castAndCall<Pack>(Inst);
-    case IKind::Unpack: return castAndCall<Unpack>(Inst);
-    case IKind::Phi: return castAndCall<Phi>(Inst);
-    default: SABLE_UNREACHABLE();
-    }
+    return derived()(dyn_cast<T>(Inst));
   }
 
 public:
-  RetType visit(Ptr<Instruction>) { return {}; }
+  RetType visit(Ptr<Instruction> Inst) {
+    using IKind = InstructionKind;
+    using namespace instructions;
+    // clang-format off
+    switch (Inst->getKind()) {
+    case IKind::Unreachable : return castAndCall<Unreachable>(Inst);
+    case IKind::Branch      : return castAndCall<Branch>(Inst);
+    case IKind::BranchTable : return castAndCall<BranchTable>(Inst);
+    case IKind::Return      : return castAndCall<Return>(Inst);
+    case IKind::Call        : return castAndCall<Call>(Inst);
+    case IKind::CallIndirect: return castAndCall<CallIndirect>(Inst);
+    case IKind::Select      : return castAndCall<Select>(Inst);
+    case IKind::LocalGet    : return castAndCall<LocalGet>(Inst);
+    case IKind::LocalSet    : return castAndCall<LocalSet>(Inst);
+    case IKind::GlobalGet   : return castAndCall<GlobalGet>(Inst);
+    case IKind::GlobalSet   : return castAndCall<GlobalSet>(Inst);
+    case IKind::Constant    : return castAndCall<Constant>(Inst);
+    case IKind::IntUnaryOp  : return castAndCall<IntUnaryOp>(Inst);
+    case IKind::IntBinaryOp : return castAndCall<IntBinaryOp>(Inst);
+    case IKind::FPUnaryOp   : return castAndCall<FPUnaryOp>(Inst);
+    case IKind::FPBinaryOp  : return castAndCall<FPBinaryOp>(Inst);
+    case IKind::Load        : return castAndCall<Load>(Inst);
+    case IKind::Store       : return castAndCall<Store>(Inst);
+    case IKind::MemorySize  : return castAndCall<MemorySize>(Inst);
+    case IKind::MemoryGrow  : return castAndCall<MemoryGrow>(Inst);
+    case IKind::MemoryGuard : return castAndCall<MemoryGuard>(Inst);
+    case IKind::Cast        : return castAndCall<Cast>(Inst);
+    case IKind::Extend      : return castAndCall<Extend>(Inst);
+    case IKind::Pack        : return castAndCall<Pack>(Inst);
+    case IKind::Unpack      : return castAndCall<Unpack>(Inst);
+    case IKind::Phi         : return castAndCall<Phi>(Inst);
+    default: SABLE_UNREACHABLE();
+    }
+    // clang-format on
+  }
 };
 } // namespace mir
 

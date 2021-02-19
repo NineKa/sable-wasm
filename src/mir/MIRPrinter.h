@@ -4,48 +4,24 @@
 #include "Module.h"
 
 #include <iterator>
+#include <type_traits>
 
 namespace mir::printer {
-template <typename T> concept entity_name_map = requires(T NameMap) {
-  { NameMap[std::declval<Function const *>()] }
+
+// clang-format off
+template <typename T> concept name_resolver = requires(T Resolver) {
+  requires std::is_constructible_v<T, mir::Module>;
+  { Resolver[std::declval<mir::Instruction *>()] }
   ->std::same_as<std::string_view>;
-  { NameMap[std::declval<Memory const *>()] }
+  { Resolver[std::declval<mir::BasicBlock *>()] }
   ->std::same_as<std::string_view>;
-  { NameMap[std::declval<Table const *>()] }
-  ->std::same_as<std::string_view>;
-  { NameMap[std::declval<Global const *>()] }
-  ->std::same_as<std::string_view>;
+  { Resolver[std::declval<mir::Function *>()] }->std::same_as<std::string_view>;
+  { Resolver[std::declval<mir::Memory *>()]   }->std::same_as<std::string_view>;
+  { Resolver[std::declval<mir::Table *>()]    }->std::same_as<std::string_view>;
+  { Resolver[std::declval<mir::Global *>()]   }->std::same_as<std::string_view>;
 };
+// clang-format on
 
-template <typename T> concept local_name_map = requires(T NameMap) {
-  { NameMap[std::declval<Local const *>()] }
-  ->std::same_as<std::string_view>;
-  { NameMap[std::declval<Instruction const *>()] }
-  ->std::same_as<std::string_view>;
-};
-
-#define SABLE_INST_PRINTER_TEMPLATE_ARGS                                       \
-  template <                                                                   \
-      std::output_iterator<char> IteratoryType,                                \
-      entity_name_map EntityNameMapType, local_name_map LocalNameMapType>
-
-SABLE_INST_PRINTER_TEMPLATE_ARGS
-class InstPrinter :
-    public InstVisitorBase<
-        InstPrinter<IteratoryType, EntityNameMapType, LocalNameMapType>,
-        IteratoryType> {
-  IteratoryType Out;
-  EntityNameMapType &EntityNameMap;
-  LocalNameMapType &LocalNameMap;
-
-public:
-  IteratoryType operator()(instructions::Unreachable const *);
-  IteratoryType operator()(instructions::Branch const *Inst);
-  IteratoryType operator()(instructions::BranchTable const *Inst);
-  IteratoryType operator()(instructions::Return const *Inst);
-};
-
-#undef SABLE_INST_PRINTER_TEMPLATE_ARGS
 } // namespace mir::printer
 
 #endif

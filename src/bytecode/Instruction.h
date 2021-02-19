@@ -89,6 +89,16 @@ template <instruction T> bool is_a(Instruction const *Inst) {
   return T::classof(Inst);
 }
 
+template <instruction T> T *dyn_cast(Instruction *Inst) {
+  assert(is_a<T>(Inst));
+  return static_cast<T *>(Inst);
+}
+
+template <instruction T> T const *dyn_cast(Instruction const *Inst) {
+  assert(is_a<T>(Inst));
+  return static_cast<T const *>(Inst);
+}
+
 namespace detail {
 template <typename T>
 concept inst_with_no_immediate = instruction<T> &&
@@ -189,7 +199,7 @@ using Expression = std::vector<InstructionPtr>;
     BOOST_PP_LIST_FOR_EACH(                                                    \
         MAKE_MEMBER_DECL, _, BOOST_PP_ARRAY_TO_LIST(MemberArray))              \
                                                                                \
-    static bool classof(Instruction const *Other) {                            \
+    static constexpr bool classof(Instruction const *Other) {                  \
       assert(Other != nullptr);                                                \
       return inst_trait<Name>::opcode() == Other->getOpcode();                 \
     }                                                                          \
@@ -213,7 +223,7 @@ public:
     switch (Inst->getOpcode()) {
 #define X(Name, NameString, Category, OpcodeSeq, MemberArray)                  \
   case Opcode::Name:                                                           \
-    return derived()(static_cast<Ptr<instructions::Name>>(Inst));
+    return derived()(dyn_cast<instructions::Name>(Inst));
 #include "Instruction.defs"
 #undef X
     default: SABLE_UNREACHABLE();

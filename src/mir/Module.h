@@ -2,14 +2,17 @@
 #define SABLE_INCLUDE_GUARD_MIR_MODULE
 
 #include "../bytecode/Module.h"
+#include "ASTNode.h"
 #include "Instruction.h"
 
+#include <llvm/ADT/Twine.h>
 #include <llvm/ADT/ilist.h>
 #include <llvm/ADT/ilist_node.h>
 
 namespace mir {
 
 class Function :
+    public ASTNode,
     public llvm::ilist_node_with_parent<Function, Module>,
     public detail::UseSiteTraceable<Function, Instruction> {
   Module *Parent;
@@ -18,7 +21,8 @@ class Function :
   llvm::ilist<Local> Locals;
 
 public:
-  Function(Module *Parent_, bytecode::FunctionType Type_);
+  Function(
+      Module *Parent_, bytecode::FunctionType Type_, llvm::Twine Name_ = "");
 
   Module *getParent() const { return Parent; }
   bytecode::FunctionType const &getType() const { return Type; }
@@ -71,6 +75,7 @@ public:
 };
 
 class Local :
+    public ASTNode,
     public llvm::ilist_node_with_parent<Local, Function>,
     public detail::UseSiteTraceable<Local, Instruction> {
   Function *Parent;
@@ -79,40 +84,45 @@ class Local :
 
   friend class Function;
   struct IsParameterTag {};
-  Local(IsParameterTag, Function *Parent_, bytecode::ValueType Type_);
+  Local(
+      IsParameterTag, Function *Parent_, bytecode::ValueType Type_,
+      llvm::Twine Name_ = "");
 
 public:
-  Local(Function *Parent_, bytecode::ValueType Type_);
+  Local(Function *Parent_, bytecode::ValueType Type_, llvm::Twine Name_ = "");
   Function *getParent() const { return Parent; }
   bytecode::ValueType const &getType() const { return Type; }
   bool isParameter() const { return IsParameter; }
 };
 
 class Global :
+    public ASTNode,
     public llvm::ilist_node_with_parent<Global, Module>,
     public detail::UseSiteTraceable<Global, Instruction> {
   Module *Parent;
   bytecode::GlobalType Type;
 
 public:
-  Global(Module *Parent_, bytecode::GlobalType Type_);
+  Global(Module *Parent_, bytecode::GlobalType Type_, llvm::Twine Name_ = "");
   Module *getParent() const { return Parent; }
   bytecode::GlobalType const &getType() const { return Type; }
 };
 
 class Memory :
+    public ASTNode,
     public llvm::ilist_node_with_parent<Memory, Module>,
     public detail::UseSiteTraceable<Memory, Instruction> {
   Module *Parent;
   bytecode::MemoryType Type;
 
 public:
-  Memory(Module *Parent_, bytecode::MemoryType Type_);
+  Memory(Module *Parent_, bytecode::MemoryType Type_, llvm::Twine Name_ = "");
   Module *getParent() const { return Parent; }
   bytecode::MemoryType const &getType() const { return Type; }
 };
 
 class Table :
+    public ASTNode,
     public llvm::ilist_node_with_parent<Table, Module>,
     public detail::UseSiteTraceable<Table, Instruction> {
   Module *Parent;
@@ -120,18 +130,19 @@ class Table :
   std::optional<bytecode::views::Table> BytecodeView;
 
 public:
-  Table(Module *Parent_, bytecode::TableType Type_);
+  Table(Module *Parent_, bytecode::TableType Type_, llvm::Twine Name_ = "");
   Module *getParent() const { return Parent; }
   bytecode::TableType const &getType() const { return Type; }
 };
 
-class Module {
+class Module : public ASTNode {
   llvm::ilist<Function> Functions;
   llvm::ilist<Global> Globals;
   llvm::ilist<Memory> Memories;
   llvm::ilist<Table> Tables;
 
 public:
+  explicit Module(llvm::Twine Name_ = "");
   using func_iterator = decltype(Functions)::iterator;
   using func_const_iterator = decltype(Functions)::const_iterator;
   func_iterator function_begin() { return Functions.begin(); }

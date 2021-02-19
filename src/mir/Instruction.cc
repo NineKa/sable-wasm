@@ -1038,3 +1038,39 @@ void Phi::detach_definition(Instruction *Operand_) noexcept {
 
 bool Phi::classof(Instruction *Inst) { return Inst->getKind() == IKind::Phi; }
 } // namespace mir::instructions
+
+namespace fmt {
+char const *formatter<mir::InstructionKind>::getEnumString(
+    mir::InstructionKind const &Kind) {
+  using IKind = mir::InstructionKind;
+  switch (Kind) {
+  case IKind::Unreachable: return "Unreachable";
+  case IKind::Branch: return "Branch";
+  case IKind::BranchTable: return "BranchTable";
+  case IKind::Return: return "Return";
+  case IKind::Call: return "Call";
+  case IKind::CallIndirect: return "CallIndirect";
+  case IKind::Select: return "Select";
+  case IKind::LocalGet: return "LocalGet";
+  case IKind::LocalSet: return "LocalSet";
+  case IKind::GlobalGet: return "GlobalGet";
+  case IKind::GlobalSet: return "GlobalSet";
+  case IKind::Constant: return "Constant";
+  case IKind::IntUnaryOp: return "IntUnaryOp";
+  case IKind::IntBinaryOp: return "IntBinaryOp";
+  case IKind::FPUnaryOp: return "FPUnaryOp";
+  case IKind::FPBinaryOp: return "FPBinaryOp";
+  case IKind::Load: return "Load";
+  case IKind::Store: return "Store";
+  case IKind::MemorySize: return "MemorySize";
+  case IKind::MemoryGrow: return "MemoryGrow";
+  case IKind::MemoryGuard: return "MemoryGuard";
+  case IKind::Cast: return "Cast";
+  case IKind::Extend: return "Extend";
+  case IKind::Pack: return "Pack";
+  case IKind::Unpack: return "Unpack";
+  case IKind::Phi: return "Phi";
+  default: SABLE_UNREACHABLE();
+  }
+}
+} // namespace fmt

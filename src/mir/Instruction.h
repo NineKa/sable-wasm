@@ -120,8 +120,15 @@ public:
 
   template <std::derived_from<Instruction> T, typename... ArgTypes>
   T *BuildInst(ArgTypes &&...Args) {
-    auto *Inst = new T(this, std::forward<ArgTypes>(Args)...); // NOLINT
+    auto *Inst = new T(this, std::forward<ArgTypes>(Args)...);
     Instructions.push_back(Inst);
+    return Inst;
+  }
+
+  template <std::derived_from<Instruction> T, typename... ArgTypes>
+  T *BuildInst(Instruction *Before, ArgTypes &&...Args) {
+    auto *Inst = new T(this, std::forward<ArgTypes>(Args)...);
+    Instructions.insert(Before->getIterator(), Inst);
     return Inst;
   }
 
@@ -781,5 +788,15 @@ public:
   RetType visit(Ptr<Instruction>) { return {}; }
 };
 } // namespace mir
+
+namespace fmt {
+template <> struct formatter<mir::InstructionKind> {
+  static char const *getEnumString(mir::InstructionKind const &Kind);
+  template <typename C> auto parse(C &&CTX) { return CTX.begin(); }
+  template <typename C> auto format(mir::InstructionKind const &Kind, C &&CTX) {
+    return fmt::format_to(CTX.out(), "{}", getEnumString(Kind));
+  }
+};
+} // namespace fmt
 
 #endif

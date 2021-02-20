@@ -191,8 +191,8 @@ public:
   global_const_iterator global_begin() const { return Globals.begin(); }
   global_const_iterator global_end() const { return Globals.end(); }
 
-  auto getGlobal() { return ranges::subrange(global_begin(), global_end()); }
-  auto getGlobal() const {
+  auto getGlobals() { return ranges::subrange(global_begin(), global_end()); }
+  auto getGlobals() const {
     return ranges::subrange(global_begin(), global_end());
   }
 

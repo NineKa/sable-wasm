@@ -5,9 +5,9 @@
 namespace mir::bytecode_codegen {
 
 namespace {
-template <typename Derived> struct MIREntityBuilder {
+template <typename Derived> struct BuildMIREntity {
   Module &MIRModule;
-  MIREntityBuilder(Module &MIRModule_) : MIRModule(MIRModule_) {}
+  BuildMIREntity(Module &MIRModule_) : MIRModule(MIRModule_) {}
   Derived &getDerived() { return static_cast<Derived &>(*this); }
   Derived const &getDerived() const {
     return static_cast<Derived const &>(*this);
@@ -28,8 +28,8 @@ template <typename Derived> struct MIREntityBuilder {
   }
 };
 
-struct MIRFunctionBuilder : MIREntityBuilder<MIRFunctionBuilder> {
-  using MIREntityBuilder::MIREntityBuilder;
+struct BuildMIRFunction : BuildMIREntity<BuildMIRFunction> {
+  using BuildMIREntity::BuildMIREntity;
   Function *Build(bytecode::views::Function const &FunctionView) {
     auto *Function = MIRModule.BuildFunction(*FunctionView.getType());
     if (FunctionView.isDefinition()) {
@@ -41,22 +41,22 @@ struct MIRFunctionBuilder : MIREntityBuilder<MIRFunctionBuilder> {
   }
 };
 
-struct MIRMemoryBuilder : MIREntityBuilder<MIRMemoryBuilder> {
-  using MIREntityBuilder::MIREntityBuilder;
+struct BuildMIRMemory : BuildMIREntity<BuildMIRMemory> {
+  using BuildMIREntity::BuildMIREntity;
   Memory *Build(bytecode::views::Memory const &MemoryView) {
     return MIRModule.BuildMemory(*MemoryView.getType());
   }
 };
 
-struct MIRTableBuilder : MIREntityBuilder<MIRTableBuilder> {
-  using MIREntityBuilder::MIREntityBuilder;
+struct BuildMIRTable : BuildMIREntity<BuildMIRTable> {
+  using BuildMIREntity::BuildMIREntity;
   Table *Build(bytecode::views::Table const &TableView) {
     return MIRModule.BuildTable(*TableView.getType());
   }
 };
 
-struct MIRGlobalBuilder : MIREntityBuilder<MIRGlobalBuilder> {
-  using MIREntityBuilder::MIREntityBuilder;
+struct BuildMIRGlobal : BuildMIREntity<BuildMIRGlobal> {
+  using BuildMIREntity::BuildMIREntity;
   Global *Build(bytecode::views::Global const &GlobalView) {
     return MIRModule.BuildGlobal(*GlobalView.getType());
   }
@@ -69,16 +69,16 @@ ModuleTranslator::ModuleTranslator(
   bytecode::ModuleView MView(BModule);
   // clang-format off
   Functions = MView.functions()
-    | ranges::views::transform(MIRFunctionBuilder(MIRModule))
+    | ranges::views::transform(BuildMIRFunction(MIRModule))
     | ranges::to<decltype(Functions)>();
   Globals = MView.globals()
-    | ranges::views::transform(MIRGlobalBuilder(MIRModule))
+    | ranges::views::transform(BuildMIRGlobal(MIRModule))
     | ranges::to<decltype(Globals)>();
   Memories = MView.memories()
-    | ranges::views::transform(MIRMemoryBuilder(MIRModule))
+    | ranges::views::transform(BuildMIRMemory(MIRModule))
     | ranges::to<decltype(Memories)>();
   Tables = MView.tables()
-    | ranges::views::transform(MIRTableBuilder(MIRModule))
+    | ranges::views::transform(BuildMIRTable(MIRModule))
     | ranges::to<decltype(Tables)>();
   // clang-format on
 }

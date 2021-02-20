@@ -28,7 +28,6 @@ llvm_map_components_to_libnames(llvm_libs support core)
 add_library(sablewasm
         src/bytecode/Module.cc
         src/bytecode/Validation.cc
-        src/mir/ASTNodeNameResolver.cc
         src/mir/Module.cc
         src/mir/Instruction.cc
         src/mir/LLVMCodegen.cc

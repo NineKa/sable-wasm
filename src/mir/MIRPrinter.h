@@ -4,46 +4,64 @@
 #include "Instruction.h"
 #include "Module.h"
 
+#include <fmt/format.h>
+
 #include <iterator>
-#include <type_traits>
 #include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
 namespace mir::printer {
 
-template <typename T> concept name_resolver = requires(T Resolver) {
-  requires std::is_constructible_v<T, mir::Module>;
-  { Resolver[std::declval<mir::Instruction const *>()] }
-  ->std::same_as<std::string_view>;
-  { Resolver[std::declval<mir::BasicBlock const *>()] }
-  ->std::same_as<std::string_view>;
-  { Resolver[std::declval<mir::Function const *>()] }
-  ->std::same_as<std::string_view>;
-  { Resolver[std::declval<mir::Memory const *>()] }
-  ->std::same_as<std::string_view>;
-  { Resolver[std::declval<mir::Table const *>()] }
-  ->std::same_as<std::string_view>;
-  { Resolver[std::declval<mir::Global const *>()] }
-  ->std::same_as<std::string_view>;
-};
+template <std::output_iterator<char> Iterator>
+Iterator indent(Iterator Out, std::size_t Width = 1) {
+  char const IndentChar = ' ';
+  std::size_t const IndentWidth = 2;
+  for (std::size_t I = 0; I < IndentWidth * Width; ++I) *Out++ = IndentChar;
+  return Out;
+}
 
-class ASTNodeNameResolver {
-  std::unordered_map<ASTNode const *, std::string_view> Names;
-  std::unordered_map<std::string_view, unsigned> UsedNames;
-  std::vector<std::string> Storage;
+class EntityNameResolver {
+  std::unordered_map<ASTNode const *, std::size_t> Names;
 
-  void prepareMemories(Module const &M);
-  void prepareTables(Module const &M);
-  void prepareGlobals(Module const &M);
-
-  template <ranges::input_range T, typename NameGenFunctor>
-  void prepareEntities(T Entities, NameGenFunctor NameGen);
+  template <ranges::input_range T>
+  void prepareEntities(T Entities, std::size_t &Counter) {
+    for (auto const &Entity : Entities) {
+      if (Entity.hasName()) continue;
+      Names.emplace(std::addressof(Entity), Counter);
+      Counter = Counter + 1;
+    }
+  }
 
 public:
-  ASTNodeNameResolver(Module const &M);
+  EntityNameResolver(Module const &Module_) {
+    std::size_t UnnamedMemory = 0;
+    std::size_t UnnamedTable = 0;
+    std::size_t UnnamedGlobal = 0;
+    std::size_t UnnamedFunction = 0;
+    prepareEntities(Module_.getMemories(), UnnamedMemory);
+    prepareEntities(Module_.getTables(), UnnamedTable);
+    prepareEntities(Module_.getGlobals(), UnnamedGlobal);
+    prepareEntities(Module_.getFunctions(), UnnamedFunction);
+  }
 
-  std::string_view operator[](ASTNode const *ASTNode_);
+  template <std::output_iterator<char> Iterator>
+  Iterator write(Iterator Out, ASTNode const &EntityNode) {
+    if (EntityNode.hasName())
+      return fmt::format_to(Out, "{}", EntityNode.getName());
+    auto SearchIter = Names.find(std::addressof(EntityNode));
+    assert(SearchIter != Names.end());
+    auto UnnamedIndex = std::get<1>(*SearchIter);
+    switch (EntityNode.getASTNodeKind()) {
+    case ASTNodeKind::Memory:
+      return fmt::format_to(Out, "memory:{}", UnnamedIndex);
+    case ASTNodeKind::Table:
+      return fmt::format_to(Out, "table:{}", UnnamedIndex);
+    case ASTNodeKind::Global:
+      return fmt::format_to(Out, "global:{}", UnnamedIndex);
+    case ASTNodeKind::Function:
+      return fmt::format_to(Out, "function:{}", UnnamedIndex);
+    default: SABLE_UNREACHABLE();
+    }
+  }
 };
 
 } // namespace mir::printer

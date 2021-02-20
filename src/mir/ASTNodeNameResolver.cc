@@ -32,11 +32,26 @@ void ASTNodeNameResolver::prepareEntities(T Entities, NameGenFunctor NameGen) {
   }
 }
 
+namespace {
+struct NameGenerator {
+  char const *FormatStr;
+  NameGenerator(char const *FormatStr_) : FormatStr(FormatStr_) {}
+  std::string operator()(std::size_t Index) {
+    return fmt::format(FormatStr, Index);
+  }
+};
+} // namespace
+
 void ASTNodeNameResolver::prepareMemories(Module const &M) {
-  auto const NameGen = [](std::size_t Counter) {
-    return fmt::format("memory_{}", Counter);
-  };
-  prepareEntities(M.getMemories(), NameGen);
+  prepareEntities(M.getMemories(), NameGenerator("mem_{}"));
+}
+
+void ASTNodeNameResolver::prepareTables(Module const &M) {
+  prepareEntities(M.getTables(), NameGenerator("table_{}"));
+}
+
+void ASTNodeNameResolver::prepareGlobals(Module const &M) {
+  prepareEntities(M.getFunctions(), NameGenerator("global_{}"));
 }
 
 } // namespace mir::printer

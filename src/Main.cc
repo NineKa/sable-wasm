@@ -22,6 +22,8 @@ int main(int argc, char const *argv[]) {
   parser::ByteArrayReader Reader(Source);
   parser::ModuleBuilderDelegate Delegate;
   parser::Parser Parser(Reader, Delegate);
+  parser::customsections::Name Name;
+  Parser.registerCustomSection(Name);
   Parser.parse();
   auto &Module = Delegate.getModule();
   try {
@@ -39,5 +41,8 @@ int main(int argc, char const *argv[]) {
 
   mir::Module M;
   ModuleTranslator MTranslator(Module, M);
-  fmt::print("{}\n", std::distance(M.function_begin(), M.function_end()));
+  MTranslator.annotateWith(Name);
+  for (mir::Function &Function : M.getFunctions()) {
+    if (Function.hasName()) { fmt::print("{}\n", Function.getName()); }
+  }
 }

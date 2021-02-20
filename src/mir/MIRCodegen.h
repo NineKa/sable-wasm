@@ -6,19 +6,21 @@
 
 #include "../bytecode/Instruction.h"
 #include "../bytecode/Module.h"
+#include "../parser/customsections/Name.h"
 
 namespace mir::bytecode_codegen {
 
 class ModuleTranslator {
   bytecode::Module const &BModule;
   mir::Module &MIRModule;
-  std::vector<std::pair<Function *, bytecode::views::Function>> Functions;
-  std::vector<std::pair<Global *, bytecode::views::Global>> Globals;
-  std::vector<std::pair<Memory *, bytecode::views::Memory>> Memories;
-  std::vector<std::pair<Table *, bytecode::views::Table>> Tables;
+  std::vector<Function *> Functions;
+  std::vector<Global *> Globals;
+  std::vector<Memory *> Memories;
+  std::vector<Table *> Tables;
 
 public:
   ModuleTranslator(bytecode::Module const &BModule_, mir::Module &MIRModule_);
+  void annotateWith(parser::customsections::Name const &NameSection);
 
   Function *getMIREntity(bytecode::FuncIDX Index) const;
   Global *getMIREntity(bytecode::GlobalIDX Index) const;

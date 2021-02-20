@@ -34,8 +34,8 @@ class ASTNodeNameResolver {
   std::vector<std::string> Storage;
 
   void prepareMemories(Module const &M);
-  void prepareTable(Module const &M);
-  void prepareGlobal(Module const &M);
+  void prepareTables(Module const &M);
+  void prepareGlobals(Module const &M);
 
   template <ranges::input_range T, typename NameGenFunctor>
   void prepareEntities(T Entities, NameGenFunctor NameGen);

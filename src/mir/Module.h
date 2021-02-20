@@ -11,8 +11,33 @@
 
 namespace mir {
 
+namespace detail {
+using ImportDescriptor = std::pair<std::string, std::string>;
+using ExportDescriptor = std::string;
+class ImportableEntity {
+  std::unique_ptr<ImportDescriptor> Import = nullptr;
+
+public:
+  bool isImported() const;
+  std::string_view getImportModuleName() const;
+  std::string_view getImportEntityName() const;
+  void setImport(std::string ModuleName, std::string EntityName);
+};
+
+class ExportableEntity {
+  std::unique_ptr<ExportDescriptor> Export = nullptr;
+
+public:
+  bool isExported() const;
+  std::string_view getExportName() const;
+  void setExport(std::string EntityName);
+};
+} // namespace detail
+
 class Function :
     public ASTNode,
+    public detail::ImportableEntity,
+    public detail::ExportableEntity,
     public llvm::ilist_node_with_parent<Function, Module>,
     public detail::UseSiteTraceable<Function, Instruction> {
   Module *Parent;
@@ -94,6 +119,8 @@ public:
 
 class Global :
     public ASTNode,
+    public detail::ImportableEntity,
+    public detail::ExportableEntity,
     public llvm::ilist_node_with_parent<Global, Module>,
     public detail::UseSiteTraceable<Global, Instruction> {
   Module *Parent;
@@ -107,6 +134,8 @@ public:
 
 class Memory :
     public ASTNode,
+    public detail::ImportableEntity,
+    public detail::ExportableEntity,
     public llvm::ilist_node_with_parent<Memory, Module>,
     public detail::UseSiteTraceable<Memory, Instruction> {
   Module *Parent;
@@ -120,11 +149,12 @@ public:
 
 class Table :
     public ASTNode,
+    public detail::ImportableEntity,
+    public detail::ExportableEntity,
     public llvm::ilist_node_with_parent<Table, Module>,
     public detail::UseSiteTraceable<Table, Instruction> {
   Module *Parent;
   bytecode::TableType Type;
-  std::optional<bytecode::views::Table> BytecodeView;
 
 public:
   Table(Module *Parent_, bytecode::TableType Type_);

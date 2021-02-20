@@ -9,8 +9,8 @@ add_compile_options(-Wall -Wextra -pedantic -Werror -Wfatal-errors)
 add_compile_options($<$<CONFIG:RELEASE>:-flto>)
 add_link_options($<$<CONFIG:RELEASE>:-flto>)
 
-add_compile_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)
-add_link_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)
+#add_compile_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)
+#add_link_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/lib/fmt)
 add_subdirectory(${PROJECT_SOURCE_DIR}/lib/mio)

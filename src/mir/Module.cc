@@ -1,14 +1,44 @@
 #include "Module.h"
 
 namespace mir {
-Function::Function(Module *Parent_, bytecode::FunctionType Type_)
-    : ASTNode(ASTNodeKind::Function), Parent(Parent_), Type(std::move(Type_)) {
-  for (auto const &ValueType : Type.getParamTypes()) {
-    auto *AllocatedParameter =
-        new Local(Local::IsParameterTag{}, this, ValueType);
-    Locals.push_back(AllocatedParameter);
-  }
+namespace detail {
+bool ImportableEntity::isImported() const { return Import != nullptr; }
+
+std::string_view ImportableEntity::getImportModuleName() const {
+  return std::get<0>(*Import);
 }
+
+std::string_view ImportableEntity::getImportEntityName() const {
+  return std::get<1>(*Import);
+}
+
+void ImportableEntity::setImport(
+    std::string ModuleName, std::string EntityName) {
+  if (ModuleName.empty() && EntityName.empty()) {
+    Import = nullptr;
+    return;
+  }
+  assert(!ModuleName.empty() && !EntityName.empty());
+  Import = std::make_unique<ImportDescriptor>(
+      std::move(ModuleName), std::move(EntityName));
+}
+
+bool ExportableEntity::isExported() const { return Export != nullptr; }
+
+std::string_view ExportableEntity::getExportName() const { return *Export; }
+
+void ExportableEntity::setExport(std::string EntityName) {
+  if (EntityName.empty()) {
+    Export = nullptr;
+    return;
+  }
+  Export = std::make_unique<ExportDescriptor>(std::move(EntityName));
+}
+
+} // namespace detail
+
+Function::Function(Module *Parent_, bytecode::FunctionType Type_)
+    : ASTNode(ASTNodeKind::Function), Parent(Parent_), Type(std::move(Type_)) {}
 
 BasicBlock *Function::BuildBasicBlock(BasicBlock *Before) {
   auto *AllocatedBB = new BasicBlock(this);

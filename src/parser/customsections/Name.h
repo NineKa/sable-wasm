@@ -14,8 +14,6 @@
 
 namespace parser::customsections {
 class Name : public parser::CustomSection {
-  std::optional<std::string> ModuleName;
-
   struct FunctionNameEntry {
     bytecode::FuncIDX FuncIndex;
     std::string Name;
@@ -30,6 +28,9 @@ class Name : public parser::CustomSection {
     bool operator==(LocalNameEntry const &) const = default;
     auto operator<=>(LocalNameEntry const &) const = default;
   };
+
+private:
+  std::optional<std::string> ModuleName;
 
   std::vector<FunctionNameEntry> FunctionNames;
   std::vector<LocalNameEntry> LocalNames;

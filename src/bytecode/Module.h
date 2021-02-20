@@ -6,6 +6,7 @@
 
 #include <range/v3/core.hpp>
 #include <range/v3/view/all.hpp>
+#include <range/v3/view/concat.hpp>
 #include <range/v3/view/const.hpp>
 #include <range/v3/view/transform.hpp>
 
@@ -95,7 +96,7 @@ public:
   std::string_view getImportModuleName() const { return Import->ModuleName; }
   std::string_view getImportEntityName() const { return Import->EntityName; }
   bool isExported() const { return Export != nullptr; }
-  std::string_view getExportName() { return Export->Name; }
+  std::string_view getExportName() const { return Export->Name; }
 };
 
 // clang-format off
@@ -124,8 +125,16 @@ public:
       return Entity->Locals[CastedIndex];
     return std::nullopt;
   }
+  auto getLocalsWithoutArgs() const {
+    return ranges::views::all(Entity->Locals);
+  }
+  auto getLocals() const {
+    return ranges::views::concat(
+      getType()->getParamTypes(), getLocalsWithoutArgs());
+  }
   bytecode::Expression const *getBody() const
   { return std::addressof(Entity->Body); }
+  bool isDefinition() const { return Entity != nullptr; }
 };
 
 class Global : public Entity<GlobalType> {

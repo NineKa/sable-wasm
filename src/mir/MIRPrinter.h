@@ -46,21 +46,37 @@ public:
   template <std::output_iterator<char> Iterator>
   Iterator write(Iterator Out, ASTNode const &EntityNode) {
     if (EntityNode.hasName())
-      return fmt::format_to(Out, "{}", EntityNode.getName());
+      return fmt::format_to(Out, "%{}", EntityNode.getName());
     auto SearchIter = Names.find(std::addressof(EntityNode));
     assert(SearchIter != Names.end());
     auto UnnamedIndex = std::get<1>(*SearchIter);
     switch (EntityNode.getASTNodeKind()) {
     case ASTNodeKind::Memory:
-      return fmt::format_to(Out, "memory:{}", UnnamedIndex);
+      return fmt::format_to(Out, "%memory:{}", UnnamedIndex);
     case ASTNodeKind::Table:
-      return fmt::format_to(Out, "table:{}", UnnamedIndex);
+      return fmt::format_to(Out, "%table:{}", UnnamedIndex);
     case ASTNodeKind::Global:
-      return fmt::format_to(Out, "global:{}", UnnamedIndex);
+      return fmt::format_to(Out, "%global:{}", UnnamedIndex);
     case ASTNodeKind::Function:
-      return fmt::format_to(Out, "function:{}", UnnamedIndex);
+      return fmt::format_to(Out, "%function:{}", UnnamedIndex);
     default: SABLE_UNREACHABLE();
     }
+  }
+};
+
+struct EntityPrintPolicyBase {
+  template <std::output_iterator<char> Iterator>
+  void writeImportInfo(Iterator Out, detail::ImportableEntity const &Entity) {
+    assert(Entity.isImported());
+    auto ModuleName = Entity.getImportModuleName();
+    auto EntityName = Entity.getImportEntityName();
+    return fmt::format_to(Out, "import from {}::{}", ModuleName, EntityName);
+  }
+  template <std::output_iterator<char> Iterator>
+  void writeExportInfo(Iterator Out, detail::ExportableEntity const &Entity) {
+    assert(Entity.isExported());
+    auto EntityName = Entity.getExportName();
+    return fmt::format_to(Out, "export as {}", EntityName);
   }
 };
 

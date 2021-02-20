@@ -13,6 +13,8 @@
 
 #include "mir/ASTNode.h"
 
+#include <iostream>
+
 int main(int argc, char const *argv[]) {
   (void)argc;
   (void)argv;
@@ -42,7 +44,10 @@ int main(int argc, char const *argv[]) {
   mir::Module M;
   ModuleTranslator MTranslator(Module, M);
   MTranslator.annotateWith(Name);
-  for (mir::Function &Function : M.getFunctions()) {
-    if (Function.hasName()) { fmt::print("{}\n", Function.getName()); }
+  mir::printer::EntityNameResolver Resolver(M);
+  std::ostream_iterator<char> OutIter(std::cout);
+  for (auto const &Function : M.getMemories()) {
+    OutIter = Resolver.write(OutIter, Function);
+    *OutIter = '\n';
   }
 }

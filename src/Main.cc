@@ -50,13 +50,8 @@ int main(int argc, char const *argv[]) {
   auto *I2 = BB->BuildInst<IntBinaryOp>(IntBinaryOperator::Add, I0, I1);
   BB->BuildInst<Return>(I2);
 
-  mir::printer::ASTNodeNameResolver Resolver(M);
+  mir::printer::EntityNameResolver Resolver;
   std::ostream_iterator<char> OutIter(std::cout);
-  mir::printer::FunctionPrintPolicy Policy(Resolver);
 
-  for (auto const &F : M.getFunctions()) {
-    Resolver.enter(F);
-    Policy(OutIter, F);
-    *OutIter = '\n';
-  }
+  for (auto const &F : M.getFunctions()) { OutIter = Resolver(OutIter, F); }
 }

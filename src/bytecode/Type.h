@@ -164,7 +164,7 @@ template <> struct fmt::formatter<bytecode::FunctionType, char> {
 namespace bytecode::detail {
 struct LimitLikeTypeFormatterBase {
   template <typename Iterator, limit_like_type T>
-  Iterator formatLimit(Iterator Out, T const &Type) {
+  Iterator formatLimit(Iterator Out, T const &Type) const {
     if (!Type.hasMax()) return fmt::format_to(Out, "{{min {}}}", Type.getMin());
     auto Min = Type.getMin();
     auto Max = Type.getMax();
@@ -174,8 +174,8 @@ struct LimitLikeTypeFormatterBase {
 } // namespace bytecode::detail
 
 template <>
-struct fmt::formatter<bytecode::MemoryType, char>
-    : bytecode::detail::LimitLikeTypeFormatterBase {
+struct fmt::formatter<bytecode::MemoryType, char> :
+    bytecode::detail::LimitLikeTypeFormatterBase {
   template <typename T> constexpr auto parse(T &&CTX) { return CTX.begin(); }
   template <typename Context>
   auto format(bytecode::MemoryType const &Type, Context &&CTX) const {
@@ -184,8 +184,8 @@ struct fmt::formatter<bytecode::MemoryType, char>
 };
 
 template <>
-struct fmt::formatter<bytecode::TableType, char>
-    : bytecode::detail::LimitLikeTypeFormatterBase {
+struct fmt::formatter<bytecode::TableType, char> :
+    bytecode::detail::LimitLikeTypeFormatterBase {
   template <typename T> constexpr auto parse(T &&CTX) { return CTX.begin(); }
   template <typename Context>
   auto format(bytecode::TableType const &Type, Context &&CTX) const {

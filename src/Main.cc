@@ -42,12 +42,21 @@ int main(int argc, char const *argv[]) {
   using namespace mir::bytecode_codegen;
 
   mir::Module M;
-  ModuleTranslator MTranslator(Module, M);
-  MTranslator.annotateWith(Name);
-  mir::printer::EntityNameResolver Resolver(M);
+
+  auto *Function = M.BuildFunction(bytecode::FunctionType({}, {I32}));
+  auto *BB = Function->BuildBasicBlock();
+  auto *I0 = BB->BuildInst<Constant>(std::int32_t(0));
+  auto *I1 = BB->BuildInst<Constant>(std::int32_t(1));
+  auto *I2 = BB->BuildInst<IntBinaryOp>(IntBinaryOperator::Add, I0, I1);
+  BB->BuildInst<Return>(I2);
+
+  mir::printer::ASTNodeNameResolver Resolver(M);
   std::ostream_iterator<char> OutIter(std::cout);
-  for (auto const &Function : M.getMemories()) {
-    OutIter = Resolver.write(OutIter, Function);
+  mir::printer::FunctionPrintPolicy Policy(Resolver);
+
+  for (auto const &F : M.getFunctions()) {
+    Resolver.enter(F);
+    Policy(OutIter, F);
     *OutIter = '\n';
   }
 }

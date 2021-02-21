@@ -181,7 +181,7 @@ public:
     return ranges::subrange(function_begin(), function_end());
   }
   auto getFunctions() const {
-    return ranges::subrange(function_end(), function_end());
+    return ranges::subrange(function_begin(), function_end());
   }
 
   using global_iterator = decltype(Globals)::iterator;

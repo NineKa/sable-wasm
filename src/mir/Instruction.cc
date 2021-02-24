@@ -21,8 +21,14 @@ using IKind = InstructionKind;
 Unreachable::Unreachable(BasicBlock *Parent_)
     : Instruction(IKind::Unreachable, Parent_) {}
 
-bool Unreachable::classof(Instruction *Inst) {
+bool Unreachable::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Unreachable;
+}
+
+bool Unreachable::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Unreachable::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 //////////////////////////////////// Branch ////////////////////////////////////
@@ -72,20 +78,26 @@ void Branch::setFalseTarget(BasicBlock *FalseTarget_) {
   FalseTarget = FalseTarget_;
 }
 
-void Branch::detach_definition(Instruction *Operand_) noexcept {
+void Branch::detach_definition(Instruction const *Operand_) noexcept {
   assert(Condition == Operand_);
   utility::ignore(Operand_);
   Condition = nullptr;
 }
 
-void Branch::detach_definition(BasicBlock *Target_) noexcept {
+void Branch::detach_definition(BasicBlock const *Target_) noexcept {
   assert((Target == Target_) || (FalseTarget == Target_));
   if (Target_ == Target) Target = nullptr;
   if (Target_ == FalseTarget) FalseTarget = nullptr;
 }
 
-bool Branch::classof(Instruction *Inst) {
+bool Branch::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Branch;
+}
+
+bool Branch::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Branch::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ///////////////////////////////// BranchTable //////////////////////////////////
@@ -130,21 +142,27 @@ void BranchTable::setTargets(llvm::ArrayRef<BasicBlock *> Targets_) {
   ranges::copy(Targets_, Targets.begin());
 }
 
-void BranchTable::detach_definition(Instruction *Operand_) noexcept {
+void BranchTable::detach_definition(Instruction const *Operand_) noexcept {
   assert(Operand == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-void BranchTable::detach_definition(BasicBlock *Target_) noexcept {
+void BranchTable::detach_definition(BasicBlock const *Target_) noexcept {
   assert((DefaultTarget == Target_) || ranges::contains(Targets, Target_));
   if (DefaultTarget == Target_) DefaultTarget = nullptr;
   if (ranges::contains(Targets, Target_))
     ranges::replace(Targets, Target_, nullptr);
 }
 
-bool BranchTable::classof(Instruction *Inst) {
+bool BranchTable::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::BranchTable;
+}
+
+bool BranchTable::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return BranchTable::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 /////////////////////////////////// Return /////////////////////////////////////
@@ -169,14 +187,20 @@ void Return::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Return::detach_definition(Instruction *Operand_) noexcept {
+void Return::detach_definition(Instruction const *Operand_) noexcept {
   assert(Operand == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-bool Return::classof(Instruction *Inst) {
+bool Return::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Return;
+}
+
+bool Return::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Return::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 //////////////////////////////////// Call //////////////////////////////////////
@@ -212,19 +236,25 @@ void Call::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
   ranges::copy(Arguments_, Arguments.begin());
 }
 
-void Call::detach_definition(Function *Target_) noexcept {
+void Call::detach_definition(Function const *Target_) noexcept {
   assert(Target == Target_);
   utility::ignore(Target_);
   Target = nullptr;
 }
 
-void Call::detach_definition(Instruction *Argument_) noexcept {
+void Call::detach_definition(Instruction const *Argument_) noexcept {
   assert(ranges::contains(Arguments, Argument_));
   ranges::replace(Arguments, Argument_, nullptr);
 }
 
-bool Call::classof(Instruction *Inst) {
+bool Call::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Call;
+}
+
+bool Call::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Call::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 /////////////////////////////// CallIndirect ///////////////////////////////////
@@ -264,20 +294,26 @@ void CallIndirect::setExpectType(bytecode::FunctionType Type_) {
   ExpectType = std::move(Type_);
 }
 
-void CallIndirect::detach_definition(Table *Table_) noexcept {
+void CallIndirect::detach_definition(Table const *Table_) noexcept {
   assert(IndirectTable == Table_);
   utility::ignore(Table_);
   IndirectTable = nullptr;
 }
 
-void CallIndirect::detach_definition(Instruction *Operand_) noexcept {
+void CallIndirect::detach_definition(Instruction const *Operand_) noexcept {
   assert(Operand == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-bool CallIndirect::classof(Instruction *Inst) {
+bool CallIndirect::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::CallIndirect;
+}
+
+bool CallIndirect::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return CallIndirect::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ////////////////////////////////// Select //////////////////////////////////////
@@ -318,15 +354,21 @@ void Select::setFalse(Instruction *False_) {
   False = False_;
 }
 
-void Select::detach_definition(Instruction *Operand_) noexcept {
+void Select::detach_definition(Instruction const *Operand_) noexcept {
   assert((Condition == Operand_) || (True == Operand_) || (False == Operand_));
   if (Operand_ == Condition) Condition = nullptr;
   if (Operand_ == True) True = nullptr;
   if (Operand_ == False) False = nullptr;
 }
 
-bool Select::classof(Instruction *Inst) {
+bool Select::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Select;
+}
+
+bool Select::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Select::classof(dyn_cast<Select>(Node));
+  return false;
 }
 
 //////////////////////////////// LocalGet //////////////////////////////////////
@@ -347,14 +389,20 @@ void LocalGet::setTarget(Local *Target_) {
   Target = Target_;
 }
 
-void LocalGet::detach_definition(Local *Local_) noexcept {
+void LocalGet::detach_definition(Local const *Local_) noexcept {
   assert(Target == Local_);
   utility::ignore(Local_);
   Target = nullptr;
 }
 
-bool LocalGet::classof(Instruction *Inst) {
+bool LocalGet::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::LocalGet;
+}
+
+bool LocalGet::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return LocalGet::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 //////////////////////////////// LocalSet //////////////////////////////////////
@@ -384,20 +432,26 @@ void LocalSet::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void LocalSet::detach_definition(Local *Local_) noexcept {
+void LocalSet::detach_definition(Local const *Local_) noexcept {
   assert(Target == Local_);
   utility::ignore(Local_);
   Target = nullptr;
 }
 
-void LocalSet::detach_definition(Instruction *Operand_) noexcept {
+void LocalSet::detach_definition(Instruction const *Operand_) noexcept {
   assert(Operand == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-bool LocalSet::classof(Instruction *Inst) {
+bool LocalSet::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::LocalSet;
+}
+
+bool LocalSet::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return LocalSet::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 //////////////////////////////// GlobalGet /////////////////////////////////////
@@ -418,14 +472,20 @@ void GlobalGet::setTarget(Global *Target_) {
   Target = Target_;
 }
 
-void GlobalGet::detach_definition(Global *Global_) noexcept {
+void GlobalGet::detach_definition(Global const *Global_) noexcept {
   assert(Target == Global_);
   utility::ignore(Global_);
   Target = nullptr;
 }
 
-bool GlobalGet::classof(Instruction *Inst) {
+bool GlobalGet::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::GlobalGet;
+}
+
+bool GlobalGet::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return GlobalGet::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 //////////////////////////////// GlobalSet /////////////////////////////////////
@@ -456,20 +516,26 @@ void GlobalSet::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void GlobalSet::detach_definition(Global *Global_) noexcept {
+void GlobalSet::detach_definition(Global const *Global_) noexcept {
   assert(Target == Global_);
   utility::ignore(Global_);
   Target = nullptr;
 }
 
-void GlobalSet::detach_definition(Instruction *Operand_) noexcept {
+void GlobalSet::detach_definition(Instruction const *Operand_) noexcept {
   assert(Operand == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-bool GlobalSet::classof(Instruction *Inst) {
+bool GlobalSet::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::GlobalSet;
+}
+
+bool GlobalSet::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return GlobalSet::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ///////////////////////////////// Constant /////////////////////////////////////
@@ -500,8 +566,14 @@ bytecode::ValueType Constant::getValueType() const {
   return std::visit(Visitor, Value);
 }
 
-bool Constant::classof(Instruction *Inst) {
+bool Constant::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Constant;
+}
+
+bool Constant::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Constant::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 /////////////////////////////// IntUnaryOp /////////////////////////////////////
@@ -528,14 +600,20 @@ void IntUnaryOp::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void IntUnaryOp::detach_definition(Instruction *Operand_) noexcept {
+void IntUnaryOp::detach_definition(Instruction const *Operand_) noexcept {
   assert(getOperand() == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-bool IntUnaryOp::classof(Instruction *Inst) {
+bool IntUnaryOp::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::IntUnaryOp;
+}
+
+bool IntUnaryOp::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return IntUnaryOp::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 /////////////////////////////// IntBinaryOp ////////////////////////////////////
@@ -573,14 +651,20 @@ void IntBinaryOp::setRHS(Instruction *RHS_) {
   RHS = RHS_;
 }
 
-void IntBinaryOp::detach_definition(Instruction *Operand_) noexcept {
+void IntBinaryOp::detach_definition(Instruction const *Operand_) noexcept {
   assert((LHS == Operand_) || (RHS == Operand_));
   if (Operand_ == LHS) LHS = nullptr;
   if (Operand_ == RHS) RHS = nullptr;
 }
 
-bool IntBinaryOp::classof(Instruction *Inst) {
+bool IntBinaryOp::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::IntBinaryOp;
+}
+
+bool IntBinaryOp::classof(const ASTNode *Node) {
+  if (Instruction::classof(Node))
+    return IntBinaryOp::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 //////////////////////////////// FPUnaryOp /////////////////////////////////////
@@ -604,14 +688,20 @@ void FPUnaryOp::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void FPUnaryOp::detach_definition(Instruction *Operand_) noexcept {
+void FPUnaryOp::detach_definition(Instruction const *Operand_) noexcept {
   assert(Operand == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-bool FPUnaryOp::classof(Instruction *Inst) {
+bool FPUnaryOp::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::FPUnaryOp;
+}
+
+bool FPUnaryOp::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return FPUnaryOp::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 /////////////////////////////// FPBinaryOp /////////////////////////////////////
@@ -649,14 +739,20 @@ void FPBinaryOp::setRHS(Instruction *RHS_) {
   RHS = RHS_;
 }
 
-void FPBinaryOp::detach_definition(Instruction *Operand_) noexcept {
+void FPBinaryOp::detach_definition(Instruction const *Operand_) noexcept {
   assert((LHS == Operand_) || (RHS == Operand_));
   if (Operand_ == LHS) LHS = nullptr;
   if (Operand_ == RHS) RHS = nullptr;
 }
 
-bool FPBinaryOp::classof(Instruction *Inst) {
+bool FPBinaryOp::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::FPBinaryOp;
+}
+
+bool FPBinaryOp::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return FPBinaryOp::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ////////////////////////////////// Load ////////////////////////////////////////
@@ -693,20 +789,26 @@ void Load::setAddress(Instruction *Address_) {
   Address = Address_;
 }
 
-void Load::detach_definition(Instruction *Operand_) noexcept {
+void Load::detach_definition(Instruction const *Operand_) noexcept {
   assert(Address == Operand_);
   utility::ignore(Operand_);
   Address = nullptr;
 }
 
-void Load::detach_definition(Memory *Memory_) noexcept {
+void Load::detach_definition(Memory const *Memory_) noexcept {
   assert(LinearMemory == Memory_);
   utility::ignore(Memory_);
   LinearMemory = nullptr;
 }
 
-bool Load::classof(Instruction *Inst) {
+bool Load::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Load;
+}
+
+bool Load::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Load::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ///////////////////////////////// Store ////////////////////////////////////////
@@ -750,20 +852,26 @@ void Store::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Store::detach_definition(Instruction *Operand_) noexcept {
+void Store::detach_definition(Instruction const *Operand_) noexcept {
   assert((Operand_ == Address) || (Operand_ == Operand));
   if (Operand_ == Address) Address = nullptr;
   if (Operand_ == Operand) Operand = nullptr;
 }
 
-void Store::detach_definition(Memory *Memory_) noexcept {
+void Store::detach_definition(Memory const *Memory_) noexcept {
   assert(LinearMemory == Memory_);
   utility::ignore(Memory_);
   LinearMemory = nullptr;
 }
 
-bool Store::classof(Instruction *Inst) {
+bool Store::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Store;
+}
+
+bool Store::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Store::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ////////////////////////////// MemorySize //////////////////////////////////////
@@ -784,14 +892,20 @@ void MemorySize::setLinearMemory(Memory *LinearMemory_) {
   LinearMemory = LinearMemory_;
 }
 
-void MemorySize::detach_definition(Memory *Memory_) noexcept {
+void MemorySize::detach_definition(Memory const *Memory_) noexcept {
   assert(LinearMemory == Memory_);
   utility::ignore(Memory_);
   LinearMemory = nullptr;
 }
 
-bool MemorySize::classof(Instruction *Inst) {
+bool MemorySize::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::MemorySize;
+}
+
+bool MemorySize::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return MemorySize::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ////////////////////////////// MemoryGrow //////////////////////////////////////
@@ -822,20 +936,26 @@ void MemoryGrow::setGrowSize(Instruction *GrowSize_) {
   GrowSize = GrowSize_;
 }
 
-void MemoryGrow::detach_definition(Instruction *Operand_) noexcept {
+void MemoryGrow::detach_definition(Instruction const *Operand_) noexcept {
   assert(GrowSize == Operand_);
   utility::ignore(Operand_);
   GrowSize = nullptr;
 }
 
-void MemoryGrow::detach_definition(Memory *Memory_) noexcept {
+void MemoryGrow::detach_definition(Memory const *Memory_) noexcept {
   assert(LinearMemory == Memory_);
   utility::ignore(Memory_);
   LinearMemory = nullptr;
 }
 
-bool MemoryGrow::classof(Instruction *Inst) {
+bool MemoryGrow::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::MemoryGrow;
+}
+
+bool MemoryGrow::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return MemoryGrow::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ////////////////////////////// MemoryGuard /////////////////////////////////////
@@ -866,20 +986,26 @@ void MemoryGuard::setAddress(Instruction *Address_) {
   Address = Address_;
 }
 
-void MemoryGuard::detach_definition(Instruction *Operand_) noexcept {
+void MemoryGuard::detach_definition(Instruction const *Operand_) noexcept {
   assert(Address == Operand_);
   utility::ignore(Operand_);
   Address = nullptr;
 }
 
-void MemoryGuard::detach_definition(Memory *Memory_) noexcept {
+void MemoryGuard::detach_definition(Memory const *Memory_) noexcept {
   assert(LinearMemory == Memory_);
   utility::ignore(Memory_);
   LinearMemory = nullptr;
 }
 
-bool MemoryGuard::classof(Instruction *Inst) {
+bool MemoryGuard::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::MemoryGuard;
+}
+
+bool MemoryGuard::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return MemoryGuard::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ////////////////////////////////// Cast ////////////////////////////////////////
@@ -909,14 +1035,20 @@ void Cast::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Cast::detach_definition(Instruction *Operand_) noexcept {
+void Cast::detach_definition(Instruction const *Operand_) noexcept {
   assert(Operand == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-bool Cast::classof(Instruction *Inst) {
+bool Cast::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Cast;
+}
+
+bool Cast::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Cast::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ///////////////////////////////// Extend ///////////////////////////////////////
@@ -940,14 +1072,20 @@ void Extend::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Extend::detach_definition(Instruction *Operand_) noexcept {
+void Extend::detach_definition(Instruction const *Operand_) noexcept {
   assert(Operand == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-bool Extend::classof(Instruction *Inst) {
+bool Extend::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Extend;
+}
+
+bool Extend::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Extend::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ////////////////////////////////// Pack ////////////////////////////////////////
@@ -972,13 +1110,19 @@ void Pack::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
   ranges::copy(Arguments_, Arguments.begin());
 }
 
-void Pack::detach_definition(Instruction *Operand_) noexcept {
+void Pack::detach_definition(Instruction const *Operand_) noexcept {
   assert(ranges::contains(Arguments, Operand_));
   ranges::replace(Arguments, Operand_, nullptr);
 }
 
-bool Pack::classof(Instruction *Inst) {
+bool Pack::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Pack;
+}
+
+bool Pack::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Pack::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 ///////////////////////////////// Unpack ///////////////////////////////////////
@@ -1001,14 +1145,20 @@ void Unpack::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Unpack::detach_definition(Instruction *Operand_) noexcept {
+void Unpack::detach_definition(Instruction const *Operand_) noexcept {
   assert(Operand == Operand_);
   utility::ignore(Operand_);
   Operand = nullptr;
 }
 
-bool Unpack::classof(Instruction *Inst) {
+bool Unpack::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Unpack;
+}
+
+bool Unpack::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Unpack::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 
 /////////////////////////////////// Phi ////////////////////////////////////////
@@ -1033,13 +1183,19 @@ void Phi::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
   ranges::copy(Arguments_, Arguments.begin());
 }
 
-void Phi::detach_definition(Instruction *Operand_) noexcept {
+void Phi::detach_definition(Instruction const *Operand_) noexcept {
   assert(ranges::contains(Arguments, Operand_));
   ranges::replace(Arguments, Operand_, nullptr);
 }
 
-bool Phi::classof(Instruction *Inst) {
+bool Phi::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Phi;
+}
+
+bool Phi::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Phi::classof(dyn_cast<Instruction>(Node));
+  return false;
 }
 } // namespace mir::instructions
 

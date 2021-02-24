@@ -102,13 +102,13 @@ public:
   // defaults to do nothing
   // called from destructors, must be noexcept
   // TODO: move these to traits
-  virtual void detach_definition(Instruction *) noexcept {}
-  virtual void detach_definition(Local *) noexcept {}
-  virtual void detach_definition(BasicBlock *) noexcept {}
-  virtual void detach_definition(Function *) noexcept {}
-  virtual void detach_definition(Global *) noexcept {}
-  virtual void detach_definition(Memory *) noexcept {}
-  virtual void detach_definition(Table *) noexcept {}
+  virtual void detach_definition(Instruction const *) noexcept {}
+  virtual void detach_definition(Local const *) noexcept {}
+  virtual void detach_definition(BasicBlock const *) noexcept {}
+  virtual void detach_definition(Function const *) noexcept {}
+  virtual void detach_definition(Global const *) noexcept {}
+  virtual void detach_definition(Memory const *) noexcept {}
+  virtual void detach_definition(Table const *) noexcept {}
 
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::Instruction;
@@ -188,7 +188,8 @@ namespace mir::instructions {
 class Unreachable : public Instruction {
 public:
   explicit Unreachable(BasicBlock *Parent_);
-  static bool classof(Instruction *Inst);
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 //////////////////////////////////// Branch ////////////////////////////////////
@@ -215,9 +216,10 @@ public:
   void setTarget(BasicBlock *Target_);
   BasicBlock *getFalseTarget() const;
   void setFalseTarget(BasicBlock *FalseTarget_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  void detach_definition(BasicBlock *Target_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach_definition(BasicBlock const *Target_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ///////////////////////////////// BranchTable //////////////////////////////////
@@ -241,9 +243,10 @@ public:
   void setDefaultTarget(BasicBlock *DefaultTarget_);
   llvm::ArrayRef<BasicBlock *> getTargets() const;
   void setTargets(llvm::ArrayRef<BasicBlock *> Targets_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  void detach_definition(BasicBlock *Target_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach_definition(BasicBlock const *Target_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 /////////////////////////////////// Return /////////////////////////////////////
@@ -261,8 +264,9 @@ public:
   bool hasReturnValue() const;
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 //////////////////////////////////// Call //////////////////////////////////////
@@ -283,9 +287,10 @@ public:
   void setTarget(Function *Target_);
   llvm::ArrayRef<Instruction *> getArguments() const;
   void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
-  void detach_definition(Function *Target_) noexcept override;
-  void detach_definition(Instruction *Argument_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Function const *Target_) noexcept override;
+  void detach_definition(Instruction const *Argument_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 /////////////////////////////// CallIndirect ///////////////////////////////////
@@ -309,9 +314,10 @@ public:
   void setOperand(Instruction *Operand_);
   bytecode::FunctionType const &getExpectType() const;
   void setExpectType(bytecode::FunctionType Type_);
-  void detach_definition(Table *Table_) noexcept override;
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Table const *Table_) noexcept override;
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ////////////////////////////////// Select //////////////////////////////////////
@@ -335,8 +341,9 @@ public:
   void setTrue(Instruction *True_);
   Instruction *getFalse() const;
   void setFalse(Instruction *False_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 //////////////////////////////// LocalGet //////////////////////////////////////
@@ -352,8 +359,9 @@ public:
   ~LocalGet() noexcept override;
   Local *getTarget() const;
   void setTarget(Local *Target_);
-  void detach_definition(Local *Local_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Local const *Local_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 //////////////////////////////// LocalSet //////////////////////////////////////
@@ -372,9 +380,10 @@ public:
   void setTarget(Local *Target_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Local *Local_) noexcept override;
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Local const *Local_) noexcept override;
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 //////////////////////////////// GlobalGet /////////////////////////////////////
@@ -390,8 +399,9 @@ public:
   ~GlobalGet() noexcept override;
   Global *getTarget() const;
   void setTarget(Global *Target_);
-  void detach_definition(Global *Global_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Global const *Global_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 //////////////////////////////// GlobalSet /////////////////////////////////////
@@ -410,9 +420,10 @@ public:
   void setTarget(Global *Target_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Global *Global_) noexcept override;
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Global const *Global_) noexcept override;
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ///////////////////////////////// Constant /////////////////////////////////////
@@ -433,7 +444,8 @@ public:
   double getF64() const;
   void setF64(double Value_);
   bytecode::ValueType getValueType() const;
-  static bool classof(Instruction *Inst);
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 /////////////////////////////// IntUnaryOp /////////////////////////////////////
@@ -454,8 +466,9 @@ public:
   void setOperator(IntUnaryOperator Operator_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 /////////////////////////////// IntBinaryOp ////////////////////////////////////
@@ -486,8 +499,9 @@ public:
   void setLHS(Instruction *LHS_);
   Instruction *getRHS() const;
   void setRHS(Instruction *RHS_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 //////////////////////////////// FPUnaryOp /////////////////////////////////////
@@ -511,8 +525,9 @@ public:
   void setOperator(FPUnaryOperator Operator_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 /////////////////////////////// FPBinaryOp /////////////////////////////////////
@@ -541,8 +556,9 @@ public:
   void setLHS(Instruction *LHS_);
   Instruction *getRHS() const;
   void setRHS(Instruction *RHS_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ////////////////////////////////// Load ////////////////////////////////////////
@@ -569,9 +585,10 @@ public:
   void setAddress(Instruction *Address_);
   unsigned getLoadWidth() const;
   void setLoadWidth(unsigned LoadWidth_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  void detach_definition(Memory *Memory_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach_definition(Memory const *Memory_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ///////////////////////////////// Store ////////////////////////////////////////
@@ -598,9 +615,10 @@ public:
   void setOperand(Instruction *Operand_);
   unsigned getStoreWidth() const;
   void setStoreWidth(unsigned StoreWidth_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  void detach_definition(Memory *Memory_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach_definition(Memory const *Memory_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ////////////////////////////// MemorySize //////////////////////////////////////
@@ -616,8 +634,9 @@ public:
   ~MemorySize() noexcept override;
   Memory *getLinearMemory() const;
   void setLinearMemory(Memory *LinearMemory_);
-  void detach_definition(Memory *Memory_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Memory const *Memory_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ////////////////////////////// MemoryGrow //////////////////////////////////////
@@ -637,9 +656,10 @@ public:
   void setLinearMemory(Memory *LinearMemory_);
   Instruction *getGrowSize() const;
   void setGrowSize(Instruction *GrowSize_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  void detach_definition(Memory *Memory_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach_definition(Memory const *Memory_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ////////////////////////////// MemoryGuard /////////////////////////////////////
@@ -659,9 +679,10 @@ public:
   void setLinearMemory(Memory *LinearMemory_);
   Instruction *getAddress() const;
   void setAddress(Instruction *Address_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  void detach_definition(Memory *Memory_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach_definition(Memory const *Memory_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ////////////////////////////////// Cast ////////////////////////////////////////
@@ -689,8 +710,9 @@ public:
   void setOperand(Instruction *Operand_);
   bool getIsSigned() const;
   void setIsSigned(bool IsSigned_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ///////////////////////////////// Extend ///////////////////////////////////////
@@ -709,8 +731,9 @@ public:
   void setOperand(Instruction *Operand_);
   unsigned getFromWidth() const;
   void setFromWidth(unsigned FromWidth_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ///////////////////////////////// Packed ///////////////////////////////////////
@@ -726,8 +749,9 @@ public:
   ~Pack() noexcept override;
   llvm::ArrayRef<Instruction *> getArguments() const;
   void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 ///////////////////////////////// Unpack ///////////////////////////////////////
@@ -746,8 +770,9 @@ public:
   void setIndex(unsigned Index_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 /////////////////////////////////// Phi ////////////////////////////////////////
@@ -763,14 +788,15 @@ public:
   ~Phi() noexcept override;
   llvm::ArrayRef<Instruction *> getArguments() const;
   void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
-  void detach_definition(Instruction *Operand_) noexcept override;
-  static bool classof(Instruction *Inst);
+  void detach_definition(Instruction const *Operand_) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
 };
 
 } // namespace mir::instructions
 
 namespace mir {
-
+static_assert(instruction<instructions::Unreachable>);
 template <typename Derived, typename RetType = void, bool Const = true>
 class InstVisitorBase {
   Derived &derived() { return static_cast<Derived &>(*this); }
@@ -784,7 +810,7 @@ public:
     using IKind = InstructionKind;
     using namespace instructions;
     // clang-format off
-    switch (Inst->getKind()) {
+    switch (Inst->getInstructionKind()) {
     case IKind::Unreachable : return castAndCall<Unreachable>(Inst);
     case IKind::Branch      : return castAndCall<Branch>(Inst);
     case IKind::BranchTable : return castAndCall<BranchTable>(Inst);

@@ -9,114 +9,160 @@
 #include <iterator>
 #include <unordered_map>
 
-namespace mir::printer {
+namespace mir {
 
-class EntityNameResolver {
+class EntityNameWriter {
   std::unordered_map<ASTNode const *, std::size_t> Names;
-  template <ranges::input_range T> void prepareEntities(T const &Entities) {
-    std::size_t UnnamedCounter = 0;
-    for (auto const &Entity : Entities) {
-      if (Entity.hasName()) continue;
-      Names.emplace(std::addressof(Entity), UnnamedCounter);
-      UnnamedCounter = UnnamedCounter + 1;
-    }
-  }
+  static char const *const NULL_STR;
 
+  template <ranges::input_range T> void prepareEntities(T const &Entities);
   template <std::output_iterator<char> Iterator>
-  Iterator operator()(Iterator Out, char const *FmtStr, ASTNode const &Node) {
-    auto const *NodePtr = std::addressof(Node);
-    if (Node.hasName()) return fmt::format_to(Out, "%{}", Node.getName());
-    if (!Names.contains(NodePtr))
-      return fmt::format_to(Out, FmtStr, fmt::ptr(NodePtr));
-    auto UnnamedIndex = std::get<1>(*Names.find(NodePtr));
-    return fmt::format_to(Out, FmtStr, UnnamedIndex);
-  }
+  Iterator write(Iterator Out, char const *FmtStr, ASTNode const &Node) const;
 
 public:
-  EntityNameResolver() = default;
-  EntityNameResolver(Module const &Module_) {
-    prepareEntities(Module_.getMemories());
-    prepareEntities(Module_.getTables());
-    prepareEntities(Module_.getGlobals());
-    prepareEntities(Module_.getFunctions());
-  }
+  EntityNameWriter() = default;
+  EntityNameWriter(Module const &Module_);
 
   template <std::output_iterator<char> Iterator>
-  Iterator operator()(Iterator Out, Memory const &Memory_) {
-    return operator()(Out, "%memory:{}", Memory_);
-  }
+  Iterator write(Iterator Out, Memory const &Memory_) const;
+  template <std::output_iterator<char> Iterator>
+  Iterator write(Iterator Out, Table const &Table_) const;
+  template <std::output_iterator<char> Iterator>
+  Iterator write(Iterator Out, Global const &Global_) const;
+  template <std::output_iterator<char> Iterator>
+  Iterator write(Iterator Out, Function const &Function_) const;
 
   template <std::output_iterator<char> Iterator>
-  Iterator operator()(Iterator Out, Table const &Table_) {
-    return operator()(Out, "%table:{}", Table_);
-  }
-
+  Iterator write(Iterator Out, Memory const *MemoryPtr) const;
   template <std::output_iterator<char> Iterator>
-  Iterator operator()(Iterator Out, Global const &Global_) {
-    return operator()(Out, "%global:{}", Global_);
-  }
-
+  Iterator write(Iterator Out, Table const *TablePtr) const;
   template <std::output_iterator<char> Iterator>
-  Iterator operator()(Iterator Out, Function const &Function_) {
-    return operator()(Out, "%function:{}", Function_);
-  }
+  Iterator write(Iterator Out, Global const *GlobalPtr) const;
+  template <std::output_iterator<char> Iterator>
+  Iterator write(Iterator Out, Function const *FunctionPtr) const;
 };
 
-class LocalNameResolver {
+class LocalNameWriter {
   std::unordered_map<ASTNode const *, std::size_t> Names;
+  static char const *const NULL_STR;
 
   template <std::output_iterator<char> Iterator>
-  Iterator operator()(Iterator Out, char const *FmtStr, ASTNode const &Node) {
-    auto const *NodePtr = std::addressof(Node);
-    if (Node.hasName()) return fmt::format_to(Out, "%{}", Node.getName());
-    if (!Names.contains(NodePtr))
-      return fmt::format_to(Out, FmtStr, fmt::ptr(NodePtr));
-    auto UnnamedIndex = std::get<1>(*Names.find(NodePtr));
-    return fmt::format_to(Out, FmtStr, UnnamedIndex);
-  }
+  Iterator write(Iterator Out, char const *FmtStr, ASTNode const &Node) const;
 
 public:
-  LocalNameResolver() = default;
-  LocalNameResolver(Function const &Function_) {
-    assert(!Function_.isImported());
-    std::size_t UnnamedLocalCounter = 0;
-    std::size_t UnnamedBasicBlockCounter = 0;
-    for (auto const &Local : Function_.getLocals()) {
-      if (Local.hasName()) continue;
-      Names.emplace(std::addressof(Local), UnnamedLocalCounter);
-      UnnamedLocalCounter = UnnamedLocalCounter + 1;
-    }
-    for (auto const &BasicBlock : Function_.getBasicBlocks()) {
-      if (!BasicBlock.hasName()) {
-        Names.emplace(std::addressof(BasicBlock), UnnamedBasicBlockCounter);
-        UnnamedBasicBlockCounter = UnnamedBasicBlockCounter + 1;
-      }
-      for (auto const &Instruction : BasicBlock) {
-        if (Instruction.hasName()) continue;
-        Names.emplace(std::addressof(Instruction), UnnamedLocalCounter);
-        UnnamedLocalCounter = UnnamedLocalCounter + 1;
-      }
-    }
-  }
+  LocalNameWriter() = default;
+  LocalNameWriter(Function const &Function_);
 
   template <std::output_iterator<char> Iterator>
-  Iterator operator()(Iterator Out, Local const &Local_) {
-    return operator()(Out, "%{}", Local_);
-  }
+  Iterator write(Iterator Out, Local const &Local_) const;
+  template <std::output_iterator<char> Iterator>
+  Iterator write(Iterator Out, BasicBlock const &BasicBlock_) const;
+  template <std::output_iterator<char> Iterator>
+  Iterator write(Iterator Out, Instruction const &Instruction_) const;
 
   template <std::output_iterator<char> Iterator>
-  Iterator operator()(Iterator Out, BasicBlock const &BasicBlock_) {
-    return operator()(Out, "%BB:{}", BasicBlock_);
-  }
-
+  Iterator write(Iterator Out, Local const *LocalPtr) const;
   template <std::output_iterator<char> Iterator>
-  Iterator operator()(Iterator Out, Instruction const &Instruction_) {
-    return operator()(Out, "%{}", Instruction_);
-  }
+  Iterator write(Iterator Out, BasicBlock const *BasicBlockPtr) const;
+  template <std::output_iterator<char> Iterator>
+  Iterator write(Iterator Out, Instruction const *InstructionPtr) const;
 };
 
-struct PrintPolicyBase {};
+template <std::output_iterator<char> Iterator> class MIRIteratorWriter {
+  Iterator Out;
+  EntityNameWriter const *ENameWriter = nullptr;
+  LocalNameWriter const *LNameWriter = nullptr;
 
-} // namespace mir::printer
+  char const *toString(instructions::IntUnaryOperator Operator);
+  char const *toString(instructions::IntBinaryOperator Operator);
+  char const *toString(instructions::FPUnaryOperator Operator);
+  char const *toString(instructions::FPBinaryOperator Operator);
+
+  static const char *const LINEBREAK_STR;
+  static const char *const INDENT_STR;
+
+  template <typename ArgType> MIRIteratorWriter &forwardE(ArgType &&Arg);
+  template <typename ArgType> MIRIteratorWriter &forwardL(ArgType &&Arg);
+
+  struct linebreak_ {};
+  struct indent_ {
+    unsigned Level;
+    explicit indent_(unsigned Level_) : Level(Level_) {}
+  };
+
+public:
+  explicit MIRIteratorWriter(Iterator Out_) : Out(Out_) {}
+  MIRIteratorWriter(Iterator Out_, EntityNameWriter const &ENameWriter_);
+  MIRIteratorWriter(
+      Iterator Out_, EntityNameWriter const &ENameWriter_,
+      LocalNameWriter const &LNameWriter_);
+
+  linebreak_ linebreak() const { return linebreak_{}; }
+  indent_ indent(unsigned Level_) const { return indent_(Level_); }
+
+  MIRIteratorWriter &operator<<(char Character);
+  MIRIteratorWriter &operator<<(std::string_view String);
+  MIRIteratorWriter &operator<<(linebreak_ const &);
+  MIRIteratorWriter &operator<<(indent_ const &);
+
+  MIRIteratorWriter &operator<<(instructions::IntUnaryOperator Op);
+  MIRIteratorWriter &operator<<(instructions::IntBinaryOperator Op);
+  MIRIteratorWriter &operator<<(instructions::FPUnaryOperator Op);
+  MIRIteratorWriter &operator<<(instructions::FPBinaryOperator Op);
+
+  MIRIteratorWriter &operator<<(Memory const &X) { return forwardE(X); }
+  MIRIteratorWriter &operator<<(Table const &X) { return forwardE(X); }
+  MIRIteratorWriter &operator<<(Global const &X) { return forwardE(X); }
+  MIRIteratorWriter &operator<<(Function const &X) { return forwardE(X); }
+  MIRIteratorWriter &operator<<(Memory const *X) { return forwardE(X); }
+  MIRIteratorWriter &operator<<(Table const *X) { return forwardE(X); }
+  MIRIteratorWriter &operator<<(Global const *X) { return forwardE(X); }
+  MIRIteratorWriter &operator<<(Function const *X) { return forwardE(X); }
+
+  MIRIteratorWriter &operator<<(Local const &X) { return forwardL(X); }
+  MIRIteratorWriter &operator<<(BasicBlock const &X) { return forwardL(X); }
+  MIRIteratorWriter &operator<<(Instruction const &X) { return forwardL(X); }
+  MIRIteratorWriter &operator<<(Local const *X) { return forwardL(X); }
+  MIRIteratorWriter &operator<<(BasicBlock const *X) { return forwardL(X); }
+  MIRIteratorWriter &operator<<(Instruction const *X) { return forwardL(X); }
+
+  // clang-format off
+  MIRIteratorWriter &operator<<(bytecode::ValueType const &Type)
+  { Out = fmt::format_to(Out, "{}", Type); return *this; }
+  MIRIteratorWriter &operator<<(bytecode::FunctionType const &Type)
+  { Out = fmt::format_to(Out, "{}", Type); return *this; }
+  MIRIteratorWriter &operator<<(bytecode::TableType const &Type)
+  { Out = fmt::format_to(Out, "{}", Type); return *this; }
+  MIRIteratorWriter &operator<<(bytecode::MemoryType const &Type)
+  { Out = fmt::format_to(Out, "{}", Type); return *this; }
+  // clang-format on
+
+  void attach(Iterator Out_) { Out = Out_; }
+  Iterator iterator() const { return Out; }
+};
+
+template <std::output_iterator<char> Iterator>
+Iterator dumpImportInfo(Iterator Out, detail::ImportableEntity const &Entity);
+template <std::output_iterator<char> Iterator>
+Iterator dumpExportInfo(Iterator Out, detail::ExportableEntity const &Entity);
+
+template <std::output_iterator<char> Iterator>
+Iterator dump(
+    Iterator Out, Memory const &Memory_,
+    EntityNameWriter const &ENameWriter = EntityNameWriter());
+template <std::output_iterator<char> Iterator>
+Iterator dump(
+    Iterator Out, Table const &Table_,
+    EntityNameWriter const &ENameWriter = EntityNameWriter());
+template <std::output_iterator<char> Iterator>
+Iterator dump(
+    Iterator Out, Function const &Function_,
+    EntityNameWriter const &ENameWriter = EntityNameWriter());
+template <std::output_iterator<char> Iterator>
+Iterator dump(Iterator Out, Module const &Module_);
+
+} // namespace mir
+
+#include "MIRPrinter.tcc"
 
 #endif

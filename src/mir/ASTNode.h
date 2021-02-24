@@ -51,7 +51,7 @@ template <ast_node T> T *dyn_cast(ASTNode *Node) {
   return static_cast<T *>(Node);
 }
 
-template <ast_node T> T const *dyn_cast(ASTNode *Node) {
+template <ast_node T> T const *dyn_cast(ASTNode const *Node) {
   assert(is_a<T>(Node));
   return static_cast<T const *>(Node);
 }

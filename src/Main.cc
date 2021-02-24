@@ -42,8 +42,12 @@ int main(int argc, char const *argv[]) {
   using namespace mir::bytecode_codegen;
 
   mir::Module M;
-  mir::bytecode_codegen::ModuleTranslator Trans(Module, M);
-  Trans.annotateWith(Name);
+  auto *F = M.BuildFunction(bytecode::FunctionType({}, {I32}));
+  auto *B = F->BuildBasicBlock();
+  auto *I0 = B->BuildInst<Constant>(0);
+  auto *I1 = B->BuildInst<Constant>(1);
+  auto *I2 = B->BuildInst<IntBinaryOp>(IntBinaryOperator::Add, I0, I1);
+  B->BuildInst<Select>(I0, I1, I2);
 
   std::ostream_iterator<char> OutIter(std::cout);
   mir::dump(OutIter, M);

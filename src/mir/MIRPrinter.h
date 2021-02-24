@@ -6,6 +6,7 @@
 
 #include <fmt/format.h>
 
+#include <concepts>
 #include <iterator>
 #include <unordered_map>
 
@@ -77,6 +78,7 @@ template <std::output_iterator<char> Iterator> class MIRIteratorWriter {
   char const *toString(instructions::IntBinaryOperator Operator);
   char const *toString(instructions::FPUnaryOperator Operator);
   char const *toString(instructions::FPBinaryOperator Operator);
+  char const *toString(instructions::CastMode Mode);
 
   static const char *const LINEBREAK_STR;
   static const char *const INDENT_STR;
@@ -91,6 +93,7 @@ template <std::output_iterator<char> Iterator> class MIRIteratorWriter {
   };
 
 public:
+  MIRIteratorWriter() = default;
   explicit MIRIteratorWriter(Iterator Out_) : Out(Out_) {}
   MIRIteratorWriter(Iterator Out_, EntityNameWriter const &ENameWriter_);
   MIRIteratorWriter(
@@ -98,17 +101,25 @@ public:
       LocalNameWriter const &LNameWriter_);
 
   linebreak_ linebreak() const { return linebreak_{}; }
-  indent_ indent(unsigned Level_) const { return indent_(Level_); }
+  indent_ indent(unsigned Level_ = 1) const { return indent_(Level_); }
 
   MIRIteratorWriter &operator<<(char Character);
   MIRIteratorWriter &operator<<(std::string_view String);
   MIRIteratorWriter &operator<<(linebreak_ const &);
   MIRIteratorWriter &operator<<(indent_ const &);
 
-  MIRIteratorWriter &operator<<(instructions::IntUnaryOperator Op);
-  MIRIteratorWriter &operator<<(instructions::IntBinaryOperator Op);
-  MIRIteratorWriter &operator<<(instructions::FPUnaryOperator Op);
-  MIRIteratorWriter &operator<<(instructions::FPBinaryOperator Op);
+  // clang-format off
+  MIRIteratorWriter &operator<<(instructions::IntUnaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
+  MIRIteratorWriter &operator<<(instructions::IntBinaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
+  MIRIteratorWriter &operator<<(instructions::FPUnaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
+  MIRIteratorWriter &operator<<(instructions::FPBinaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
+  MIRIteratorWriter &operator<<(instructions::CastMode Mode)
+  { Out = fmt::format_to(Out, "{}", toString(Mode)); return *this; }
+  // clang-format on
 
   MIRIteratorWriter &operator<<(Memory const &X) { return forwardE(X); }
   MIRIteratorWriter &operator<<(Table const &X) { return forwardE(X); }
@@ -135,9 +146,19 @@ public:
   { Out = fmt::format_to(Out, "{}", Type); return *this; }
   MIRIteratorWriter &operator<<(bytecode::MemoryType const &Type)
   { Out = fmt::format_to(Out, "{}", Type); return *this; }
+  MIRIteratorWriter &operator<<(bytecode::GlobalType const &Type)
+  { Out = fmt::format_to(Out, "{}", Type); return *this; }
+
+
+  template <std::integral T> MIRIteratorWriter &operator<<(T Value)
+  { Out = fmt::format_to(Out, "{}", Value); return *this; }
+  template <std::floating_point T> MIRIteratorWriter &operator<<(T Value)
+  { Out = fmt::format_to(Out, "{}", Value); return *this; }
+
+  MIRIteratorWriter &attach(Iterator Out_)
+  { Out = Out_; return *this; }
   // clang-format on
 
-  void attach(Iterator Out_) { Out = Out_; }
   Iterator iterator() const { return Out; }
 };
 
@@ -148,11 +169,21 @@ Iterator dumpExportInfo(Iterator Out, detail::ExportableEntity const &Entity);
 
 template <std::output_iterator<char> Iterator>
 Iterator dump(
+    Iterator Out, Instruction const &Instruction_,
+    EntityNameWriter const &ENameWriter = EntityNameWriter(),
+    LocalNameWriter const &LNameWriter = LocalNameWriter());
+
+template <std::output_iterator<char> Iterator>
+Iterator dump(
     Iterator Out, Memory const &Memory_,
     EntityNameWriter const &ENameWriter = EntityNameWriter());
 template <std::output_iterator<char> Iterator>
 Iterator dump(
     Iterator Out, Table const &Table_,
+    EntityNameWriter const &ENameWriter = EntityNameWriter());
+template <std::output_iterator<char> Iterator>
+Iterator dump(
+    Iterator Out, Global const &Global_,
     EntityNameWriter const &ENameWriter = EntityNameWriter());
 template <std::output_iterator<char> Iterator>
 Iterator dump(

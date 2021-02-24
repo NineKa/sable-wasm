@@ -104,7 +104,8 @@ bool Branch::classof(ASTNode const *Node) {
 BranchTable::BranchTable(
     BasicBlock *Parent_, Instruction *Operand_, BasicBlock *DefaultTarget_,
     llvm::ArrayRef<BasicBlock *> Targets_)
-    : Instruction(IKind::BranchTable, Parent_), Operand(), DefaultTarget() {
+    : Instruction(IKind::BranchTable, Parent_), Operand(), DefaultTarget(),
+      Targets() {
   setOperand(Operand_);
   setDefaultTarget(DefaultTarget_);
   setTargets(Targets_);
@@ -167,7 +168,7 @@ bool BranchTable::classof(ASTNode const *Node) {
 
 /////////////////////////////////// Return /////////////////////////////////////
 Return::Return(BasicBlock *Parent_)
-    : Instruction(IKind::Return, Parent_), Operand(nullptr) {}
+    : Instruction(IKind::Return, Parent_), Operand() {}
 
 Return::Return(BasicBlock *Parent_, Instruction *Operand_)
     : Instruction(IKind::Return, Parent_), Operand() {
@@ -178,7 +179,7 @@ Return::~Return() noexcept {
   if (Operand != nullptr) Operand->remove_use(this);
 }
 
-bool Return::hasReturnValue() const { return Operand == nullptr; }
+bool Return::hasReturnValue() const { return Operand != nullptr; }
 Instruction *Return::getOperand() const { return Operand; }
 
 void Return::setOperand(Instruction *Operand_) {
@@ -207,7 +208,7 @@ bool Return::classof(ASTNode const *Node) {
 Call::Call(
     BasicBlock *Parent_, Function *Target_,
     llvm::ArrayRef<Instruction *> Arguments_)
-    : Instruction(IKind::Call, Parent_), Target() {
+    : Instruction(IKind::Call, Parent_), Target(), Arguments() {
   setTarget(Target_);
   setArguments(Arguments_);
 }
@@ -260,11 +261,13 @@ bool Call::classof(ASTNode const *Node) {
 /////////////////////////////// CallIndirect ///////////////////////////////////
 CallIndirect::CallIndirect(
     BasicBlock *Parent_, Table *IndirectTable_, Instruction *Operand_,
-    bytecode::FunctionType ExpectType_)
+    bytecode::FunctionType ExpectType_,
+    llvm::ArrayRef<Instruction *> Arguments_)
     : Instruction(IKind::CallIndirect, Parent_), IndirectTable(), Operand(),
-      ExpectType(std::move(ExpectType_)) {
+      ExpectType(std::move(ExpectType_)), Arguments() {
   setIndirectTable(IndirectTable_);
   setOperand(Operand_);
+  setArguments(Arguments_);
 }
 
 CallIndirect::~CallIndirect() noexcept {
@@ -294,6 +297,19 @@ void CallIndirect::setExpectType(bytecode::FunctionType Type_) {
   ExpectType = std::move(Type_);
 }
 
+llvm::ArrayRef<Instruction *> CallIndirect::getArguments() const {
+  return Arguments;
+}
+
+void CallIndirect::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
+  for (auto *Argument : Arguments)
+    if (Argument != nullptr) Argument->remove_use(this);
+  for (auto *Argument : Arguments_)
+    if (Argument != nullptr) Argument->add_use(this);
+  Arguments.resize(Arguments_.size());
+  ranges::copy(Arguments_, Arguments.begin());
+}
+
 void CallIndirect::detach_definition(Table const *Table_) noexcept {
   assert(IndirectTable == Table_);
   utility::ignore(Table_);
@@ -301,9 +317,10 @@ void CallIndirect::detach_definition(Table const *Table_) noexcept {
 }
 
 void CallIndirect::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_);
+  assert(Operand == Operand_ || ranges::contains(Arguments, Operand_));
   utility::ignore(Operand_);
-  Operand = nullptr;
+  if (Operand == Operand_) Operand = nullptr;
+  ranges::replace(Arguments, Operand_, nullptr);
 }
 
 bool CallIndirect::classof(Instruction const *Inst) {
@@ -1011,9 +1028,8 @@ bool MemoryGuard::classof(ASTNode const *Node) {
 ////////////////////////////////// Cast ////////////////////////////////////////
 Cast::Cast(
     BasicBlock *Parent_, CastMode Mode_, bytecode::ValueType Type_,
-    Instruction *Operand_, bool IsSigned_)
-    : Instruction(IKind::Cast, Parent_), Mode(Mode_), Type(Type_), Operand(),
-      IsSigned(IsSigned_) {
+    Instruction *Operand_)
+    : Instruction(IKind::Cast, Parent_), Mode(Mode_), Type(Type_), Operand() {
   setOperand(Operand_);
 }
 
@@ -1024,10 +1040,8 @@ Cast::~Cast() noexcept {
 CastMode Cast::getMode() const { return Mode; }
 bytecode::ValueType const &Cast::getType() const { return Type; }
 Instruction *Cast::getOperand() const { return Operand; }
-bool Cast::getIsSigned() const { return IsSigned; }
 void Cast::setMode(CastMode Mode_) { Mode = Mode_; }
 void Cast::setType(const bytecode::ValueType &Type_) { Type = Type_; }
-void Cast::setIsSigned(bool IsSigned_) { IsSigned = IsSigned_; }
 
 void Cast::setOperand(Instruction *Operand_) {
   if (Operand != nullptr) Operand->remove_use(this);

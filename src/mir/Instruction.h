@@ -298,11 +298,13 @@ class CallIndirect : public Instruction {
   Table *IndirectTable;
   Instruction *Operand;
   bytecode::FunctionType ExpectType;
+  std::vector<Instruction *> Arguments;
 
 public:
   CallIndirect(
       BasicBlock *Parent_, Table *IndirectTable_, Instruction *Operand_,
-      bytecode::FunctionType ExpectType_);
+      bytecode::FunctionType ExpectType_,
+      llvm::ArrayRef<Instruction *> Arguments_);
   CallIndirect(CallIndirect const &) = delete;
   CallIndirect(CallIndirect &&) noexcept = delete;
   CallIndirect &operator=(CallIndirect const &) = delete;
@@ -314,6 +316,8 @@ public:
   void setOperand(Instruction *Operand_);
   bytecode::FunctionType const &getExpectType() const;
   void setExpectType(bytecode::FunctionType Type_);
+  llvm::ArrayRef<Instruction *> getArguments() const;
+  void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
   void detach_definition(Table const *Table_) noexcept override;
   void detach_definition(Instruction const *Operand_) noexcept override;
   static bool classof(Instruction const *Inst);
@@ -686,17 +690,24 @@ public:
 };
 
 ////////////////////////////////// Cast ////////////////////////////////////////
-enum class CastMode { Conversion, Reinterpret, SaturatedConversion };
+enum class CastMode {
+  Conversion,
+  ConversionSigned,
+  ConversionUnsigned,
+  Reinterpret,
+  SatConversionSigned,
+  SatConversionUnsigned
+};
+
 class Cast : public Instruction {
   CastMode Mode;
   bytecode::ValueType Type;
   Instruction *Operand;
-  bool IsSigned;
 
 public:
   Cast(
       BasicBlock *Parent_, CastMode Mode_, bytecode::ValueType Type_,
-      Instruction *Operand_, bool IsSigned_);
+      Instruction *Operand_);
   Cast(Cast const &) = delete;
   Cast(Cast &&) noexcept = delete;
   Cast &operator=(Cast const &) = delete;
@@ -708,8 +719,6 @@ public:
   void setType(bytecode::ValueType const &Type_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  bool getIsSigned() const;
-  void setIsSigned(bool IsSigned_);
   void detach_definition(Instruction const *Operand_) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);

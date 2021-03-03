@@ -977,8 +977,10 @@ bool MemoryGrow::classof(ASTNode const *Node) {
 
 ////////////////////////////// MemoryGuard /////////////////////////////////////
 MemoryGuard::MemoryGuard(
-    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_)
-    : Instruction(IKind::MemoryGuard, Parent_), LinearMemory(), Address() {
+    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
+    std::uint32_t GuardSize_)
+    : Instruction(IKind::MemoryGuard, Parent_), LinearMemory(), Address(),
+      GuardSize(GuardSize_) {
   setLinearMemory(LinearMemory_);
   setAddress(Address_);
 }
@@ -990,6 +992,7 @@ MemoryGuard::~MemoryGuard() noexcept {
 
 Memory *MemoryGuard::getLinearMemory() const { return LinearMemory; }
 Instruction *MemoryGuard::getAddress() const { return Address; }
+std::uint32_t MemoryGuard::getGuardSize() const { return GuardSize; }
 
 void MemoryGuard::setLinearMemory(Memory *LinearMemory_) {
   if (LinearMemory != nullptr) LinearMemory->remove_use(this);
@@ -1001,6 +1004,10 @@ void MemoryGuard::setAddress(Instruction *Address_) {
   if (Address != nullptr) Address->remove_use(this);
   if (Address_ != nullptr) Address_->add_use(this);
   Address = Address_;
+}
+
+void MemoryGuard::setGuardSize(std::uint32_t GuardSize_) {
+  GuardSize = GuardSize_;
 }
 
 void MemoryGuard::detach_definition(Instruction const *Operand_) noexcept {

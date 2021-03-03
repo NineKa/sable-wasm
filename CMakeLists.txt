@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 add_compile_options(-fno-rtti)
 add_compile_options(-Wall -Wextra -pedantic -Werror -Wfatal-errors)
 
-add_compile_options($<$<CONFIG:RELEASE>:-flto>)
-add_link_options($<$<CONFIG:RELEASE>:-flto>)
+#add_compile_options($<$<CONFIG:RELEASE>:-flto>)
+#add_link_options($<$<CONFIG:RELEASE>:-flto>)
 
 #add_compile_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)
 #add_link_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)

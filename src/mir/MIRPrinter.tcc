@@ -522,7 +522,8 @@ public:
   Iterator operator()(instructions::MemoryGuard const *Inst) {
     auto const *Memory = Inst->getLinearMemory();
     auto const *Address = Inst->getAddress();
-    Writer << "memory.guard " << Memory << ' ' << Address;
+    auto GuardSize = Inst->getGuardSize();
+    Writer << "memory.guard " << Memory << ' ' << Address << ' ' << GuardSize;
     return Writer.iterator();
   }
 

@@ -1,49 +1,91 @@
 #ifndef SABLE_INCLUDE_GUARD_MIR_MIR_CODEGEN
 #define SABLE_INCLUDE_GUARD_MIR_MIR_CODEGEN
 
-#include "Instruction.h"
-#include "Module.h"
-
-#include "../bytecode/Instruction.h"
 #include "../bytecode/Module.h"
 #include "../parser/customsections/Name.h"
+#include "Module.h"
+
+#include <vector>
 
 namespace mir::bytecode_codegen {
-
-class ModuleTranslator {
-  bytecode::Module const &BModule;
-  mir::Module &MIRModule;
+class EntityMap {
   std::vector<Function *> Functions;
-  std::vector<Global *> Globals;
   std::vector<Memory *> Memories;
+  std::vector<Global *> Globals;
   std::vector<Table *> Tables;
 
-public:
-  ModuleTranslator(bytecode::Module const &BModule_, mir::Module &MIRModule_);
-  void annotateWith(parser::customsections::Name const &NameSection);
-
-  Function *getMIREntity(bytecode::FuncIDX Index) const;
-  Global *getMIREntity(bytecode::GlobalIDX Index) const;
-  Memory *getMIREntity(bytecode::MemIDX Index) const;
-  Table *getMIREntity(bytecode::TableIDX Index) const;
-};
-
-class ExprTranslationContext {
+  template <ranges::random_access_range T, typename IndexType>
+  typename T::value_type getPtr(T const &Container, IndexType Index) const;
 
 public:
-  BasicBlock *getCurrentBasicBlock() const;
-  void setCurrentBasicBlock(BasicBlock *BasicBlock_);
-  BasicBlock *createBasicBlock() const;
-  Instruction *popOperand();
-  void pushOperand(Instruction *Operand_);
-  bool isReturn(bytecode::LabelIDX Index) const;
-  void pushLabel(BasicBlock *PhiBlock, BasicBlock *NextBlock, unsigned NumPhi);
-  void popLabel();
-  BasicBlock *getPhiBlock(bytecode::LabelIDX Index) const;
-  BasicBlock *getNextBlock(bytecode::LabelIDX Index) const;
-  unsigned getNumPhi(bytecode::LabelIDX Index) const;
+  EntityMap(bytecode::Module const &BModule, Module &MModule);
+
+  Function *operator[](bytecode::FuncIDX Index) const;
+  Memory *operator[](bytecode::MemIDX Index) const;
+  Table *operator[](bytecode::TableIDX Index) const;
+  Global *operator[](bytecode::GlobalIDX Index) const;
+
+  void annotate(parser::customsections::Name const &Name);
+  Memory *getImplicitMemory() const;
+  Table *getImplicitTable() const;
 };
 
+class TranslationTask {
+  BasicBlock *CurrentBB = nullptr;
+  BasicBlock *ExitBB = nullptr;
+  bytecode::views::Function FunctionView;
+  Function &MFunction;
+
+  struct ScopeFrame {
+    BasicBlock *MergeBB;
+    BasicBlock *NextBB;
+    unsigned NumMergePhi;
+  };
+  std::vector<ScopeFrame> Scopes;
+  std::vector<Instruction *> Values;
+  std::vector<Local *> Locals; // cached for quick random access
+  std::vector<Instruction *> ReturnValueCandidates;
+
+public:
+  TranslationTask(
+      bytecode::views::Function FunctionView_, Function &MFunction_);
+
+  Local *operator[](bytecode::LocalIDX Index) const;
+
+  BasicBlock *&currentBB() { return CurrentBB; }
+  BasicBlock *const &currentBB() const { return CurrentBB; }
+
+  class LabelStackAccessView {
+    TranslationTask &CTX;
+
+  public:
+    LabelStackAccessView(TranslationTask &CTX_) : CTX(CTX_) {}
+    void enter(
+        BasicBlock *MergeBasicBlock, BasicBlock *NextBasicBlock,
+        unsigned NumMergePhi);
+    BasicBlock *getMergeBB(bytecode::LabelIDX Index) const;
+    unsigned getNumMergePhi(bytecode::LabelIDX Index) const;
+    BasicBlock *exit();
+  };
+
+  LabelStackAccessView labels() { return LabelStackAccessView(*this); }
+
+  class ValueStackAccessView {
+    TranslationTask &CTX;
+
+  public:
+    ValueStackAccessView(TranslationTask &CTX_) : CTX(CTX_) {}
+    void push(Instruction *Value);
+    Instruction *pop();
+  };
+
+  ValueStackAccessView values() { return ValueStackAccessView(*this); }
+  bytecode::views::Function function() const { return FunctionView; }
+  BasicBlock *createBasicBlock() { return MFunction.BuildBasicBlock(ExitBB); }
+  Instruction *collectReturn(unsigned NumReturnValue);
+
+  void perform(EntityMap const &EntityMap_);
+};
 } // namespace mir::bytecode_codegen
 
 #endif

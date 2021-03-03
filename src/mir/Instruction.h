@@ -154,7 +154,7 @@ public:
   }
 
   template <std::derived_from<Instruction> T, typename... ArgTypes>
-  T *BuildInst(Instruction *Before, ArgTypes &&...Args) {
+  T *BuildInstAt(Instruction *Before, ArgTypes &&...Args) {
     auto *Inst = new T(this, std::forward<ArgTypes>(Args)...);
     Instructions.insert(Before->getIterator(), Inst);
     return Inst;
@@ -670,10 +670,12 @@ public:
 class MemoryGuard : public Instruction {
   Memory *LinearMemory;
   Instruction *Address;
+  std::uint32_t GuardSize;
 
 public:
   MemoryGuard(
-      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_);
+      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
+      std::uint32_t GuardSize_);
   MemoryGuard(MemoryGuard const &) = delete;
   MemoryGuard(MemoryGuard &&) noexcept = delete;
   MemoryGuard &operator=(MemoryGuard const &) = delete;
@@ -683,6 +685,8 @@ public:
   void setLinearMemory(Memory *LinearMemory_);
   Instruction *getAddress() const;
   void setAddress(Instruction *Address_);
+  std::uint32_t getGuardSize() const;
+  void setGuardSize(std::uint32_t GuardSize_);
   void detach_definition(Instruction const *Operand_) noexcept override;
   void detach_definition(Memory const *Memory_) noexcept override;
   static bool classof(Instruction const *Inst);

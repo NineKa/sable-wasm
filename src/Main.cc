@@ -19,8 +19,7 @@ int main(int argc, char const *argv[]) {
   (void)argc;
   (void)argv;
 
-  mio::basic_mmap_source<std::byte> Source(
-      "../test/polybench-c-4.2.1-beta/2mm.wasm");
+  mio::basic_mmap_source<std::byte> Source("../test/main.wasm");
   parser::ByteArrayReader Reader(Source);
   parser::ModuleBuilderDelegate Delegate;
   parser::Parser Parser(Reader, Delegate);
@@ -36,19 +35,21 @@ int main(int argc, char const *argv[]) {
     fmt::print("{}\n", Error);
   }
 
+  bytecode::ModuleView ModuleView(Module);
+
   using namespace mir;
   using namespace mir::instructions;
   using namespace bytecode::valuetypes;
   using namespace mir::bytecode_codegen;
 
   mir::Module M;
-  auto *F = M.BuildFunction(bytecode::FunctionType({}, {I32}));
-  auto *B = F->BuildBasicBlock();
-  auto *I0 = B->BuildInst<Constant>(0);
-  auto *I1 = B->BuildInst<Constant>(1);
-  auto *I2 = B->BuildInst<IntBinaryOp>(IntBinaryOperator::Add, I0, I1);
-  B->BuildInst<Select>(I0, I1, I2);
+  EntityMap EMap(Module, M);
+  auto Iter = M.function_begin();
+  std::advance(Iter, 1);
+  TranslationTask Context(ModuleView.functions()[1], *Iter);
+  Context.perform(EMap);
 
   std::ostream_iterator<char> OutIter(std::cout);
   mir::dump(OutIter, M);
+  return 0;
 }

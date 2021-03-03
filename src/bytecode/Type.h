@@ -60,6 +60,8 @@ public:
   auto getParamTypes() const { return ranges::views::all(ParamTypes); }
   auto getResultTypes() const { return ranges::views::all(ResultTypes); }
 
+  bool isVoidReturn() const { return ResultTypes.empty(); }
+
   bool operator==(FunctionType const &Other) const = default;
 };
 

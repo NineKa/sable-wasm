@@ -796,7 +796,7 @@ void Load::setLoadWidth(unsigned LoadWidth_) { LoadWidth = LoadWidth_; }
 
 void Load::setLinearMemory(Memory *LinearMemory_) {
   if (LinearMemory != nullptr) LinearMemory->remove_use(this);
-  if (LinearMemory_ != nullptr) LinearMemory_->remove_use(this);
+  if (LinearMemory_ != nullptr) LinearMemory_->add_use(this);
   LinearMemory = LinearMemory_;
 }
 

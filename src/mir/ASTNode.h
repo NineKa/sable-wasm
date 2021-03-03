@@ -2,6 +2,7 @@
 #define SABLE_INCLUDE_GUARD_MIR_ASTNODE
 
 #include <cstdint>
+#include <forward_list>
 #include <string>
 
 namespace mir {
@@ -55,6 +56,28 @@ template <ast_node T> T const *dyn_cast(ASTNode const *Node) {
   assert(is_a<T>(Node));
   return static_cast<T const *>(Node);
 }
+
+namespace detail {
+template <typename Derived, typename Use> class UseSiteTraceable {
+  std::forward_list<Use *> Uses;
+
+public:
+  UseSiteTraceable() = default;
+  UseSiteTraceable(UseSiteTraceable const &) = delete;
+  UseSiteTraceable(UseSiteTraceable &&) noexcept = delete;
+  UseSiteTraceable &operator=(UseSiteTraceable const &) = delete;
+  UseSiteTraceable &operator=(UseSiteTraceable &&) noexcept = delete;
+  void add_use(Use *Referrer) { Uses.push_front(Referrer); }
+  void remove_use(Use *Referrer) { std::erase(Uses, Referrer); }
+  ~UseSiteTraceable() noexcept {
+    for (auto *U : Uses) U->detach_definition(static_cast<Derived *>(this));
+  }
+
+  using iterator = typename decltype(Uses)::iterator;
+  iterator use_site_begin() { return Uses.begin(); }
+  iterator use_site_end() { return Uses.end(); }
+};
+} // namespace detail
 } // namespace mir
 
 #endif

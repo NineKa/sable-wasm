@@ -8,7 +8,6 @@
 #include <llvm/ADT/ilist.h>
 #include <llvm/ADT/ilist_node.h>
 
-#include <forward_list>
 #include <variant>
 
 namespace mir {
@@ -21,28 +20,6 @@ class Memory;
 
 class BasicBlock;
 class Local;
-
-namespace detail {
-template <typename Def, typename Use> class UseSiteTraceable {
-  std::forward_list<Use *> Uses;
-
-public:
-  UseSiteTraceable() = default;
-  UseSiteTraceable(UseSiteTraceable const &) = delete;
-  UseSiteTraceable(UseSiteTraceable &&) noexcept = delete;
-  UseSiteTraceable &operator=(UseSiteTraceable const &) = delete;
-  UseSiteTraceable &operator=(UseSiteTraceable &&) noexcept = delete;
-  void add_use(Use *Referrer) { Uses.push_front(Referrer); }
-  void remove_use(Use *Referrer) { std::erase(Uses, Referrer); }
-  ~UseSiteTraceable() noexcept {
-    for (auto *U : Uses) U->detach_definition(static_cast<Def *>(this));
-  }
-
-  using iterator = typename decltype(Uses)::iterator;
-  iterator use_site_begin() { return Uses.begin(); }
-  iterator use_site_end() { return Uses.end(); }
-};
-} // namespace detail
 
 enum class InstructionKind : std::uint8_t {
   Unreachable,

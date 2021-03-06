@@ -1,12 +1,5 @@
 #include "MIRCodegen.h"
 
-#include <range/v3/algorithm/copy.hpp>
-#include <range/v3/view/reverse.hpp>
-#include <range/v3/view/zip.hpp>
-
-#include <iterator>
-#include <stack>
-
 namespace mir::bytecode_codegen {
 using namespace bytecode::valuetypes;
 namespace minsts = mir::instructions;
@@ -101,6 +94,70 @@ Table *EntityMap::getImplicitTable() const {
   return Tables.front();
 }
 
-//////////////////////// TranslationContext ////////////////////////////////////
+////////////////////////// TranslationTask /////////////////////////////////////
+class TranslationTask::TranslationContext {
+  EntityMap const &E;
+  bytecode::views::Function SourceFunction;
+  mir::Function &TargetFunction;
+  std::vector<mir::Local *> Locals;
+
+  // < Branch Target with Merge Phi Nodes, Num of Phi Nodes>
+  std::vector<std::tuple<BasicBlock *, unsigned>> Labels;
+
+public:
+  TranslationContext(
+      EntityMap const &EntitiesResolver_,
+      bytecode::views::Function SourceFunction_, mir::Function &TargetFunction_)
+      : E(EntitiesResolver_), SourceFunction(SourceFunction_),
+        TargetFunction(TargetFunction_) {
+    if constexpr (ranges::sized_range<decltype(SourceFunction.getLocals())>)
+      Locals.reserve(ranges::size(SourceFunction.getLocals()));
+    for (auto const &LocalType : SourceFunction.getLocals()) {
+      auto *Local = TargetFunction.BuildLocal(LocalType);
+      Locals.push_back(Local);
+    }
+  }
+
+  bytecode::views::Function source() const { return SourceFunction; }
+  mir::Function &target() { return TargetFunction; }
+
+  Function *operator[](bytecode::FuncIDX Index) const { return E[Index]; }
+  Memory *operator[](bytecode::MemIDX Index) const { return E[Index]; }
+  Table *operator[](bytecode::TableIDX Index) const { return E[Index]; }
+  Global *operator[](bytecode::GlobalIDX Index) const { return E[Index]; }
+
+  Local *operator[](bytecode::LocalIDX Index) const {
+    auto CastedIndex = static_cast<std::size_t>(Index);
+    assert(CastedIndex < Locals.size());
+    return Locals[CastedIndex];
+  }
+
+  std::tuple<BasicBlock *, unsigned>
+  operator[](bytecode::LabelIDX Index) const {
+    auto CastedIndex = static_cast<std::size_t>(Index);
+    assert(CastedIndex < Labels.size());
+    return Labels[Labels.size() - CastedIndex - 1];
+  }
+
+  void pushLabel(BasicBlock *MergeBasicBlock, unsigned NumPhiNodes) {
+    Labels.emplace_back(MergeBasicBlock, NumPhiNodes);
+  }
+  void popLabel() { Labels.pop_back(); }
+};
+
+class TranslationTask::TranslationVisitor :
+    public bytecode::InstVisitorBase<TranslationVisitor, void> {
+  BasicBlock *InsertBefore = nullptr;
+  TranslationContext &Context;
+
+  BasicBlock *createBasicBlock() {
+    return Context.target().BuildBasicBlock(InsertBefore);
+  }
+
+public:
+  TranslationVisitor(
+      TranslationContext &Context_, BasicBlock *InsertBefore_ = nullptr)
+      : InsertBefore(InsertBefore_), Context(Context_) {}
+};
 
 } // namespace mir::bytecode_codegen

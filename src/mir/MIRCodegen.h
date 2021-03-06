@@ -30,6 +30,26 @@ public:
   Table *getImplicitTable() const;
 };
 
+class TranslationTask {
+  class TranslationContext;
+  class TranslationVisitor;
+  std::unique_ptr<TranslationContext> Context;
+  std::unique_ptr<TranslationVisitor> Visitor;
+
+public:
+  TranslationTask(
+      EntityMap const &EntitiesResolver_,
+      bytecode::views::Function SourceFunction_,
+      mir::Function &TargetFunction_);
+  TranslationTask(TranslationTask const &) = delete;
+  TranslationTask(TranslationTask &&) noexcept;
+  TranslationTask &operator=(TranslationTask const &) = delete;
+  TranslationTask &operator=(TranslationTask &&) noexcept = delete;
+  ~TranslationTask() noexcept;
+
+  void perform();
+};
+
 } // namespace mir::bytecode_codegen
 
 #endif

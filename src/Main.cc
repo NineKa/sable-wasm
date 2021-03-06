@@ -35,6 +35,7 @@ int main(int argc, char const *argv[]) {
     fmt::print("{}\n", Error);
   }
 
+  /*
   bytecode::ModuleView ModuleView(Module);
 
   using namespace mir;
@@ -52,4 +53,5 @@ int main(int argc, char const *argv[]) {
   std::ostream_iterator<char> OutIter(std::cout);
   mir::dump(OutIter, M);
   return 0;
+   */
 }

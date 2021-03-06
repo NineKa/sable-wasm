@@ -768,9 +768,11 @@ public:
 /////////////////////////////////// Phi ////////////////////////////////////////
 class Phi : public Instruction {
   std::vector<Instruction *> Arguments;
+  bytecode::ValueType Type;
 
 public:
-  Phi(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_);
+  Phi(BasicBlock *Parent_, bytecode::ValueType Type_,
+      llvm::ArrayRef<Instruction *> Arguments_);
   Phi(Phi const &) = delete;
   Phi(Phi &&) noexcept = delete;
   Phi &operator=(Phi const &) = delete;
@@ -778,6 +780,8 @@ public:
   ~Phi() noexcept override;
   llvm::ArrayRef<Instruction *> getArguments() const;
   void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
+  bytecode::ValueType getType() const;
+  void setType(bytecode::ValueType Type_);
   void detach_definition(Instruction const *Operand_) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);

@@ -60,7 +60,10 @@ public:
   auto getParamTypes() const { return ranges::views::all(ParamTypes); }
   auto getResultTypes() const { return ranges::views::all(ResultTypes); }
 
-  bool isVoidReturn() const { return ResultTypes.empty(); }
+  bool isVoidResult() const { return ResultTypes.empty(); }
+  bool isSingleValueResult() const { return ResultTypes.size() == 1; }
+  bool isMultiValueResult() const { return ResultTypes.size() > 1; }
+  std::size_t getNumResult() const { return ResultTypes.size(); }
 
   bool operator==(FunctionType const &Other) const = default;
 };

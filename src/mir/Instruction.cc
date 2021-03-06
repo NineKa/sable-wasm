@@ -1183,8 +1183,10 @@ bool Unpack::classof(ASTNode const *Node) {
 }
 
 /////////////////////////////////// Phi ////////////////////////////////////////
-Phi::Phi(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_)
-    : Instruction(IKind::Phi, Parent_) {
+Phi::Phi(
+    BasicBlock *Parent_, bytecode::ValueType Type_,
+    llvm::ArrayRef<Instruction *> Arguments_)
+    : Instruction(IKind::Phi, Parent_), Type(Type_) {
   setArguments(Arguments_);
 }
 
@@ -1194,6 +1196,8 @@ Phi::~Phi() noexcept {
 }
 
 llvm::ArrayRef<Instruction *> Phi::getArguments() const { return Arguments; }
+bytecode::ValueType Phi::getType() const { return Type; }
+void Phi::setType(bytecode::ValueType Type_) { Type = Type_; }
 
 void Phi::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
   for (auto *Argument : Arguments)

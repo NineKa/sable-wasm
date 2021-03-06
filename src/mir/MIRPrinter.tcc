@@ -556,7 +556,7 @@ public:
   }
 
   Iterator operator()(instructions::Phi const *Inst) {
-    Writer << Inst << " = phi";
+    Writer << Inst << " = phi " << Inst->getType();
     for (auto const *Argument : Inst->getArguments()) Writer << ' ' << Argument;
     return Writer.iterator();
   }

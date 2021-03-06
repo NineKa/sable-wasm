@@ -54,10 +54,6 @@ public:
   BasicBlock const *getEntryBasicBlock() const;
   BasicBlock *getEntryBasicBlock();
 
-  bool isVoidReturn() const;
-  bool isMultiValueReturn() const;
-  bool isSingleValueReturn() const;
-
   using bb_iterator = decltype(BasicBlocks)::iterator;
   using bb_const_iterator = decltype(BasicBlocks)::const_iterator;
   bb_iterator basic_block_begin() { return BasicBlocks.begin(); }

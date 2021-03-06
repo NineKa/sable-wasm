@@ -60,16 +60,6 @@ BasicBlock *Function::getEntryBasicBlock() {
   return std::addressof(BasicBlocks.front());
 }
 
-bool Function::isVoidReturn() const { return Type.getResultTypes().empty(); }
-
-bool Function::isMultiValueReturn() const {
-  return Type.getResultTypes().size() > 1;
-}
-
-bool Function::isSingleValueReturn() const {
-  return Type.getResultTypes().size() == 1;
-}
-
 void Function::erase(BasicBlock *BasicBlock_) {
   BasicBlocks.erase(BasicBlock_);
 }

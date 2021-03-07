@@ -9,6 +9,7 @@
 
 namespace mir::bytecode_codegen {
 class EntityMap {
+  bytecode::ModuleView BModuleView;
   std::vector<Function *> Functions;
   std::vector<Memory *> Memories;
   std::vector<Global *> Globals;
@@ -24,6 +25,7 @@ public:
   Memory *operator[](bytecode::MemIDX Index) const;
   Table *operator[](bytecode::TableIDX Index) const;
   Global *operator[](bytecode::GlobalIDX Index) const;
+  bytecode::FunctionType const *operator[](bytecode::TypeIDX Index) const;
 
   void annotate(parser::customsections::Name const &Name);
   Memory *getImplicitMemory() const;

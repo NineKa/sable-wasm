@@ -1208,6 +1208,11 @@ void Phi::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
   ranges::copy(Arguments_, Arguments.begin());
 }
 
+void Phi::addArgument(Instruction *Argument_) {
+  if (Argument_ != nullptr) Argument_->add_use(this);
+  Arguments.push_back(Argument_);
+}
+
 void Phi::detach_definition(Instruction const *Operand_) noexcept {
   assert(ranges::contains(Arguments, Operand_));
   ranges::replace(Arguments, Operand_, nullptr);

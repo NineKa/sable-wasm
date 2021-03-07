@@ -35,7 +35,6 @@ int main(int argc, char const *argv[]) {
     fmt::print("{}\n", Error);
   }
 
-  /*
   bytecode::ModuleView ModuleView(Module);
 
   using namespace mir;
@@ -46,12 +45,10 @@ int main(int argc, char const *argv[]) {
   mir::Module M;
   EntityMap EMap(Module, M);
   auto Iter = M.function_begin();
-  std::advance(Iter, 1);
-  TranslationTask Context(ModuleView.functions()[1], *Iter);
-  Context.perform(EMap);
+  TranslationTask Task(EMap, ModuleView.functions()[0], *Iter);
+  Task.perform();
 
   std::ostream_iterator<char> OutIter(std::cout);
   mir::dump(OutIter, M);
   return 0;
-   */
 }

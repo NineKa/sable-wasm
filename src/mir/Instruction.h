@@ -772,7 +772,7 @@ class Phi : public Instruction {
 
 public:
   Phi(BasicBlock *Parent_, bytecode::ValueType Type_,
-      llvm::ArrayRef<Instruction *> Arguments_);
+      llvm::ArrayRef<Instruction *> Arguments_ = {});
   Phi(Phi const &) = delete;
   Phi(Phi &&) noexcept = delete;
   Phi &operator=(Phi const &) = delete;
@@ -780,6 +780,7 @@ public:
   ~Phi() noexcept override;
   llvm::ArrayRef<Instruction *> getArguments() const;
   void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
+  void addArgument(Instruction *Argument);
   bytecode::ValueType getType() const;
   void setType(bytecode::ValueType Type_);
   void detach_definition(Instruction const *Operand_) noexcept override;

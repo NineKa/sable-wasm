@@ -392,13 +392,33 @@ public:
         CurrentBasicBlock->BuildInst<minsts::IntBinaryOp>(Operator, LHS, RHS); \
     values().push(Result);                                                     \
   }
-  INT_BINARY_OP(binsts::I32Eq, minsts::IntBinaryOperator::Eq)
-  INT_BINARY_OP(binsts::I32Ne, minsts::IntBinaryOperator::Ne)
-  INT_BINARY_OP(binsts::I32LtS, minsts::IntBinaryOperator::LtS)
-  INT_BINARY_OP(binsts::I32LtU, minsts::IntBinaryOperator::LtU)
-  INT_BINARY_OP(binsts::I32GtS, minsts::IntBinaryOperator::GtS)
-  INT_BINARY_OP(binsts::I32GtU, minsts::IntBinaryOperator::GtU)
-  INT_BINARY_OP(binsts::I32LeS, minsts::IntBinaryOperator::LeS)
+  // clang-format off
+  INT_BINARY_OP(binsts::I32Eq  , minsts::IntBinaryOperator::Eq  )
+  INT_BINARY_OP(binsts::I32Ne  , minsts::IntBinaryOperator::Ne  )
+  INT_BINARY_OP(binsts::I32LtS , minsts::IntBinaryOperator::LtS )
+  INT_BINARY_OP(binsts::I32LtU , minsts::IntBinaryOperator::LtU )
+  INT_BINARY_OP(binsts::I32GtS , minsts::IntBinaryOperator::GtS )
+  INT_BINARY_OP(binsts::I32GtU , minsts::IntBinaryOperator::GtU )
+  INT_BINARY_OP(binsts::I32LeS , minsts::IntBinaryOperator::LeS )
+  INT_BINARY_OP(binsts::I32LeU , minsts::IntBinaryOperator::LeU )
+  INT_BINARY_OP(binsts::I32GeS , minsts::IntBinaryOperator::GeS )
+  INT_BINARY_OP(binsts::I32GeU , minsts::IntBinaryOperator::GeU )
+  INT_BINARY_OP(binsts::I32Add , minsts::IntBinaryOperator::Add )
+  INT_BINARY_OP(binsts::I32Sub , minsts::IntBinaryOperator::Sub )
+  INT_BINARY_OP(binsts::I32Mul , minsts::IntBinaryOperator::Mul )
+  INT_BINARY_OP(binsts::I32DivS, minsts::IntBinaryOperator::DivS)
+  INT_BINARY_OP(binsts::I32DivU, minsts::IntBinaryOperator::DivU)
+  INT_BINARY_OP(binsts::I32RemS, minsts::IntBinaryOperator::RemS)
+  INT_BINARY_OP(binsts::I32RemU, minsts::IntBinaryOperator::RemU)
+  INT_BINARY_OP(binsts::I32And , minsts::IntBinaryOperator::And )
+  INT_BINARY_OP(binsts::I32Or  , minsts::IntBinaryOperator::Or  )
+  INT_BINARY_OP(binsts::I32Xor , minsts::IntBinaryOperator::Xor )
+  INT_BINARY_OP(binsts::I32Shl , minsts::IntBinaryOperator::Shl )
+  INT_BINARY_OP(binsts::I32ShrS, minsts::IntBinaryOperator::ShrS)
+  INT_BINARY_OP(binsts::I32ShrU, minsts::IntBinaryOperator::ShrU)
+  INT_BINARY_OP(binsts::I32Rotl, minsts::IntBinaryOperator::Rotl)
+  INT_BINARY_OP(binsts::I32Rotr, minsts::IntBinaryOperator::Rotr)
+  // clang-format on
 #undef INT_BINARY_OP
 
   template <bytecode::instruction T> void operator()(T const *) {

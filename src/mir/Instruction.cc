@@ -2,7 +2,6 @@
 #include "Module.h"
 
 #include <range/v3/algorithm/contains.hpp>
-#include <range/v3/algorithm/copy.hpp>
 #include <range/v3/algorithm/replace.hpp>
 
 namespace mir {
@@ -139,8 +138,7 @@ void BranchTable::setTargets(llvm::ArrayRef<BasicBlock *> Targets_) {
     if (Target != nullptr) Target->remove_use(this);
   for (auto *Target : Targets_)
     if (Target != nullptr) Target->add_use(this);
-  Targets.resize(Targets_.size());
-  ranges::copy(Targets_, Targets.begin());
+  Targets = ranges::to<decltype(Targets)>(Targets_);
 }
 
 void BranchTable::detach_definition(Instruction const *Operand_) noexcept {
@@ -233,8 +231,7 @@ void Call::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
     if (Argument != nullptr) Argument->remove_use(this);
   for (auto *Argument : Arguments_)
     if (Argument != nullptr) Argument->add_use(this);
-  Arguments.resize(Arguments_.size());
-  ranges::copy(Arguments_, Arguments.begin());
+  Arguments = ranges::to<decltype(Arguments)>(Arguments_);
 }
 
 void Call::detach_definition(Function const *Target_) noexcept {
@@ -306,8 +303,7 @@ void CallIndirect::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
     if (Argument != nullptr) Argument->remove_use(this);
   for (auto *Argument : Arguments_)
     if (Argument != nullptr) Argument->add_use(this);
-  Arguments.resize(Arguments_.size());
-  ranges::copy(Arguments_, Arguments.begin());
+  Arguments = ranges::to<decltype(Arguments)>(Arguments_);
 }
 
 void CallIndirect::detach_definition(Table const *Table_) noexcept {
@@ -1127,8 +1123,7 @@ void Pack::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
     if (Argument != nullptr) Argument->remove_use(this);
   for (auto *Argument : Arguments_)
     if (Argument != nullptr) Argument->add_use(this);
-  Arguments.resize(Arguments_.size());
-  ranges::copy(Arguments_, Arguments.begin());
+  Arguments = ranges::to<decltype(Arguments)>(Arguments_);
 }
 
 void Pack::detach_definition(Instruction const *Operand_) noexcept {
@@ -1147,7 +1142,7 @@ bool Pack::classof(ASTNode const *Node) {
 }
 
 ///////////////////////////////// Unpack ///////////////////////////////////////
-Unpack::Unpack(BasicBlock *Parent_, unsigned int Index_, Instruction *Operand_)
+Unpack::Unpack(BasicBlock *Parent_, Instruction *Operand_, unsigned int Index_)
     : Instruction(IKind::Unpack, Parent_), Index(Index_), Operand() {
   setOperand(Operand_);
 }
@@ -1183,39 +1178,63 @@ bool Unpack::classof(ASTNode const *Node) {
 }
 
 /////////////////////////////////// Phi ////////////////////////////////////////
-Phi::Phi(
-    BasicBlock *Parent_, bytecode::ValueType Type_,
-    llvm::ArrayRef<Instruction *> Arguments_)
-    : Instruction(IKind::Phi, Parent_), Type(Type_) {
-  setArguments(Arguments_);
-}
+Phi::Phi(BasicBlock *Parent_, bytecode::ValueType Type_)
+    : Instruction(IKind::Phi, Parent_), Type(Type_) {}
 
 Phi::~Phi() noexcept {
-  for (auto *Argument : Arguments)
-    if (Argument != nullptr) Argument->remove_use(this);
+  for (auto const &[Value, Path] : Candidates) {
+    if (Value != nullptr) Value->remove_use(this);
+    if (Path != nullptr) Path->remove_use(this);
+  }
 }
 
-llvm::ArrayRef<Instruction *> Phi::getArguments() const { return Arguments; }
+llvm::ArrayRef<std::pair<Instruction *, BasicBlock *>>
+Phi::getCandidates() const {
+  return Candidates;
+}
+
+void Phi::setCandidates(
+    llvm::ArrayRef<std::pair<Instruction *, BasicBlock *>> Candidates_) {
+  for (auto const &[Value, Path] : Candidates_) {
+    if (Value != nullptr) Value->add_use(this);
+    if (Path != nullptr) Path->add_use(this);
+  }
+  for (auto const &[Value, Path] : Candidates) {
+    if (Value != nullptr) Value->remove_use(this);
+    if (Path != nullptr) Path->remove_use(this);
+  }
+  Candidates = ranges::to<decltype(Candidates)>(Candidates_);
+}
+
 bytecode::ValueType Phi::getType() const { return Type; }
 void Phi::setType(bytecode::ValueType Type_) { Type = Type_; }
 
-void Phi::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
-  for (auto *Argument : Arguments)
-    if (Argument != nullptr) Argument->remove_use(this);
-  for (auto *Argument : Arguments_)
-    if (Argument != nullptr) Argument->add_use(this);
-  Arguments.resize(Arguments_.size());
-  ranges::copy(Arguments_, Arguments.begin());
-}
-
-void Phi::addArgument(Instruction *Argument_) {
-  if (Argument_ != nullptr) Argument_->add_use(this);
-  Arguments.push_back(Argument_);
+void Phi::addCandidate(Instruction *Value_, BasicBlock *Path_) {
+  if (Value_ != nullptr) Value_->add_use(this);
+  if (Path_ != nullptr) Path_->add_use(this);
+  Candidates.emplace_back(Value_, Path_);
 }
 
 void Phi::detach_definition(Instruction const *Operand_) noexcept {
-  assert(ranges::contains(Arguments, Operand_));
-  ranges::replace(Arguments, Operand_, nullptr);
+  assert(ranges::contains(
+      ranges::views::transform(
+          Candidates, [](auto const &Pair) { return std::get<0>(Pair); }),
+      Operand_));
+  for (auto &[Value, Path] : Candidates) {
+    utility::ignore(Path);
+    if (Value == Operand_) Value = nullptr;
+  }
+}
+
+void Phi::detach_definition(BasicBlock const *Operand_) noexcept {
+  assert(ranges::contains(
+      ranges::views::transform(
+          Candidates, [](auto const &Pair) { return std::get<1>(Pair); }),
+      Operand_));
+  for (auto &[Value, Path] : Candidates) {
+    utility::ignore(Value);
+    if (Path == Operand_) Path = nullptr;
+  }
 }
 
 bool Phi::classof(Instruction const *Inst) {

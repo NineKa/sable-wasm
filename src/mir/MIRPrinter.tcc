@@ -98,6 +98,26 @@ Iterator LocalNameWriter::write(
   return Out;
 }
 
+namespace detail {
+inline bool isVoidReturnInst(Instruction const &Inst) {
+  if (is_a<instructions::Call>(std::addressof(Inst))) {
+    auto const *Ptr = dyn_cast<instructions::Call>(std::addressof(Inst));
+    if ((Ptr->getTarget() != nullptr) &&
+        (Ptr->getTarget()->getType().isVoidResult()))
+      return true;
+  }
+  switch (Inst.getInstructionKind()) {
+  case InstructionKind::Store:
+  case InstructionKind::LocalSet:
+  case InstructionKind::GlobalSet:
+  case InstructionKind::MemoryGuard:
+  case InstructionKind::Branch:
+  case InstructionKind::BranchTable: return true;
+  default: return false;
+  }
+}
+} // namespace detail
+
 inline LocalNameWriter::LocalNameWriter(Function const &Function_) {
   assert(!Function_.isImported());
   std::size_t UnnamedLocalCounter = 0;
@@ -114,6 +134,7 @@ inline LocalNameWriter::LocalNameWriter(Function const &Function_) {
     }
     for (auto const &Instruction : BasicBlock) {
       if (Instruction.hasName()) continue;
+      if (detail::isVoidReturnInst(Instruction)) continue;
       Names.emplace(std::addressof(Instruction), UnnamedLocalCounter);
       UnnamedLocalCounter = UnnamedLocalCounter + 1;
     }
@@ -367,7 +388,8 @@ public:
 
   Iterator operator()(instructions::Branch const *Inst) {
     if (Inst->isConditional()) {
-      Writer << "br.cond " << Inst->getCondition() << ' ' << Inst->getTarget();
+      Writer << "br.cond " << Inst->getCondition() << ' ' << Inst->getTarget()
+             << ' ' << Inst->getFalseTarget();
     } else {
       assert(Inst->isUnconditional());
       Writer << "br " << Inst->getTarget();
@@ -428,7 +450,7 @@ public:
   }
 
   Iterator operator()(instructions::LocalSet const *Inst) {
-    Writer << "local.set " << Inst->getTarget() << Inst->getOperand();
+    Writer << "local.set " << Inst->getTarget() << ' ' << Inst->getOperand();
     return Writer.iterator();
   }
 
@@ -557,7 +579,9 @@ public:
 
   Iterator operator()(instructions::Phi const *Inst) {
     Writer << Inst << " = phi " << Inst->getType();
-    for (auto const *Argument : Inst->getArguments()) Writer << ' ' << Argument;
+    for (auto const &Candidate : Inst->getCandidates())
+      Writer << " [" << std::get<0>(Candidate) << ", " << std::get<1>(Candidate)
+             << ']';
     return Writer.iterator();
   }
 };

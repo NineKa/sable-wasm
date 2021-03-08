@@ -80,28 +80,29 @@ public:
 
 // clang-format off
 #define SABLE_VALIDATION_MALFORMED_ERROR_KINDS                                 \
-  X(MISSING_CONTEXT_RETURN    , "return values have not been set yet"      )   \
-  X(MALFORMED_FUNCTION_TYPE   , "malformed function type"                  )   \
-  X(MALFORMED_VALUE_TYPE      , "malformed value type"                     )   \
-  X(MALFORMED_MEMORY_TYPE     , "malformed memory type"                    )   \
-  X(MALFORMED_TABLE_TYPE      , "malformed table type"                     )   \
-  X(MALFORMED_GLOBAL_TYPE     , "malformed global type"                    )   \
-  X(MALFORMED_LOCAL_VALUE_TYPE, "local has malformed value type"           )   \
-  X(TYPE_INDEX_OUT_OF_BOUND   , "type index out-of-bound"                  )   \
-  X(LABEL_INDEX_OUT_OF_BOUND  , "label index out-of-bound"                 )   \
-  X(FUNC_INDEX_OUT_OF_BOUND   , "function index out-of-bound"              )   \
-  X(TABLE_INDEX_OUT_OF_BOUND  , "table index out-of-bound"                 )   \
-  X(MEM_INDEX_OUT_OF_BOUND    , "memory index out-of-bound"                )   \
-  X(LOCAL_INDEX_OUT_OF_BOUND  , "local index out-of-bound"                 )   \
-  X(GLOBAL_INDEX_OUT_OF_BOUND , "global index out-of-bound"                )   \
-  X(INVALID_BRANCH_TABLE      , "label types in branch table do not argree")   \
-  X(INVALID_ALIGN             , "malformed alignment hint"                 )   \
-  X(GLOBAL_MUST_BE_MUT        , "global is not mutable"                    )   \
-  X(NON_CONST_EXPRESSION      , "expression is not constant"               )   \
-  X(INVALID_START_FUNC_TYPE   , "start function has mismatched type"       )   \
-  X(MORE_THAN_ONE_TABLE       , "at most one table is allowed"             )   \
-  X(MORE_THAN_ONE_MEMORY      , "at most one memory is allowed"            )   \
-  X(NON_UNIQUE_EXPORT_NAME    , "export name is not unqiue"                )
+  X(MISSING_CONTEXT_RETURN    , "return values have not been set yet"       )  \
+  X(MALFORMED_FUNCTION_TYPE   , "malformed function type"                   )  \
+  X(MALFORMED_VALUE_TYPE      , "malformed value type"                      )  \
+  X(MALFORMED_MEMORY_TYPE     , "malformed memory type"                     )  \
+  X(MALFORMED_TABLE_TYPE      , "malformed table type"                      )  \
+  X(MALFORMED_GLOBAL_TYPE     , "malformed global type"                     )  \
+  X(MALFORMED_LOCAL_VALUE_TYPE, "local has malformed value type"            )  \
+  X(TYPE_INDEX_OUT_OF_BOUND   , "type index out-of-bound"                   )  \
+  X(LABEL_INDEX_OUT_OF_BOUND  , "label index out-of-bound"                  )  \
+  X(FUNC_INDEX_OUT_OF_BOUND   , "function index out-of-bound"               )  \
+  X(TABLE_INDEX_OUT_OF_BOUND  , "table index out-of-bound"                  )  \
+  X(MEM_INDEX_OUT_OF_BOUND    , "memory index out-of-bound"                 )  \
+  X(LOCAL_INDEX_OUT_OF_BOUND  , "local index out-of-bound"                  )  \
+  X(GLOBAL_INDEX_OUT_OF_BOUND , "global index out-of-bound"                 )  \
+  X(INVALID_BRANCH_TABLE      , "label types in branch table do not agree"  )  \
+  X(INVALID_ALIGN             , "malformed alignment hint"                  )  \
+  X(GLOBAL_MUST_BE_MUT        , "global is not mutable"                     )  \
+  X(NON_CONST_EXPRESSION      , "expression is not constant"                )  \
+  X(INVALID_START_FUNC_TYPE   , "start function has mismatched type"        )  \
+  X(MORE_THAN_ONE_TABLE       , "at most one table is allowed"              )  \
+  X(MORE_THAN_ONE_MEMORY      , "at most one memory is allowed"             )  \
+  X(NON_UNIQUE_EXPORT_NAME    , "export name is not unqiue"                 )  \
+  X(ILLEGAL_IF_BLOCK_TYPE_TAG , "if without else cannot have type signature")
 // clang-format on
 
 enum class MalformedErrorKind {

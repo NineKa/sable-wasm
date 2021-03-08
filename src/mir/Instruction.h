@@ -750,7 +750,7 @@ class Unpack : public Instruction {
   Instruction *Operand;
 
 public:
-  Unpack(BasicBlock *Parent_, unsigned Index_, Instruction *Operand_);
+  Unpack(BasicBlock *Parent_, Instruction *Operand_, unsigned Index_);
   Unpack(Unpack const &) = delete;
   Unpack(Unpack &&) = delete;
   Unpack &operator=(Unpack const &) = delete;
@@ -767,23 +767,25 @@ public:
 
 /////////////////////////////////// Phi ////////////////////////////////////////
 class Phi : public Instruction {
-  std::vector<Instruction *> Arguments;
+  std::vector<std::pair<Instruction *, BasicBlock *>> Candidates;
   bytecode::ValueType Type;
 
 public:
-  Phi(BasicBlock *Parent_, bytecode::ValueType Type_,
-      llvm::ArrayRef<Instruction *> Arguments_ = {});
+  Phi(BasicBlock *Parent_, bytecode::ValueType Type_);
   Phi(Phi const &) = delete;
   Phi(Phi &&) noexcept = delete;
   Phi &operator=(Phi const &) = delete;
   Phi &operator=(Phi &&) noexcept = delete;
   ~Phi() noexcept override;
-  llvm::ArrayRef<Instruction *> getArguments() const;
-  void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
-  void addArgument(Instruction *Argument);
+
+  llvm::ArrayRef<std::pair<Instruction *, BasicBlock *>> getCandidates() const;
+  void setCandidates(
+      llvm::ArrayRef<std::pair<Instruction *, BasicBlock *>> Candidates_);
+  void addCandidate(Instruction *Value_, BasicBlock *Path_);
   bytecode::ValueType getType() const;
   void setType(bytecode::ValueType Type_);
   void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach_definition(BasicBlock const *Operand_) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };

@@ -5,21 +5,19 @@
 #include "../parser/customsections/Name.h"
 #include "Module.h"
 
+#include <memory>
 #include <vector>
 
 namespace mir::bytecode_codegen {
-class EntityMap {
+class EntityLayout {
   bytecode::ModuleView BModuleView;
   std::vector<Function *> Functions;
   std::vector<Memory *> Memories;
   std::vector<Global *> Globals;
   std::vector<Table *> Tables;
 
-  template <ranges::random_access_range T, typename IndexType>
-  typename T::value_type getPtr(T const &Container, IndexType Index) const;
-
 public:
-  EntityMap(bytecode::Module const &BModule, Module &MModule);
+  EntityLayout(bytecode::Module const &BModule, Module &MModule);
 
   Function *operator[](bytecode::FuncIDX Index) const;
   Memory *operator[](bytecode::MemIDX Index) const;
@@ -36,17 +34,16 @@ class TranslationTask {
   class TranslationContext;
   class TranslationVisitor;
   std::unique_ptr<TranslationContext> Context;
-  std::unique_ptr<TranslationVisitor> Visitor;
 
 public:
   TranslationTask(
-      EntityMap const &EntitiesResolver_,
+      EntityLayout const &EntityLayout_,
       bytecode::views::Function SourceFunction_,
       mir::Function &TargetFunction_);
   TranslationTask(TranslationTask const &) = delete;
   TranslationTask(TranslationTask &&) noexcept;
   TranslationTask &operator=(TranslationTask const &) = delete;
-  TranslationTask &operator=(TranslationTask &&) noexcept = delete;
+  TranslationTask &operator=(TranslationTask &&) noexcept;
   ~TranslationTask() noexcept;
 
   void perform();

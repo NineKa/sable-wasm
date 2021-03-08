@@ -268,9 +268,9 @@ concept validation_context = requires(T &CTX, T const &CCTX) {
 
 namespace {
 template <validation_context ContextT>
-class ExprValidationVisitor
-    : public InstVisitorBase<
-          ExprValidationVisitor<ContextT>, std::unique_ptr<ValidationError>> {
+class ExprValidationVisitor :
+    public InstVisitorBase<
+        ExprValidationVisitor<ContextT>, std::unique_ptr<ValidationError>> {
   ContextT &Context;
   TraceCollector &Trace;
   OperandStack TypeStack;
@@ -721,6 +721,8 @@ ErrorPtr ExprValidationVisitor<T>::operator()(If const *Inst) {
   auto ConvertedType = convertBlockResult(Inst->Type);
   auto Parameters = ConvertedType.getParamTypes();
   auto Results = ConvertedType.getResultTypes();
+  if (!Inst->False.has_value() && (ConvertedType != FunctionType({}, {})))
+    return Trace.BuildError(MalformedErrorKind::ILLEGAL_IF_BLOCK_TYPE_TAG);
   Context.labels().push(Results);
   auto IfParameters =
       ranges::views::concat(Parameters, ranges::views::single(I32));

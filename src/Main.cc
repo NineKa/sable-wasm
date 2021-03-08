@@ -43,9 +43,10 @@ int main(int argc, char const *argv[]) {
   using namespace mir::bytecode_codegen;
 
   mir::Module M;
-  EntityMap EMap(Module, M);
+  EntityLayout Layout(Module, M);
   auto Iter = M.function_begin();
-  TranslationTask Task(EMap, ModuleView.functions()[0], *Iter);
+  std::advance(Iter, 1);
+  TranslationTask Task(Layout, ModuleView.functions()[1], *Iter);
   Task.perform();
 
   std::ostream_iterator<char> OutIter(std::cout);

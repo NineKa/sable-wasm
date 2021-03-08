@@ -418,8 +418,74 @@ public:
   INT_BINARY_OP(binsts::I32ShrU, minsts::IntBinaryOperator::ShrU)
   INT_BINARY_OP(binsts::I32Rotl, minsts::IntBinaryOperator::Rotl)
   INT_BINARY_OP(binsts::I32Rotr, minsts::IntBinaryOperator::Rotr)
+
+  INT_BINARY_OP(binsts::I64Eq  , minsts::IntBinaryOperator::Eq  )
+  INT_BINARY_OP(binsts::I64Ne  , minsts::IntBinaryOperator::Ne  )
+  INT_BINARY_OP(binsts::I64LtS , minsts::IntBinaryOperator::LtS )
+  INT_BINARY_OP(binsts::I64LtU , minsts::IntBinaryOperator::LtU )
+  INT_BINARY_OP(binsts::I64GtS , minsts::IntBinaryOperator::GtS )
+  INT_BINARY_OP(binsts::I64GtU , minsts::IntBinaryOperator::GtU )
+  INT_BINARY_OP(binsts::I64LeS , minsts::IntBinaryOperator::LeS )
+  INT_BINARY_OP(binsts::I64LeU , minsts::IntBinaryOperator::LeU )
+  INT_BINARY_OP(binsts::I64GeS , minsts::IntBinaryOperator::GeS )
+  INT_BINARY_OP(binsts::I64GeU , minsts::IntBinaryOperator::GeU )
+  INT_BINARY_OP(binsts::I64Add , minsts::IntBinaryOperator::Add )
+  INT_BINARY_OP(binsts::I64Sub , minsts::IntBinaryOperator::Sub )
+  INT_BINARY_OP(binsts::I64Mul , minsts::IntBinaryOperator::Mul )
+  INT_BINARY_OP(binsts::I64DivS, minsts::IntBinaryOperator::DivS)
+  INT_BINARY_OP(binsts::I64DivU, minsts::IntBinaryOperator::DivU)
+  INT_BINARY_OP(binsts::I64RemS, minsts::IntBinaryOperator::RemS)
+  INT_BINARY_OP(binsts::I64RemU, minsts::IntBinaryOperator::RemU)
+  INT_BINARY_OP(binsts::I64And , minsts::IntBinaryOperator::And )
+  INT_BINARY_OP(binsts::I64Or  , minsts::IntBinaryOperator::Or  )
+  INT_BINARY_OP(binsts::I64Xor , minsts::IntBinaryOperator::Xor )
+  INT_BINARY_OP(binsts::I64Shl , minsts::IntBinaryOperator::Shl )
+  INT_BINARY_OP(binsts::I64ShrS, minsts::IntBinaryOperator::ShrS)
+  INT_BINARY_OP(binsts::I64ShrU, minsts::IntBinaryOperator::ShrU)
+  INT_BINARY_OP(binsts::I64Rotl, minsts::IntBinaryOperator::Rotl)
+  INT_BINARY_OP(binsts::I64Rotr, minsts::IntBinaryOperator::Rotr)
   // clang-format on
 #undef INT_BINARY_OP
+
+#define FP_BINARY_OP(BYTECODE_INST, OPERATOR)                                  \
+  void operator()(BYTECODE_INST const *) {                                     \
+    auto *RHS = values().pop();                                                \
+    auto *LHS = values().pop();                                                \
+    auto Operator = OPERATOR;                                                  \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::FPBinaryOp>(Operator, LHS, RHS);  \
+    values().push(Result);                                                     \
+  }
+  // clang-format off
+  FP_BINARY_OP(binsts::F32Eq      , minsts::FPBinaryOperator::Eq      )
+  FP_BINARY_OP(binsts::F32Ne      , minsts::FPBinaryOperator::Ne      )
+  FP_BINARY_OP(binsts::F32Lt      , minsts::FPBinaryOperator::Lt      )
+  FP_BINARY_OP(binsts::F32Gt      , minsts::FPBinaryOperator::Gt      )
+  FP_BINARY_OP(binsts::F32Le      , minsts::FPBinaryOperator::Le      )
+  FP_BINARY_OP(binsts::F32Ge      , minsts::FPBinaryOperator::Ge      )
+  FP_BINARY_OP(binsts::F32Add     , minsts::FPBinaryOperator::Add     )
+  FP_BINARY_OP(binsts::F32Sub     , minsts::FPBinaryOperator::Sub     )
+  FP_BINARY_OP(binsts::F32Mul     , minsts::FPBinaryOperator::Mul     )
+  FP_BINARY_OP(binsts::F32Div     , minsts::FPBinaryOperator::Div     )
+  FP_BINARY_OP(binsts::F32Min     , minsts::FPBinaryOperator::Min     )
+  FP_BINARY_OP(binsts::F32Max     , minsts::FPBinaryOperator::Max     )
+  FP_BINARY_OP(binsts::F32CopySign, minsts::FPBinaryOperator::CopySign)
+
+  FP_BINARY_OP(binsts::F64Eq      , minsts::FPBinaryOperator::Eq      )
+  FP_BINARY_OP(binsts::F64Ne      , minsts::FPBinaryOperator::Ne      )
+  FP_BINARY_OP(binsts::F64Lt      , minsts::FPBinaryOperator::Lt      )
+  FP_BINARY_OP(binsts::F64Gt      , minsts::FPBinaryOperator::Gt      )
+  FP_BINARY_OP(binsts::F64Le      , minsts::FPBinaryOperator::Le      )
+  FP_BINARY_OP(binsts::F64Ge      , minsts::FPBinaryOperator::Ge      )
+  FP_BINARY_OP(binsts::F64Add     , minsts::FPBinaryOperator::Add     )
+  FP_BINARY_OP(binsts::F64Sub     , minsts::FPBinaryOperator::Sub     )
+  FP_BINARY_OP(binsts::F64Mul     , minsts::FPBinaryOperator::Mul     )
+  FP_BINARY_OP(binsts::F64Div     , minsts::FPBinaryOperator::Div     )
+  FP_BINARY_OP(binsts::F64Min     , minsts::FPBinaryOperator::Min     )
+  FP_BINARY_OP(binsts::F64Max     , minsts::FPBinaryOperator::Max     )
+  FP_BINARY_OP(binsts::F64CopySign, minsts::FPBinaryOperator::CopySign)
+  // clang-format on
+#undef FP_BINARY_OP
 
   template <bytecode::instruction T> void operator()(T const *) {
     SABLE_UNREACHABLE();

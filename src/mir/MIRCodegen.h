@@ -5,6 +5,8 @@
 #include "../parser/customsections/Name.h"
 #include "Module.h"
 
+#include <range/v3/view/zip.hpp>
+
 #include <memory>
 #include <vector>
 
@@ -25,30 +27,55 @@ public:
   Global *operator[](bytecode::GlobalIDX Index) const;
   bytecode::FunctionType const *operator[](bytecode::TypeIDX Index) const;
 
-  void annotate(parser::customsections::Name const &Name);
   Memory *getImplicitMemory() const;
   Table *getImplicitTable() const;
+
+  // clang-format off
+  auto functions() const
+  { return ranges::views::zip(BModuleView.functions(), Functions); }
+  auto memories() const
+  { return ranges::views::zip(BModuleView.memories(), Memories); }
+  auto tables() const
+  { return ranges::views::zip(BModuleView.tables(), Tables); }
+  auto globals() const
+  { return ranges::views::zip(BModuleView.globals(), Globals); }
+  // clang-format on
 };
 
-class TranslationTask {
+class FunctionTranslationTask {
   class TranslationContext;
   class TranslationVisitor;
   std::unique_ptr<TranslationContext> Context;
+  parser::customsections::Name const *Names;
 
 public:
-  TranslationTask(
+  FunctionTranslationTask(
       EntityLayout const &EntityLayout_,
       bytecode::views::Function SourceFunction_,
       mir::Function &TargetFunction_);
-  TranslationTask(TranslationTask const &) = delete;
-  TranslationTask(TranslationTask &&) noexcept;
-  TranslationTask &operator=(TranslationTask const &) = delete;
-  TranslationTask &operator=(TranslationTask &&) noexcept;
-  ~TranslationTask() noexcept;
+  FunctionTranslationTask(FunctionTranslationTask const &) = delete;
+  FunctionTranslationTask(FunctionTranslationTask &&) noexcept;
+  FunctionTranslationTask &operator=(FunctionTranslationTask const &) = delete;
+  FunctionTranslationTask &operator=(FunctionTranslationTask &&) noexcept;
+  ~FunctionTranslationTask() noexcept;
 
   void perform();
 };
 
+class ModuleTranslationTask {
+  std::unique_ptr<EntityLayout> LayOut;
+  bytecode::Module const *Source;
+  mir::Module *Target;
+  parser::customsections::Name const *Names;
+
+public:
+  ModuleTranslationTask(bytecode::Module const &Source_, mir::Module &Target_);
+  ModuleTranslationTask(
+      bytecode::Module const &Source_, mir::Module &Target_,
+      parser::customsections::Name const &Names_);
+
+  void perform();
+};
 } // namespace mir::bytecode_codegen
 
 #endif

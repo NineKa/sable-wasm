@@ -1,8 +1,5 @@
 #include "MIRCodegen.h"
 
-#include <range/v3/view/reverse.hpp>
-#include <range/v3/view/zip.hpp>
-
 namespace mir::bytecode_codegen {
 using namespace bytecode::valuetypes;
 namespace minsts = mir::instructions;
@@ -77,20 +74,6 @@ EntityLayout::operator[](bytecode::TypeIDX Index) const {
   return BModuleView[Index];
 }
 
-void EntityLayout::annotate(parser::customsections::Name const &Name) {
-  for (auto const &FuncNameEntry : Name.getFunctionNames()) {
-    auto *MFunction = operator[](FuncNameEntry.FuncIndex);
-    MFunction->setName(FuncNameEntry.Name);
-  }
-  for (auto const &LocalNameEntry : Name.getLocalNames()) {
-    auto *MFunction = operator[](LocalNameEntry.FuncIndex);
-    auto &MLocal = *std::next(
-        MFunction->local_begin(),
-        static_cast<std::size_t>(LocalNameEntry.LocalIndex));
-    MLocal.setName(LocalNameEntry.Name);
-  }
-}
-
 Memory *EntityLayout::getImplicitMemory() const {
   assert(!Memories.empty());
   return Memories.front();
@@ -101,7 +84,7 @@ Table *EntityLayout::getImplicitTable() const {
   return Tables.front();
 }
 
-////////////////////////// TranslationTask /////////////////////////////////////
+////////////////////////// FunctionTranslationTask /////////////////////////////
 namespace {
 namespace detail {
 template <ranges::input_range T>
@@ -126,7 +109,7 @@ bool isTerminatingInstruction(bytecode::Instruction const *Inst) {
 } // namespace detail
 } // namespace
 
-class TranslationTask::TranslationContext {
+class FunctionTranslationTask::TranslationContext {
   EntityLayout const &E;
   bytecode::views::Function SourceFunction;
   mir::Function &TargetFunction;
@@ -208,7 +191,7 @@ public:
   Table *getImplicitTable() const { return E.getImplicitTable(); }
 };
 
-class TranslationTask::TranslationVisitor :
+class FunctionTranslationTask::TranslationVisitor :
     public bytecode::InstVisitorBase<TranslationVisitor, void> {
   BasicBlock *CurrentBasicBlock;
   BasicBlock *InsertBefore = nullptr;
@@ -851,18 +834,19 @@ public:
 #undef EXTEND
 };
 
-TranslationTask::TranslationTask(
+FunctionTranslationTask::FunctionTranslationTask(
     EntityLayout const &EntityLayout_,
     bytecode::views::Function SourceFunction_, mir::Function &TargetFunction_)
     : Context(std::make_unique<TranslationContext>(
           EntityLayout_, SourceFunction_, TargetFunction_)) {}
 
-TranslationTask::TranslationTask(TranslationTask &&) noexcept = default;
-TranslationTask &
-TranslationTask::operator=(TranslationTask &&) noexcept = default;
-TranslationTask::~TranslationTask() noexcept = default;
+FunctionTranslationTask::FunctionTranslationTask(
+    FunctionTranslationTask &&) noexcept = default;
+FunctionTranslationTask &FunctionTranslationTask::operator=(
+    FunctionTranslationTask &&) noexcept = default;
+FunctionTranslationTask::~FunctionTranslationTask() noexcept = default;
 
-void TranslationTask::perform() {
+void FunctionTranslationTask::perform() {
   auto *EntryBB = Context->entry();
   auto *ExitBB = Context->exit();
 
@@ -875,4 +859,39 @@ void TranslationTask::perform() {
   // expect all labels are consumed, ensured by validation hopefully
   assert(Visitor.labels().empty());
 }
+
+/////////////////////////// ModuleTranslationTask //////////////////////////////
+ModuleTranslationTask::ModuleTranslationTask(
+    bytecode::Module const &Source_, mir::Module &Target_)
+    : LayOut(nullptr), Source(std::addressof(Source_)),
+      Target(std::addressof(Target_)), Names(nullptr) {}
+
+ModuleTranslationTask::ModuleTranslationTask(
+    bytecode::Module const &Source_, mir::Module &Target_,
+    parser::customsections::Name const &Names_)
+    : LayOut(nullptr), Source(std::addressof(Source_)),
+      Target(std::addressof(Target_)), Names(std::addressof(Names_)) {}
+
+void ModuleTranslationTask::perform() {
+  LayOut = std::make_unique<EntityLayout>(*Source, *Target);
+  for (auto const &[SourceFunc, TargetFunc] : LayOut->functions()) {
+    if (SourceFunc.isImported()) continue;
+    FunctionTranslationTask FTask(*LayOut, SourceFunc, *TargetFunc);
+    FTask.perform();
+  }
+  if (Names != nullptr) {
+    for (auto const &FuncNameEntry : Names->getFunctionNames()) {
+      auto *MFunction = (*LayOut)[FuncNameEntry.FuncIndex];
+      MFunction->setName(FuncNameEntry.Name);
+    }
+    for (auto const &LocalNameEntry : Names->getLocalNames()) {
+      auto *MFunction = (*LayOut)[LocalNameEntry.FuncIndex];
+      auto &MLocal = *std::next(
+          MFunction->local_begin(),
+          static_cast<std::size_t>(LocalNameEntry.LocalIndex));
+      MLocal.setName(LocalNameEntry.Name);
+    }
+  }
+}
+
 } // namespace mir::bytecode_codegen

@@ -19,7 +19,10 @@ int main(int argc, char const *argv[]) {
   (void)argc;
   (void)argv;
 
-  mio::basic_mmap_source<std::byte> Source("../test/main.wasm");
+  mio::basic_mmap_source<std::byte> Source(
+      //"../test/polybench-c-4.2.1-beta/2mm.wasm");
+      "../test/main.wasm");
+  //"../test/viu.wasm");
   parser::ByteArrayReader Reader(Source);
   parser::ModuleBuilderDelegate Delegate;
   parser::Parser Parser(Reader, Delegate);
@@ -43,13 +46,12 @@ int main(int argc, char const *argv[]) {
   using namespace mir::bytecode_codegen;
 
   mir::Module M;
-  EntityLayout Layout(Module, M);
-  auto Iter = M.function_begin();
-  std::advance(Iter, 1);
-  TranslationTask Task(Layout, ModuleView.functions()[1], *Iter);
+
+  ModuleTranslationTask Task(Module, M, Name);
   Task.perform();
 
   std::ostream_iterator<char> OutIter(std::cout);
   mir::dump(OutIter, M);
+
   return 0;
 }

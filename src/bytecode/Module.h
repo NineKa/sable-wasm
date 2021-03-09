@@ -99,29 +99,44 @@ public:
   std::string_view getExportName() const { return Export->Name; }
 };
 
-// clang-format off
-class Table : public Entity<TableType> { friend class bytecode::ModuleView; };
-class Memory : public Entity<MemoryType> { friend class bytecode::ModuleView; };
+class Table : public Entity<TableType> {
+  friend class bytecode::ModuleView;
+  TableIDX Index;
+
+public:
+  TableIDX getIndex() const { return Index; }
+};
+
+class Memory : public Entity<MemoryType> {
+  friend class bytecode::ModuleView;
+  MemIDX Index;
+
+public:
+  MemIDX getIndex() const { return Index; }
+};
 
 class Function : public Entity<FunctionType> {
   friend class bytecode::ModuleView;
   entities::Function const *Entity = nullptr;
+  FuncIDX Index;
+
 public:
-  ValueType operator[](LocalIDX const & Index) const {
-    auto Parameters = getType()->getParamTypes(); 
-    auto CastedIndex = static_cast<std::size_t>(Index);
+  FuncIDX getIndex() const { return Index; }
+  ValueType operator[](LocalIDX const &Index_) const {
+    auto Parameters = getType()->getParamTypes();
+    auto CastedIndex = static_cast<std::size_t>(Index_);
     if (CastedIndex < ranges::size(Parameters)) return Parameters[CastedIndex];
     CastedIndex = CastedIndex - ranges::size(Parameters);
-    if (CastedIndex < ranges::size(Entity->Locals)) 
+    if (CastedIndex < ranges::size(Entity->Locals))
       return Entity->Locals[CastedIndex];
     SABLE_UNREACHABLE();
   }
-  std::optional<ValueType> get(LocalIDX const &Index) const {
-    auto Parameters = getType()->getParamTypes(); 
-    auto CastedIndex = static_cast<std::size_t>(Index);
+  std::optional<ValueType> get(LocalIDX const &Index_) const {
+    auto Parameters = getType()->getParamTypes();
+    auto CastedIndex = static_cast<std::size_t>(Index_);
     if (CastedIndex < ranges::size(Parameters)) return Parameters[CastedIndex];
     CastedIndex = CastedIndex - ranges::size(Parameters);
-    if (CastedIndex < ranges::size(Entity->Locals)) 
+    if (CastedIndex < ranges::size(Entity->Locals))
       return Entity->Locals[CastedIndex];
     return std::nullopt;
   }
@@ -130,21 +145,26 @@ public:
   }
   auto getLocals() const {
     return ranges::views::concat(
-      getType()->getParamTypes(), getLocalsWithoutArgs());
+        getType()->getParamTypes(), getLocalsWithoutArgs());
   }
-  bytecode::Expression const *getBody() const
-  { return std::addressof(Entity->Body); }
+  bytecode::Expression const *getBody() const {
+    return std::addressof(Entity->Body);
+  }
   bool isDefinition() const { return Entity != nullptr; }
 };
 
 class Global : public Entity<GlobalType> {
   friend class bytecode::ModuleView;
   entities::Global const *Entity = nullptr;
+  GlobalIDX Index;
+
 public:
-  bytecode::Expression const *getInitializer() const
-  { return std::addressof(Entity->Initializer); }
+  GlobalIDX getIndex() const { return Index; }
+  bytecode::Expression const *getInitializer() const {
+    return std::addressof(Entity->Initializer);
+  }
 };
-// clang-format on
+
 } // namespace views
 
 // a copy-efficient read only view on module storage

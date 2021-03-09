@@ -9,21 +9,25 @@ ModuleView::ModuleView(Module const &M_)
       views::Function FunctionView;
       FunctionView.Import = std::addressof(Import);
       FunctionView.Type = operator[](std::get<TypeIDX>(Import.Descriptor));
+      FunctionView.Index = static_cast<FuncIDX>(Storage->Functions.size());
       Storage->Functions.push_back(FunctionView);
     } else if (std::holds_alternative<TableType>(Import.Descriptor)) {
       views::Table TableView;
       TableView.Import = std::addressof(Import);
       TableView.Type = std::addressof(std::get<TableType>(Import.Descriptor));
+      TableView.Index = static_cast<TableIDX>(Storage->Tables.size());
       Storage->Tables.push_back(TableView);
     } else if (std::holds_alternative<MemoryType>(Import.Descriptor)) {
       views::Memory MemoryView;
       MemoryView.Import = std::addressof(Import);
       MemoryView.Type = std::addressof(std::get<MemoryType>(Import.Descriptor));
+      MemoryView.Index = static_cast<MemIDX>(Storage->Memories.size());
       Storage->Memories.push_back(MemoryView);
     } else if (std::holds_alternative<GlobalType>(Import.Descriptor)) {
       views::Global GlobalView;
       GlobalView.Import = std::addressof(Import);
       GlobalView.Type = std::addressof(std::get<GlobalType>(Import.Descriptor));
+      GlobalView.Index = static_cast<GlobalIDX>(Storage->Globals.size());
       Storage->Globals.push_back(GlobalView);
     } else
       SABLE_UNREACHABLE();
@@ -33,22 +37,26 @@ ModuleView::ModuleView(Module const &M_)
     views::Function FunctionView;
     FunctionView.Type = operator[](Function.Type);
     FunctionView.Entity = std::addressof(Function);
+    FunctionView.Index = static_cast<FuncIDX>(Storage->Functions.size());
     Storage->Functions.push_back(FunctionView);
   }
   for (auto const &Table : Storage->M->Tables) {
     views::Table TableView;
     TableView.Type = std::addressof(Table.Type);
+    TableView.Index = static_cast<TableIDX>(Storage->Tables.size());
     Storage->Tables.push_back(TableView);
   }
   for (auto const &Memory : Storage->M->Memories) {
     views::Memory MemoryView;
     MemoryView.Type = std::addressof(Memory.Type);
+    MemoryView.Index = static_cast<MemIDX>(Storage->Memories.size());
     Storage->Memories.push_back(MemoryView);
   }
   for (auto const &Global : Storage->M->Globals) {
     views::Global GlobalView;
     GlobalView.Type = std::addressof(Global.Type);
     GlobalView.Entity = std::addressof(Global);
+    GlobalView.Index = static_cast<GlobalIDX>(Storage->Globals.size());
     Storage->Globals.push_back(GlobalView);
   }
   /* Annotating with Export */

@@ -106,6 +106,11 @@ inline bool isVoidReturnInst(Instruction const &Inst) {
         (Ptr->getTarget()->getType().isVoidResult()))
       return true;
   }
+  if (is_a<instructions::CallIndirect>(std::addressof(Inst))) {
+    auto const *Ptr =
+        dyn_cast<instructions::CallIndirect>(std::addressof(Inst));
+    if (Ptr->getExpectType().isVoidResult()) return true;
+  }
   switch (Inst.getInstructionKind()) {
   case InstructionKind::Store:
   case InstructionKind::LocalSet:
@@ -413,25 +418,47 @@ public:
   }
 
   Iterator operator()(instructions::Call const *Inst) {
-    Writer << Inst << " = call " << Inst->getTarget() << '(';
-    char const *Separator = "";
-    for (auto const *Argument : Inst->getArguments()) {
-      Writer << Separator << Argument;
-      Separator = ", ";
+    if ((Inst->getTarget() != nullptr) &&
+        (Inst->getTarget()->getType().isVoidResult())) {
+      Writer << "call " << Inst->getTarget() << '(';
+      char const *Separator = "";
+      for (auto const *Argument : Inst->getArguments()) {
+        Writer << Separator << Argument;
+        Separator = ", ";
+      }
+      Writer << ')';
+    } else {
+      Writer << Inst << " = call " << Inst->getTarget() << '(';
+      char const *Separator = "";
+      for (auto const *Argument : Inst->getArguments()) {
+        Writer << Separator << Argument;
+        Separator = ", ";
+      }
+      Writer << ')';
     }
-    Writer << ')';
     return Writer.iterator();
   }
 
   Iterator operator()(instructions::CallIndirect const *Inst) {
-    Writer << Inst << " = call.indirect " << Inst->getIndirectTable() << ' '
-           << Inst->getOperand() << " (";
-    char const *Separator = "";
-    for (auto const *Argument : Inst->getArguments()) {
-      Writer << Separator << Argument;
-      Separator = ", ";
+    if (Inst->getExpectType().isVoidResult()) {
+      Writer << "call.indirect " << Inst->getIndirectTable() << ' '
+             << Inst->getOperand() << " (";
+      char const *Separator = "";
+      for (auto const *Argument : Inst->getArguments()) {
+        Writer << Separator << Argument;
+        Separator = ", ";
+      }
+      Writer << ')';
+    } else {
+      Writer << Inst << " = call.indirect " << Inst->getIndirectTable() << ' '
+             << Inst->getOperand() << " (";
+      char const *Separator = "";
+      for (auto const *Argument : Inst->getArguments()) {
+        Writer << Separator << Argument;
+        Separator = ", ";
+      }
+      Writer << ')';
     }
-    Writer << ')';
     return Writer.iterator();
   }
 

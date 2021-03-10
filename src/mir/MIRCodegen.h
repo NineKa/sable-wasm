@@ -46,7 +46,6 @@ class FunctionTranslationTask {
   class TranslationContext;
   class TranslationVisitor;
   std::unique_ptr<TranslationContext> Context;
-  parser::customsections::Name const *Names;
 
 public:
   FunctionTranslationTask(

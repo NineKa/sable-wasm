@@ -4,7 +4,7 @@ namespace mir::bytecode_codegen {
 using namespace bytecode::valuetypes;
 namespace minsts = mir::instructions;
 namespace binsts = bytecode::instructions;
-/////////////////////////////// EntityMap //////////////////////////////////////
+///////////////////////////// EntityLayout /////////////////////////////////////
 namespace {
 namespace detail {
 template <typename MEntityType, typename BEntityType>
@@ -254,6 +254,9 @@ public:
     }
     std::span<Instruction *> peek(std::size_t NumValues = 1) {
       assert(NumValues <= Visitor.Values.size());
+      // Fixing a undefined behavior when NumValues == 0
+      // StartPtr points to a possible null value which takes as reference later
+      if (NumValues == 0) return std::span<Instruction *, 0>();
       auto *StartPtr =
           std::addressof(Visitor.Values[Visitor.Values.size() - NumValues]);
       return std::span<Instruction *>(StartPtr, NumValues);

@@ -15,5 +15,6 @@ Checks: '
   -cppcoreguidelines-avoid-magic-numbers, 
   -misc-non-private-member-variables-in-classes,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
-  -cppcoreguidelines-owning-memory'
+  -cppcoreguidelines-owning-memory,
+  -bugprone-reserved-identifier'
 HeaderFilterRegex: '.*/src/.*'

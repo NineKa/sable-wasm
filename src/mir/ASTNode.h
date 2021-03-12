@@ -21,6 +21,7 @@ enum class ASTNodeKind : std::uint8_t {
 class ASTNode {
   ASTNodeKind Kind;
   std::string Name;
+  std::forward_list<ASTNode *> Uses;
 
 public:
   ASTNode(ASTNodeKind Kind_) : Kind(Kind_), Name() {}
@@ -28,13 +29,24 @@ public:
   ASTNode(ASTNode &&) noexcept = delete;
   ASTNode &operator=(ASTNode const &) = delete;
   ASTNode &operator=(ASTNode &&) noexcept = delete;
-  virtual ~ASTNode() noexcept = default;
+  virtual ~ASTNode() noexcept {
+    for (auto *U : Uses) U->detach(this);
+  }
 
   std::string_view getName() const { return Name; }
   void setName(std::string Name_) { Name = std::move(Name_); }
   bool hasName() const { return !Name.empty(); }
 
   ASTNodeKind getASTNodeKind() const { return Kind; }
+
+  using iterator = typename decltype(Uses)::iterator;
+  iterator use_site_begin() { return Uses.begin(); }
+  iterator use_site_end() { return Uses.end(); }
+
+  void add_use(ASTNode *Referrer) { Uses.push_front(Referrer); }
+  void remove_use(ASTNode *Referrer) { std::erase(Uses, Referrer); }
+
+  virtual void detach(ASTNode const *) noexcept = 0;
 };
 
 template <typename T>
@@ -56,28 +68,6 @@ template <ast_node T> T const *dyn_cast(ASTNode const *Node) {
   assert(is_a<T>(Node));
   return static_cast<T const *>(Node);
 }
-
-namespace detail {
-template <typename Derived, typename Use> class UseSiteTraceable {
-  std::forward_list<Use *> Uses;
-
-public:
-  UseSiteTraceable() = default;
-  UseSiteTraceable(UseSiteTraceable const &) = delete;
-  UseSiteTraceable(UseSiteTraceable &&) noexcept = delete;
-  UseSiteTraceable &operator=(UseSiteTraceable const &) = delete;
-  UseSiteTraceable &operator=(UseSiteTraceable &&) noexcept = delete;
-  void add_use(Use *Referrer) { Uses.push_front(Referrer); }
-  void remove_use(Use *Referrer) { std::erase(Uses, Referrer); }
-  ~UseSiteTraceable() noexcept {
-    for (auto *U : Uses) U->detach_definition(static_cast<Derived *>(this));
-  }
-
-  using iterator = typename decltype(Uses)::iterator;
-  iterator use_site_begin() { return Uses.begin(); }
-  iterator use_site_end() { return Uses.end(); }
-};
-} // namespace detail
 } // namespace mir
 
 #endif

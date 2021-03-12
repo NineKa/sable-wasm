@@ -32,6 +32,10 @@ ModuleView::ModuleView(Module const &M_)
     } else
       SABLE_UNREACHABLE();
   }
+  Storage->NumImportedFunctions = Storage->Functions.size();
+  Storage->NumImportedGlobals = Storage->Globals.size();
+  Storage->NumImportedMemories = Storage->Memories.size();
+  Storage->NumImportedTables = Storage->Tables.size();
   /* Entity Definition */
   for (auto const &Function : Storage->M->Functions) {
     views::Function FunctionView;

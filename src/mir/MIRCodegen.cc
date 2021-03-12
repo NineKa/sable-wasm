@@ -1,5 +1,7 @@
 #include "MIRCodegen.h"
 
+#include <range/v3/view/transform.hpp>
+
 namespace mir::bytecode_codegen {
 using namespace bytecode::valuetypes;
 namespace minsts = mir::instructions;
@@ -90,10 +92,16 @@ namespace detail {
 template <ranges::input_range T>
 void addMergeCandidates(
     BasicBlock *MergeBlock, BasicBlock *From, T const &PhiCandidates) {
+  auto MergeBlockView =
+      ranges::views::all(*MergeBlock) |
+      ranges::views::transform([](auto &&X) { return std::addressof(X); });
+  auto PhiCandidatesView =
+      PhiCandidates |
+      ranges::views::transform([](auto &&X) { return std::addressof(X); });
   for (auto &&[Instruction, CandidateValue] :
-       ranges::views::zip(ranges::views::all(*MergeBlock), PhiCandidates)) {
-    auto *PhiNode = dyn_cast<minsts::Phi>(std::addressof(Instruction));
-    PhiNode->addCandidate(CandidateValue, From);
+       ranges::views::zip(MergeBlockView, PhiCandidatesView)) {
+    auto *PhiNode = dyn_cast<minsts::Phi>(Instruction);
+    PhiNode->addCandidate(*CandidateValue, From);
   }
 }
 
@@ -596,15 +604,18 @@ public:
 
   void operator()(binsts::MemorySize const *) {
     auto *Mem = Context.getImplicitMemory();
-    auto *Result = CurrentBasicBlock->BuildInst<minsts::MemorySize>(Mem);
+    std::array<ASTNode *, 1> Operands{Mem};
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::Intrinsic>(
+        minsts::IntrinsicFunction::MemorySize, Operands);
     values().push(Result);
   }
 
   void operator()(binsts::MemoryGrow const *) {
     auto *Operand = values().pop();
     auto *Mem = Context.getImplicitMemory();
-    auto *Result =
-        CurrentBasicBlock->BuildInst<minsts::MemoryGrow>(Mem, Operand);
+    std::array<ASTNode *, 2> Operands{Mem, Operand};
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::Intrinsic>(
+        minsts::IntrinsicFunction::MemoryGrow, Operands);
     values().push(Result);
   }
 

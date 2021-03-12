@@ -3,7 +3,7 @@ project(sable-wasm)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 add_compile_options(-Wno-unused-parameter -Wall -Wextra -pedantic -Werror -Wfatal-errors)
 
@@ -34,13 +34,11 @@ add_library(sablewasm
         src/mir/MIRCodegen.cc
         src/parser/ExprBuilderDelegate.cc
         src/parser/customsections/Name.cc
-        src/codegen_llvm_instance/LLVMCodegen.cc)
+        src/codegen-llvm-instance/LLVMCodegen.cc
+        src/codegen-llvm-instance/EntityLayout.cc)
 
-add_library(sablewasm-runtime
-        src/codegen_llvm_instance/runtime/Global.c
-        src/codegen_llvm_instance/runtime/Memory.c
-        src/codegen_llvm_instance/runtime/Table.c
-        src/codegen_llvm_instance/runtime/Support.c)
+add_library(sablewasm-runtime SHARED
+        src/codegen-llvm-instance/runtime/Base.c)
 
 target_link_libraries(sablewasm
         fmt::fmt
@@ -51,4 +49,4 @@ target_link_libraries(sablewasm
         ${llvm_libs})
 
 add_executable(sable-wasm src/Main.cc)
-target_link_libraries(sable-wasm sablewasm sablewasm-runtime)
+target_link_libraries(sable-wasm sablewasm)

@@ -11,6 +11,7 @@
 
 #include <mio/mmap.hpp>
 
+#include "codegen-llvm-instance/LLVMCodege.h"
 #include "mir/ASTNode.h"
 
 #include <iostream>
@@ -20,7 +21,7 @@ int main(int argc, char const *argv[]) {
   (void)argv;
 
   mio::basic_mmap_source<std::byte> Source(
-      //"../test/polybench-c-4.2.1-beta/2mm.wasm");
+      //    "../test/polybench-c-4.2.1-beta/2mm.wasm");
       "../test/main.wasm");
   //"../test/viu.wasm");
   parser::ByteArrayReader Reader(Source);
@@ -50,8 +51,9 @@ int main(int argc, char const *argv[]) {
   ModuleTranslationTask Task(Module, M, Name);
   Task.perform();
 
-  std::ostream_iterator<char> OutIter(std::cout);
-  mir::dump(OutIter, M);
-
-  return 0;
+  using namespace codegen::llvm_instance;
+  llvm::LLVMContext CTX;
+  llvm::Module LM("module", CTX);
+  setupRuntimeSupport(ModuleView, LM);
+  LM.print(llvm::outs(), nullptr);
 }

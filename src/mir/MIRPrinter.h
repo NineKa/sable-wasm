@@ -137,6 +137,8 @@ public:
   MIRIteratorWriter &operator<<(BasicBlock const *X) { return forwardL(X); }
   MIRIteratorWriter &operator<<(Instruction const *X) { return forwardL(X); }
 
+  MIRIteratorWriter &operator<<(ASTNode const *Node);
+
   // clang-format off
   MIRIteratorWriter &operator<<(bytecode::ValueType const &Type)
   { Out = fmt::format_to(Out, "{}", Type); return *this; }

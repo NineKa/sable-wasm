@@ -172,6 +172,10 @@ public:
 class ModuleView {
   struct ViewStorage {
     Module const *M;
+    size_t NumImportedTables;
+    size_t NumImportedMemories;
+    size_t NumImportedGlobals;
+    size_t NumImportedFunctions;
     // cache the indices, as we do not want to iterate through import vector for
     // each indices query
     std::vector<views::Table> Tables;
@@ -206,6 +210,13 @@ public:
   std::optional<views::Memory> get(MemIDX const &Index) const;
   std::optional<views::Global> get(GlobalIDX const &Index) const;
   std::optional<views::Function> get(FuncIDX const &Index) const;
+
+  size_t getNumImportedTables() const { return Storage->NumImportedTables; }
+  size_t getNumImportedMemories() const { return Storage->NumImportedMemories; }
+  size_t getNumImportedGlobals() const { return Storage->NumImportedGlobals; }
+  size_t getNumImportedFunctions() const {
+    return Storage->NumImportedFunctions;
+  }
 };
 
 } // namespace bytecode

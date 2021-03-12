@@ -337,6 +337,23 @@ MIRIteratorWriter<Iterator>::operator<<(char Character) {
 
 template <std::output_iterator<char> Iterator>
 MIRIteratorWriter<Iterator> &
+MIRIteratorWriter<Iterator>::operator<<(ASTNode const *Node) {
+  // clang-format off
+  switch (Node->getASTNodeKind()) {
+  case ASTNodeKind::Instruction: return *this << dyn_cast<Instruction>(Node);
+  case ASTNodeKind::BasicBlock : return *this << dyn_cast<BasicBlock>(Node);
+  case ASTNodeKind::Local      : return *this << dyn_cast<Local>(Node);
+  case ASTNodeKind::Function   : return *this << dyn_cast<Function>(Node);
+  case ASTNodeKind::Memory     : return *this << dyn_cast<Memory>(Node);
+  case ASTNodeKind::Table      : return *this << dyn_cast<Table>(Node);
+  case ASTNodeKind::Global     : return *this << dyn_cast<Global>(Node);
+  default: SABLE_UNREACHABLE();
+  }
+  // clang-format on
+}
+
+template <std::output_iterator<char> Iterator>
+MIRIteratorWriter<Iterator> &
 MIRIteratorWriter<Iterator>::operator<<(std::string_view String) {
   Out = fmt::format_to(Out, "{}", String);
   return *this;
@@ -555,19 +572,6 @@ public:
     return Writer.iterator();
   }
 
-  Iterator operator()(instructions::MemorySize const *Inst) {
-    auto const *Memory = Inst->getLinearMemory();
-    Writer << Inst << " = memory.size " << Memory;
-    return Writer.iterator();
-  }
-
-  Iterator operator()(instructions::MemoryGrow const *Inst) {
-    auto const *Memory = Inst->getLinearMemory();
-    auto const *Operand = Inst->getGrowSize();
-    Writer << Inst << " = memory.grow " << Memory << ' ' << Operand;
-    return Writer.iterator();
-  }
-
   Iterator operator()(instructions::MemoryGuard const *Inst) {
     auto const *Memory = Inst->getLinearMemory();
     auto const *Address = Inst->getAddress();
@@ -610,6 +614,24 @@ public:
       Writer << " [" << std::get<0>(Candidate) << ", " << std::get<1>(Candidate)
              << ']';
     return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::Intrinsic const *Inst) {
+    switch (Inst->getFunction()) {
+    case instructions::IntrinsicFunction::MemorySize: {
+      auto *LinearMemory = Inst->getOperands()[0];
+      Writer << Inst << " = memory.size(" << LinearMemory << ')';
+      return Writer.iterator();
+    }
+    case instructions::IntrinsicFunction::MemoryGrow: {
+      auto *LinearMemory = Inst->getOperands()[0];
+      auto *DeltaNumPage = Inst->getOperands()[1];
+      Writer << Inst << " = memory.grow(" << LinearMemory << ", "
+             << DeltaNumPage << ')';
+      return Writer.iterator();
+    }
+    default: SABLE_UNREACHABLE();
+    }
   }
 };
 } // namespace detail
@@ -665,7 +687,7 @@ Iterator dump(
   if (!Function_.isImported()) {
     LocalNameWriter LNameWriter(Function_);
     MIRIteratorWriter Writer(Out, ENameWriter, LNameWriter);
-    Writer << "function " << Function_ << " : " << Function_.getType()
+    Writer << "function " << Function_ << " : " << Function_.getType() << " {"
            << Writer.linebreak();
     char const *Separator = "";
     Writer << '{';
@@ -684,6 +706,7 @@ Iterator dump(
         Writer << Writer.linebreak();
       }
     }
+    Writer << '}' << Writer.linebreak();
     return Writer.iterator();
   }
   MIRIteratorWriter Writer(Out, ENameWriter);

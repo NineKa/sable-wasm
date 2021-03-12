@@ -4,6 +4,12 @@
 #include <range/v3/algorithm/contains.hpp>
 #include <range/v3/algorithm/replace.hpp>
 
+#define IF_THEN_SET(Operand, Value, ToValue)                                   \
+  if (Operand == Value) {                                                      \
+    Value = ToValue;                                                           \
+    return;                                                                    \
+  }
+
 namespace mir {
 BasicBlock::BasicBlock(Function *Parent_)
     : ASTNode(ASTNodeKind::BasicBlock), Parent(Parent_) {}
@@ -19,6 +25,8 @@ using IKind = InstructionKind;
 ///////////////////////////////// Unreachable //////////////////////////////////
 Unreachable::Unreachable(BasicBlock *Parent_)
     : Instruction(IKind::Unreachable, Parent_) {}
+
+void Unreachable::detach(ASTNode const *) noexcept { SABLE_UNREACHABLE(); }
 
 bool Unreachable::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Unreachable;
@@ -77,16 +85,11 @@ void Branch::setFalseTarget(BasicBlock *FalseTarget_) {
   FalseTarget = FalseTarget_;
 }
 
-void Branch::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Condition == Operand_);
-  utility::ignore(Operand_);
-  Condition = nullptr;
-}
-
-void Branch::detach_definition(BasicBlock const *Target_) noexcept {
-  assert((Target == Target_) || (FalseTarget == Target_));
-  if (Target_ == Target) Target = nullptr;
-  if (Target_ == FalseTarget) FalseTarget = nullptr;
+void Branch::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Condition, nullptr)
+  IF_THEN_SET(Node, Target, nullptr)
+  IF_THEN_SET(Node, FalseTarget, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool Branch::classof(Instruction const *Inst) {
@@ -102,7 +105,7 @@ bool Branch::classof(ASTNode const *Node) {
 ///////////////////////////////// BranchTable //////////////////////////////////
 BranchTable::BranchTable(
     BasicBlock *Parent_, Instruction *Operand_, BasicBlock *DefaultTarget_,
-    llvm::ArrayRef<BasicBlock *> Targets_)
+    std::span<BasicBlock *const> Targets_)
     : Instruction(IKind::BranchTable, Parent_), Operand(), DefaultTarget(),
       Targets() {
   setOperand(Operand_);
@@ -119,7 +122,7 @@ BranchTable::~BranchTable() noexcept {
 
 Instruction *BranchTable::getOperand() const { return Operand; }
 BasicBlock *BranchTable::getDefaultTarget() const { return DefaultTarget; }
-llvm::ArrayRef<BasicBlock *> BranchTable::getTargets() const { return Targets; }
+std::span<BasicBlock *const> BranchTable::getTargets() const { return Targets; }
 
 void BranchTable::setOperand(Instruction *Operand_) {
   if (Operand != nullptr) Operand->remove_use(this);
@@ -133,7 +136,7 @@ void BranchTable::setDefaultTarget(BasicBlock *DefaultTarget_) {
   DefaultTarget = DefaultTarget_;
 }
 
-void BranchTable::setTargets(llvm::ArrayRef<BasicBlock *> Targets_) {
+void BranchTable::setTargets(std::span<BasicBlock *const> Targets_) {
   for (auto *Target : Targets)
     if (Target != nullptr) Target->remove_use(this);
   for (auto *Target : Targets_)
@@ -141,17 +144,14 @@ void BranchTable::setTargets(llvm::ArrayRef<BasicBlock *> Targets_) {
   Targets = ranges::to<decltype(Targets)>(Targets_);
 }
 
-void BranchTable::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_);
-  utility::ignore(Operand_);
-  Operand = nullptr;
-}
-
-void BranchTable::detach_definition(BasicBlock const *Target_) noexcept {
-  assert((DefaultTarget == Target_) || ranges::contains(Targets, Target_));
-  if (DefaultTarget == Target_) DefaultTarget = nullptr;
-  if (ranges::contains(Targets, Target_))
-    ranges::replace(Targets, Target_, nullptr);
+void BranchTable::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Operand, nullptr)
+  IF_THEN_SET(Node, DefaultTarget, nullptr)
+  if (ranges::contains(Targets, Node)) {
+    ranges::replace(Targets, Node, nullptr);
+    return;
+  }
+  SABLE_UNREACHABLE();
 }
 
 bool BranchTable::classof(Instruction const *Inst) {
@@ -186,10 +186,9 @@ void Return::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Return::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_);
-  utility::ignore(Operand_);
-  Operand = nullptr;
+void Return::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Operand, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool Return::classof(Instruction const *Inst) {
@@ -205,7 +204,7 @@ bool Return::classof(ASTNode const *Node) {
 //////////////////////////////////// Call //////////////////////////////////////
 Call::Call(
     BasicBlock *Parent_, Function *Target_,
-    llvm::ArrayRef<Instruction *> Arguments_)
+    std::span<Instruction *const> Arguments_)
     : Instruction(IKind::Call, Parent_), Target(), Arguments() {
   setTarget(Target_);
   setArguments(Arguments_);
@@ -218,7 +217,7 @@ Call::~Call() noexcept {
 }
 
 Function *Call::getTarget() const { return Target; }
-llvm::ArrayRef<Instruction *> Call::getArguments() const { return Arguments; }
+std::span<Instruction *const> Call::getArguments() const { return Arguments; }
 
 void Call::setTarget(Function *Target_) {
   if (Target != nullptr) Target->remove_use(this);
@@ -226,7 +225,7 @@ void Call::setTarget(Function *Target_) {
   Target = Target_;
 }
 
-void Call::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
+void Call::setArguments(std::span<Instruction *const> Arguments_) {
   for (auto *Argument : Arguments)
     if (Argument != nullptr) Argument->remove_use(this);
   for (auto *Argument : Arguments_)
@@ -234,15 +233,13 @@ void Call::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
   Arguments = ranges::to<decltype(Arguments)>(Arguments_);
 }
 
-void Call::detach_definition(Function const *Target_) noexcept {
-  assert(Target == Target_);
-  utility::ignore(Target_);
-  Target = nullptr;
-}
-
-void Call::detach_definition(Instruction const *Argument_) noexcept {
-  assert(ranges::contains(Arguments, Argument_));
-  ranges::replace(Arguments, Argument_, nullptr);
+void Call::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Target, nullptr)
+  if (ranges::contains(Arguments, Node)) {
+    ranges::replace(Arguments, Node, nullptr);
+    return;
+  }
+  SABLE_UNREACHABLE();
 }
 
 bool Call::classof(Instruction const *Inst) {
@@ -259,7 +256,7 @@ bool Call::classof(ASTNode const *Node) {
 CallIndirect::CallIndirect(
     BasicBlock *Parent_, Table *IndirectTable_, Instruction *Operand_,
     bytecode::FunctionType ExpectType_,
-    llvm::ArrayRef<Instruction *> Arguments_)
+    std::span<Instruction *const> Arguments_)
     : Instruction(IKind::CallIndirect, Parent_), IndirectTable(), Operand(),
       ExpectType(std::move(ExpectType_)), Arguments() {
   setIndirectTable(IndirectTable_);
@@ -294,11 +291,11 @@ void CallIndirect::setExpectType(bytecode::FunctionType Type_) {
   ExpectType = std::move(Type_);
 }
 
-llvm::ArrayRef<Instruction *> CallIndirect::getArguments() const {
+std::span<Instruction *const> CallIndirect::getArguments() const {
   return Arguments;
 }
 
-void CallIndirect::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
+void CallIndirect::setArguments(std::span<Instruction *const> Arguments_) {
   for (auto *Argument : Arguments)
     if (Argument != nullptr) Argument->remove_use(this);
   for (auto *Argument : Arguments_)
@@ -306,17 +303,14 @@ void CallIndirect::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
   Arguments = ranges::to<decltype(Arguments)>(Arguments_);
 }
 
-void CallIndirect::detach_definition(Table const *Table_) noexcept {
-  assert(IndirectTable == Table_);
-  utility::ignore(Table_);
-  IndirectTable = nullptr;
-}
-
-void CallIndirect::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_ || ranges::contains(Arguments, Operand_));
-  utility::ignore(Operand_);
-  if (Operand == Operand_) Operand = nullptr;
-  ranges::replace(Arguments, Operand_, nullptr);
+void CallIndirect::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, IndirectTable, nullptr)
+  IF_THEN_SET(Node, Operand, nullptr)
+  if (ranges::contains(Arguments, Node)) {
+    ranges::replace(Arguments, Node, nullptr);
+    return;
+  }
+  SABLE_UNREACHABLE();
 }
 
 bool CallIndirect::classof(Instruction const *Inst) {
@@ -367,11 +361,11 @@ void Select::setFalse(Instruction *False_) {
   False = False_;
 }
 
-void Select::detach_definition(Instruction const *Operand_) noexcept {
-  assert((Condition == Operand_) || (True == Operand_) || (False == Operand_));
-  if (Operand_ == Condition) Condition = nullptr;
-  if (Operand_ == True) True = nullptr;
-  if (Operand_ == False) False = nullptr;
+void Select::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Condition, nullptr)
+  IF_THEN_SET(Node, True, nullptr)
+  IF_THEN_SET(Node, False, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool Select::classof(Instruction const *Inst) {
@@ -402,10 +396,9 @@ void LocalGet::setTarget(Local *Target_) {
   Target = Target_;
 }
 
-void LocalGet::detach_definition(Local const *Local_) noexcept {
-  assert(Target == Local_);
-  utility::ignore(Local_);
-  Target = nullptr;
+void LocalGet::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Target, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool LocalGet::classof(Instruction const *Inst) {
@@ -445,16 +438,10 @@ void LocalSet::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void LocalSet::detach_definition(Local const *Local_) noexcept {
-  assert(Target == Local_);
-  utility::ignore(Local_);
-  Target = nullptr;
-}
-
-void LocalSet::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_);
-  utility::ignore(Operand_);
-  Operand = nullptr;
+void LocalSet::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Target, nullptr)
+  IF_THEN_SET(Node, Operand, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool LocalSet::classof(Instruction const *Inst) {
@@ -485,10 +472,9 @@ void GlobalGet::setTarget(Global *Target_) {
   Target = Target_;
 }
 
-void GlobalGet::detach_definition(Global const *Global_) noexcept {
-  assert(Target == Global_);
-  utility::ignore(Global_);
-  Target = nullptr;
+void GlobalGet::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Target, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool GlobalGet::classof(Instruction const *Inst) {
@@ -529,16 +515,10 @@ void GlobalSet::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void GlobalSet::detach_definition(Global const *Global_) noexcept {
-  assert(Target == Global_);
-  utility::ignore(Global_);
-  Target = nullptr;
-}
-
-void GlobalSet::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_);
-  utility::ignore(Operand_);
-  Operand = nullptr;
+void GlobalSet::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Target, nullptr)
+  IF_THEN_SET(Node, Operand, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool GlobalSet::classof(Instruction const *Inst) {
@@ -579,6 +559,8 @@ bytecode::ValueType Constant::getValueType() const {
   return std::visit(Visitor, Value);
 }
 
+void Constant::detach(ASTNode const *) noexcept { SABLE_UNREACHABLE(); }
+
 bool Constant::classof(Instruction const *Inst) {
   return Inst->getInstructionKind() == IKind::Constant;
 }
@@ -613,10 +595,9 @@ void IntUnaryOp::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void IntUnaryOp::detach_definition(Instruction const *Operand_) noexcept {
-  assert(getOperand() == Operand_);
-  utility::ignore(Operand_);
-  Operand = nullptr;
+void IntUnaryOp::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Operand, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool IntUnaryOp::classof(Instruction const *Inst) {
@@ -664,10 +645,10 @@ void IntBinaryOp::setRHS(Instruction *RHS_) {
   RHS = RHS_;
 }
 
-void IntBinaryOp::detach_definition(Instruction const *Operand_) noexcept {
-  assert((LHS == Operand_) || (RHS == Operand_));
-  if (Operand_ == LHS) LHS = nullptr;
-  if (Operand_ == RHS) RHS = nullptr;
+void IntBinaryOp::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, LHS, nullptr)
+  IF_THEN_SET(Node, RHS, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool IntBinaryOp::classof(Instruction const *Inst) {
@@ -701,10 +682,9 @@ void FPUnaryOp::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void FPUnaryOp::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_);
-  utility::ignore(Operand_);
-  Operand = nullptr;
+void FPUnaryOp::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Operand, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool FPUnaryOp::classof(Instruction const *Inst) {
@@ -752,10 +732,10 @@ void FPBinaryOp::setRHS(Instruction *RHS_) {
   RHS = RHS_;
 }
 
-void FPBinaryOp::detach_definition(Instruction const *Operand_) noexcept {
-  assert((LHS == Operand_) || (RHS == Operand_));
-  if (Operand_ == LHS) LHS = nullptr;
-  if (Operand_ == RHS) RHS = nullptr;
+void FPBinaryOp::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, LHS, nullptr)
+  IF_THEN_SET(Node, RHS, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool FPBinaryOp::classof(Instruction const *Inst) {
@@ -802,16 +782,10 @@ void Load::setAddress(Instruction *Address_) {
   Address = Address_;
 }
 
-void Load::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Address == Operand_);
-  utility::ignore(Operand_);
-  Address = nullptr;
-}
-
-void Load::detach_definition(Memory const *Memory_) noexcept {
-  assert(LinearMemory == Memory_);
-  utility::ignore(Memory_);
-  LinearMemory = nullptr;
+void Load::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Address, nullptr)
+  IF_THEN_SET(Node, LinearMemory, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool Load::classof(Instruction const *Inst) {
@@ -865,16 +839,11 @@ void Store::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Store::detach_definition(Instruction const *Operand_) noexcept {
-  assert((Operand_ == Address) || (Operand_ == Operand));
-  if (Operand_ == Address) Address = nullptr;
-  if (Operand_ == Operand) Operand = nullptr;
-}
-
-void Store::detach_definition(Memory const *Memory_) noexcept {
-  assert(LinearMemory == Memory_);
-  utility::ignore(Memory_);
-  LinearMemory = nullptr;
+void Store::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Address, nullptr)
+  IF_THEN_SET(Node, Operand, nullptr)
+  IF_THEN_SET(Node, LinearMemory, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool Store::classof(Instruction const *Inst) {
@@ -884,90 +853,6 @@ bool Store::classof(Instruction const *Inst) {
 bool Store::classof(ASTNode const *Node) {
   if (Instruction::classof(Node))
     return Store::classof(dyn_cast<Instruction>(Node));
-  return false;
-}
-
-////////////////////////////// MemorySize //////////////////////////////////////
-MemorySize::MemorySize(BasicBlock *Parent_, Memory *LinearMemory_)
-    : Instruction(IKind::MemorySize, Parent_), LinearMemory() {
-  setLinearMemory(LinearMemory_);
-}
-
-MemorySize::~MemorySize() noexcept {
-  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
-}
-
-Memory *MemorySize::getLinearMemory() const { return LinearMemory; }
-
-void MemorySize::setLinearMemory(Memory *LinearMemory_) {
-  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
-  if (LinearMemory_ != nullptr) LinearMemory_->add_use(this);
-  LinearMemory = LinearMemory_;
-}
-
-void MemorySize::detach_definition(Memory const *Memory_) noexcept {
-  assert(LinearMemory == Memory_);
-  utility::ignore(Memory_);
-  LinearMemory = nullptr;
-}
-
-bool MemorySize::classof(Instruction const *Inst) {
-  return Inst->getInstructionKind() == IKind::MemorySize;
-}
-
-bool MemorySize::classof(ASTNode const *Node) {
-  if (Instruction::classof(Node))
-    return MemorySize::classof(dyn_cast<Instruction>(Node));
-  return false;
-}
-
-////////////////////////////// MemoryGrow //////////////////////////////////////
-MemoryGrow::MemoryGrow(
-    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_)
-    : Instruction(IKind::MemoryGrow, Parent_), LinearMemory(), GrowSize() {
-  setLinearMemory(LinearMemory_);
-  setGrowSize(GrowSize_);
-}
-
-MemoryGrow::~MemoryGrow() noexcept {
-  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
-  if (GrowSize != nullptr) GrowSize->remove_use(this);
-}
-
-Memory *MemoryGrow::getLinearMemory() const { return LinearMemory; }
-Instruction *MemoryGrow::getGrowSize() const { return GrowSize; }
-
-void MemoryGrow::setLinearMemory(Memory *LinearMemory_) {
-  if (LinearMemory != nullptr) LinearMemory->remove_use(this);
-  if (LinearMemory_ != nullptr) LinearMemory_->add_use(this);
-  LinearMemory = LinearMemory_;
-}
-
-void MemoryGrow::setGrowSize(Instruction *GrowSize_) {
-  if (GrowSize != nullptr) GrowSize->remove_use(this);
-  if (GrowSize_ != nullptr) GrowSize_->add_use(this);
-  GrowSize = GrowSize_;
-}
-
-void MemoryGrow::detach_definition(Instruction const *Operand_) noexcept {
-  assert(GrowSize == Operand_);
-  utility::ignore(Operand_);
-  GrowSize = nullptr;
-}
-
-void MemoryGrow::detach_definition(Memory const *Memory_) noexcept {
-  assert(LinearMemory == Memory_);
-  utility::ignore(Memory_);
-  LinearMemory = nullptr;
-}
-
-bool MemoryGrow::classof(Instruction const *Inst) {
-  return Inst->getInstructionKind() == IKind::MemoryGrow;
-}
-
-bool MemoryGrow::classof(ASTNode const *Node) {
-  if (Instruction::classof(Node))
-    return MemoryGrow::classof(dyn_cast<Instruction>(Node));
   return false;
 }
 
@@ -1006,16 +891,10 @@ void MemoryGuard::setGuardSize(std::uint32_t GuardSize_) {
   GuardSize = GuardSize_;
 }
 
-void MemoryGuard::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Address == Operand_);
-  utility::ignore(Operand_);
-  Address = nullptr;
-}
-
-void MemoryGuard::detach_definition(Memory const *Memory_) noexcept {
-  assert(LinearMemory == Memory_);
-  utility::ignore(Memory_);
-  LinearMemory = nullptr;
+void MemoryGuard::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Address, nullptr)
+  IF_THEN_SET(Node, LinearMemory, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool MemoryGuard::classof(Instruction const *Inst) {
@@ -1052,10 +931,9 @@ void Cast::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Cast::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_);
-  utility::ignore(Operand_);
-  Operand = nullptr;
+void Cast::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Operand, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool Cast::classof(Instruction const *Inst) {
@@ -1089,10 +967,9 @@ void Extend::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Extend::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_);
-  utility::ignore(Operand_);
-  Operand = nullptr;
+void Extend::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Operand, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool Extend::classof(Instruction const *Inst) {
@@ -1106,7 +983,7 @@ bool Extend::classof(ASTNode const *Node) {
 }
 
 ////////////////////////////////// Pack ////////////////////////////////////////
-Pack::Pack(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_)
+Pack::Pack(BasicBlock *Parent_, std::span<Instruction *const> Arguments_)
     : Instruction(IKind::Pack, Parent_) {
   setArguments(Arguments_);
 }
@@ -1116,9 +993,9 @@ Pack::~Pack() noexcept {
     if (Argument != nullptr) Argument->remove_use(this);
 }
 
-llvm::ArrayRef<Instruction *> Pack::getArguments() const { return Arguments; }
+std::span<Instruction *const> Pack::getArguments() const { return Arguments; }
 
-void Pack::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
+void Pack::setArguments(std::span<Instruction *const> Arguments_) {
   for (auto *Argument : Arguments)
     if (Argument != nullptr) Argument->remove_use(this);
   for (auto *Argument : Arguments_)
@@ -1126,9 +1003,12 @@ void Pack::setArguments(llvm::ArrayRef<Instruction *> Arguments_) {
   Arguments = ranges::to<decltype(Arguments)>(Arguments_);
 }
 
-void Pack::detach_definition(Instruction const *Operand_) noexcept {
-  assert(ranges::contains(Arguments, Operand_));
-  ranges::replace(Arguments, Operand_, nullptr);
+void Pack::detach(ASTNode const *Node) noexcept {
+  if (ranges::contains(Arguments, Node)) {
+    ranges::replace(Arguments, Node, nullptr);
+    return;
+  }
+  SABLE_UNREACHABLE();
 }
 
 bool Pack::classof(Instruction const *Inst) {
@@ -1161,10 +1041,9 @@ void Unpack::setOperand(Instruction *Operand_) {
   Operand = Operand_;
 }
 
-void Unpack::detach_definition(Instruction const *Operand_) noexcept {
-  assert(Operand == Operand_);
-  utility::ignore(Operand_);
-  Operand = nullptr;
+void Unpack::detach(ASTNode const *Node) noexcept {
+  IF_THEN_SET(Node, Operand, nullptr)
+  SABLE_UNREACHABLE();
 }
 
 bool Unpack::classof(Instruction const *Inst) {
@@ -1188,13 +1067,13 @@ Phi::~Phi() noexcept {
   }
 }
 
-llvm::ArrayRef<std::pair<Instruction *, BasicBlock *>>
+std::span<std::pair<Instruction *, BasicBlock *> const>
 Phi::getCandidates() const {
   return Candidates;
 }
 
 void Phi::setCandidates(
-    llvm::ArrayRef<std::pair<Instruction *, BasicBlock *>> Candidates_) {
+    std::span<std::pair<Instruction *, BasicBlock *> const> Candidates_) {
   for (auto const &[Value, Path] : Candidates_) {
     if (Value != nullptr) Value->add_use(this);
     if (Path != nullptr) Path->add_use(this);
@@ -1215,26 +1094,12 @@ void Phi::addCandidate(Instruction *Value_, BasicBlock *Path_) {
   Candidates.emplace_back(Value_, Path_);
 }
 
-void Phi::detach_definition(Instruction const *Operand_) noexcept {
-  assert(ranges::contains(
-      ranges::views::transform(
-          Candidates, [](auto const &Pair) { return std::get<0>(Pair); }),
-      Operand_));
-  for (auto &[Value, Path] : Candidates) {
-    utility::ignore(Path);
-    if (Value == Operand_) Value = nullptr;
+void Phi::detach(ASTNode const *Node) noexcept {
+  for (auto &&[Value, Path] : Candidates) {
+    IF_THEN_SET(Node, Value, nullptr)
+    IF_THEN_SET(Node, Path, nullptr)
   }
-}
-
-void Phi::detach_definition(BasicBlock const *Operand_) noexcept {
-  assert(ranges::contains(
-      ranges::views::transform(
-          Candidates, [](auto const &Pair) { return std::get<1>(Pair); }),
-      Operand_));
-  for (auto &[Value, Path] : Candidates) {
-    utility::ignore(Value);
-    if (Path == Operand_) Path = nullptr;
-  }
+  SABLE_UNREACHABLE();
 }
 
 bool Phi::classof(Instruction const *Inst) {
@@ -1246,6 +1111,52 @@ bool Phi::classof(ASTNode const *Node) {
     return Phi::classof(dyn_cast<Instruction>(Node));
   return false;
 }
+
+//////////////////////////////// Intrinsic /////////////////////////////////////
+Intrinsic::Intrinsic(
+    BasicBlock *Parent_, IntrinsicFunction Function_,
+    std::span<ASTNode *const> Operands_)
+    : Instruction(IKind::Intrinsic, Parent_), Function(Function_) {
+  setOperands(Operands_);
+}
+Intrinsic::~Intrinsic() noexcept {
+  for (auto *Operand : Operands)
+    if (Operand != nullptr) Operand->remove_use(this);
+}
+
+std::span<ASTNode *const> Intrinsic::getOperands() const { return Operands; }
+
+IntrinsicFunction Intrinsic::getFunction() const { return Function; }
+void Intrinsic::setFunction(IntrinsicFunction Function_) {
+  Function = Function_;
+}
+
+void Intrinsic::setOperands(std::span<ASTNode *const> Operands_) {
+  for (auto *Operand : Operands)
+    if (Operand != nullptr) Operand->remove_use(this);
+  for (auto *Operand : Operands_)
+    if (Operand != nullptr) Operand->add_use(this);
+  Operands = ranges::to<decltype(Operands)>(Operands_);
+}
+
+void Intrinsic::detach(ASTNode const *Node) noexcept {
+  if (ranges::contains(Operands, Node)) {
+    ranges::replace(Operands, Node, nullptr);
+    return;
+  }
+  SABLE_UNREACHABLE();
+}
+
+bool Intrinsic::classof(Instruction const *Inst) {
+  return Inst->getInstructionKind() == IKind::Intrinsic;
+}
+
+bool Intrinsic::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Intrinsic::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+
 } // namespace mir::instructions
 
 namespace fmt {
@@ -1272,16 +1183,15 @@ char const *formatter<mir::InstructionKind>::getEnumString(
   case IKind::FPBinaryOp  : return "fp.binary";
   case IKind::Load        : return "load";
   case IKind::Store       : return "store";
-  case IKind::MemorySize  : return "memory.size";
-  case IKind::MemoryGrow  : return "memory.grow";
   case IKind::MemoryGuard : return "memory.guard";
   case IKind::Cast        : return "cast";
   case IKind::Extend      : return "extend";
   case IKind::Pack        : return "pack";
   case IKind::Unpack      : return "unpack";
   case IKind::Phi         : return "phi";
+  case IKind::Intrinsic   : return "intrinsic";
   default: SABLE_UNREACHABLE();
-    // clang-format on
   }
+  // clang-format on
 }
 } // namespace fmt

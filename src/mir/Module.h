@@ -38,8 +38,7 @@ class Function :
     public ASTNode,
     public detail::ImportableEntity,
     public detail::ExportableEntity,
-    public llvm::ilist_node_with_parent<Function, Module>,
-    public detail::UseSiteTraceable<Function, Instruction> {
+    public llvm::ilist_node_with_parent<Function, Module> {
   Module *Parent;
   bytecode::FunctionType Type;
   llvm::ilist<BasicBlock> BasicBlocks;
@@ -92,12 +91,16 @@ public:
   static llvm::ilist<Local> Function::*getSublistAccess(Local *) {
     return &Function::Locals;
   }
+
+  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  static bool classof(ASTNode const *Node) {
+    return Node->getASTNodeKind() == ASTNodeKind::Function;
+  }
 };
 
 class Local :
     public ASTNode,
-    public llvm::ilist_node_with_parent<Local, Function>,
-    public detail::UseSiteTraceable<Local, Instruction> {
+    public llvm::ilist_node_with_parent<Local, Function> {
   Function *Parent;
   bytecode::ValueType Type;
   bool IsParameter;
@@ -111,14 +114,17 @@ public:
   Function *getParent() const { return Parent; }
   bytecode::ValueType const &getType() const { return Type; }
   bool isParameter() const { return IsParameter; }
+  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  static bool classof(ASTNode const *Node) {
+    return Node->getASTNodeKind() == ASTNodeKind::Local;
+  }
 };
 
 class Global :
     public ASTNode,
     public detail::ImportableEntity,
     public detail::ExportableEntity,
-    public llvm::ilist_node_with_parent<Global, Module>,
-    public detail::UseSiteTraceable<Global, Instruction> {
+    public llvm::ilist_node_with_parent<Global, Module> {
   Module *Parent;
   bytecode::GlobalType Type;
 
@@ -126,14 +132,17 @@ public:
   Global(Module *Parent_, bytecode::GlobalType Type_);
   Module *getParent() const { return Parent; }
   bytecode::GlobalType const &getType() const { return Type; }
+  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  static bool classof(ASTNode const *Node) {
+    return Node->getASTNodeKind() == ASTNodeKind::Global;
+  }
 };
 
 class Memory :
     public ASTNode,
     public detail::ImportableEntity,
     public detail::ExportableEntity,
-    public llvm::ilist_node_with_parent<Memory, Module>,
-    public detail::UseSiteTraceable<Memory, Instruction> {
+    public llvm::ilist_node_with_parent<Memory, Module> {
   Module *Parent;
   bytecode::MemoryType Type;
 
@@ -141,14 +150,17 @@ public:
   Memory(Module *Parent_, bytecode::MemoryType Type_);
   Module *getParent() const { return Parent; }
   bytecode::MemoryType const &getType() const { return Type; }
+  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  static bool classof(ASTNode const *Node) {
+    return Node->getASTNodeKind() == ASTNodeKind::Memory;
+  }
 };
 
 class Table :
     public ASTNode,
     public detail::ImportableEntity,
     public detail::ExportableEntity,
-    public llvm::ilist_node_with_parent<Table, Module>,
-    public detail::UseSiteTraceable<Table, Instruction> {
+    public llvm::ilist_node_with_parent<Table, Module> {
   Module *Parent;
   bytecode::TableType Type;
 
@@ -156,6 +168,10 @@ public:
   Table(Module *Parent_, bytecode::TableType Type_);
   Module *getParent() const { return Parent; }
   bytecode::TableType const &getType() const { return Type; }
+  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  static bool classof(ASTNode const *Node) {
+    return Node->getASTNodeKind() == ASTNodeKind::Table;
+  }
 };
 
 class Module : public ASTNode {
@@ -232,6 +248,11 @@ public:
   }
   static llvm::ilist<Table> Module::*getSublistAccess(Table *) {
     return &Module::Tables;
+  }
+
+  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  static bool classof(ASTNode const *Node) {
+    return Node->getASTNodeKind() == ASTNodeKind::Module;
   }
 };
 } // namespace mir

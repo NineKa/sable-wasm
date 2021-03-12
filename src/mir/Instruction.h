@@ -4,10 +4,10 @@
 #include "../bytecode/Type.h"
 #include "ASTNode.h"
 
-#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/ilist.h>
 #include <llvm/ADT/ilist_node.h>
 
+#include <span>
 #include <variant>
 
 namespace mir {
@@ -40,20 +40,18 @@ enum class InstructionKind : std::uint8_t {
   FPBinaryOp,
   Load,
   Store,
-  MemorySize,
-  MemoryGrow,
   MemoryGuard,
   Cast,
   Extend,
   Pack,
   Unpack,
-  Phi
+  Phi,
+  Intrinsic
 };
 
 class Instruction :
     public ASTNode,
-    public llvm::ilist_node_with_parent<Instruction, BasicBlock>,
-    public detail::UseSiteTraceable<Instruction, Instruction> {
+    public llvm::ilist_node_with_parent<Instruction, BasicBlock> {
   InstructionKind Kind;
   BasicBlock *Parent = nullptr;
 
@@ -73,19 +71,6 @@ public:
   auto getUsedSites() {
     return ranges::subrange(use_site_begin(), use_site_end());
   }
-
-  // called when defined entity is removed from IR
-  // a proper instruction should also remove them from operands (set to nullptr)
-  // defaults to do nothing
-  // called from destructors, must be noexcept
-  // TODO: move these to traits
-  virtual void detach_definition(Instruction const *) noexcept {}
-  virtual void detach_definition(Local const *) noexcept {}
-  virtual void detach_definition(BasicBlock const *) noexcept {}
-  virtual void detach_definition(Function const *) noexcept {}
-  virtual void detach_definition(Global const *) noexcept {}
-  virtual void detach_definition(Memory const *) noexcept {}
-  virtual void detach_definition(Table const *) noexcept {}
 
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::Instruction;
@@ -115,8 +100,7 @@ template <instruction T> T const *dyn_cast(Instruction const *Inst) {
 
 class BasicBlock :
     public ASTNode,
-    public llvm::ilist_node_with_parent<BasicBlock, Function>,
-    public detail::UseSiteTraceable<BasicBlock, Instruction> {
+    public llvm::ilist_node_with_parent<BasicBlock, Function> {
   Function *Parent;
   llvm::ilist<Instruction> Instructions;
 
@@ -157,6 +141,8 @@ public:
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::BasicBlock;
   }
+
+  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
 };
 } // namespace mir
 
@@ -165,6 +151,7 @@ namespace mir::instructions {
 class Unreachable : public Instruction {
 public:
   explicit Unreachable(BasicBlock *Parent_);
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -193,8 +180,7 @@ public:
   void setTarget(BasicBlock *Target_);
   BasicBlock *getFalseTarget() const;
   void setFalseTarget(BasicBlock *FalseTarget_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
-  void detach_definition(BasicBlock const *Target_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -208,7 +194,7 @@ class BranchTable : public Instruction {
 public:
   BranchTable(
       BasicBlock *Parent_, Instruction *Operand_, BasicBlock *DefaultTarget_,
-      llvm::ArrayRef<BasicBlock *> Targets_);
+      std::span<BasicBlock *const> Targets_);
   BranchTable(BranchTable const &) = delete;
   BranchTable(BranchTable &&) noexcept = delete;
   BranchTable &operator=(BranchTable const &) = delete;
@@ -218,10 +204,9 @@ public:
   void setOperand(Instruction *Operand_);
   BasicBlock *getDefaultTarget() const;
   void setDefaultTarget(BasicBlock *DefaultTarget_);
-  llvm::ArrayRef<BasicBlock *> getTargets() const;
-  void setTargets(llvm::ArrayRef<BasicBlock *> Targets_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
-  void detach_definition(BasicBlock const *Target_) noexcept override;
+  std::span<BasicBlock *const> getTargets() const;
+  void setTargets(std::span<BasicBlock *const> Targets_);
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -241,7 +226,7 @@ public:
   bool hasReturnValue() const;
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -254,7 +239,7 @@ class Call : public Instruction {
 public:
   Call(
       BasicBlock *Parent_, Function *Target_,
-      llvm::ArrayRef<Instruction *> Arguments_);
+      std::span<Instruction *const> Arguments_);
   Call(Call const &) = delete;
   Call(Call &&) noexcept = delete;
   Call &operator=(Call const &) = delete;
@@ -262,10 +247,9 @@ public:
   ~Call() noexcept override;
   Function *getTarget() const;
   void setTarget(Function *Target_);
-  llvm::ArrayRef<Instruction *> getArguments() const;
-  void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
-  void detach_definition(Function const *Target_) noexcept override;
-  void detach_definition(Instruction const *Argument_) noexcept override;
+  std::span<Instruction *const> getArguments() const;
+  void setArguments(std::span<Instruction *const> Arguments_);
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -281,7 +265,7 @@ public:
   CallIndirect(
       BasicBlock *Parent_, Table *IndirectTable_, Instruction *Operand_,
       bytecode::FunctionType ExpectType_,
-      llvm::ArrayRef<Instruction *> Arguments_);
+      std::span<Instruction *const> Arguments_);
   CallIndirect(CallIndirect const &) = delete;
   CallIndirect(CallIndirect &&) noexcept = delete;
   CallIndirect &operator=(CallIndirect const &) = delete;
@@ -293,10 +277,9 @@ public:
   void setOperand(Instruction *Operand_);
   bytecode::FunctionType const &getExpectType() const;
   void setExpectType(bytecode::FunctionType Type_);
-  llvm::ArrayRef<Instruction *> getArguments() const;
-  void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
-  void detach_definition(Table const *Table_) noexcept override;
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  std::span<Instruction *const> getArguments() const;
+  void setArguments(std::span<Instruction *const> Arguments_);
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -322,7 +305,7 @@ public:
   void setTrue(Instruction *True_);
   Instruction *getFalse() const;
   void setFalse(Instruction *False_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -340,7 +323,7 @@ public:
   ~LocalGet() noexcept override;
   Local *getTarget() const;
   void setTarget(Local *Target_);
-  void detach_definition(Local const *Local_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -361,8 +344,7 @@ public:
   void setTarget(Local *Target_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Local const *Local_) noexcept override;
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -380,7 +362,7 @@ public:
   ~GlobalGet() noexcept override;
   Global *getTarget() const;
   void setTarget(Global *Target_);
-  void detach_definition(Global const *Global_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -401,8 +383,7 @@ public:
   void setTarget(Global *Target_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Global const *Global_) noexcept override;
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -425,6 +406,7 @@ public:
   double getF64() const;
   void setF64(double Value_);
   bytecode::ValueType getValueType() const;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -447,7 +429,7 @@ public:
   void setOperator(IntUnaryOperator Operator_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -480,7 +462,7 @@ public:
   void setLHS(Instruction *LHS_);
   Instruction *getRHS() const;
   void setRHS(Instruction *RHS_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -506,7 +488,7 @@ public:
   void setOperator(FPUnaryOperator Operator_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -537,7 +519,7 @@ public:
   void setLHS(Instruction *LHS_);
   Instruction *getRHS() const;
   void setRHS(Instruction *RHS_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -566,8 +548,7 @@ public:
   void setAddress(Instruction *Address_);
   unsigned getLoadWidth() const;
   void setLoadWidth(unsigned LoadWidth_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
-  void detach_definition(Memory const *Memory_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -596,49 +577,7 @@ public:
   void setOperand(Instruction *Operand_);
   unsigned getStoreWidth() const;
   void setStoreWidth(unsigned StoreWidth_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
-  void detach_definition(Memory const *Memory_) noexcept override;
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-////////////////////////////// MemorySize //////////////////////////////////////
-class MemorySize : public Instruction {
-  Memory *LinearMemory;
-
-public:
-  MemorySize(BasicBlock *Parent_, Memory *LinearMemory_);
-  MemorySize(MemorySize const &) = delete;
-  MemorySize(MemorySize &&) noexcept = delete;
-  MemorySize &operator=(MemorySize const &) = delete;
-  MemorySize &operator=(MemorySize &&) noexcept = delete;
-  ~MemorySize() noexcept override;
-  Memory *getLinearMemory() const;
-  void setLinearMemory(Memory *LinearMemory_);
-  void detach_definition(Memory const *Memory_) noexcept override;
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-////////////////////////////// MemoryGrow //////////////////////////////////////
-class MemoryGrow : public Instruction {
-  Memory *LinearMemory;
-  Instruction *GrowSize;
-
-public:
-  MemoryGrow(
-      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *GrowSize_);
-  MemoryGrow(MemoryGrow const &) = delete;
-  MemoryGrow(MemoryGrow &&) noexcept = delete;
-  MemoryGrow &operator=(MemoryGrow const &) = delete;
-  MemoryGrow &operator=(MemoryGrow &&) noexcept = delete;
-  ~MemoryGrow() noexcept override;
-  Memory *getLinearMemory() const;
-  void setLinearMemory(Memory *LinearMemory_);
-  Instruction *getGrowSize() const;
-  void setGrowSize(Instruction *GrowSize_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
-  void detach_definition(Memory const *Memory_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -664,8 +603,7 @@ public:
   void setAddress(Instruction *Address_);
   std::uint32_t getGuardSize() const;
   void setGuardSize(std::uint32_t GuardSize_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
-  void detach_definition(Memory const *Memory_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -700,7 +638,7 @@ public:
   void setType(bytecode::ValueType const &Type_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -721,7 +659,7 @@ public:
   void setOperand(Instruction *Operand_);
   unsigned getFromWidth() const;
   void setFromWidth(unsigned FromWidth_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -731,15 +669,15 @@ class Pack : public Instruction {
   std::vector<Instruction *> Arguments;
 
 public:
-  Pack(BasicBlock *Parent_, llvm::ArrayRef<Instruction *> Arguments_);
+  Pack(BasicBlock *Parent_, std::span<Instruction *const> Arguments_);
   Pack(Pack const &) = delete;
   Pack(Pack &&) noexcept = delete;
   Pack &operator=(Pack const &) = delete;
   Pack &operator=(Pack &&) noexcept = delete;
   ~Pack() noexcept override;
-  llvm::ArrayRef<Instruction *> getArguments() const;
-  void setArguments(llvm::ArrayRef<Instruction *> Arguments_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  std::span<Instruction *const> getArguments() const;
+  void setArguments(std::span<Instruction *const> Arguments_);
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -760,7 +698,7 @@ public:
   void setIndex(unsigned Index_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -778,14 +716,39 @@ public:
   Phi &operator=(Phi &&) noexcept = delete;
   ~Phi() noexcept override;
 
-  llvm::ArrayRef<std::pair<Instruction *, BasicBlock *>> getCandidates() const;
+  std::span<std::pair<Instruction *, BasicBlock *> const> getCandidates() const;
   void setCandidates(
-      llvm::ArrayRef<std::pair<Instruction *, BasicBlock *>> Candidates_);
+      std::span<std::pair<Instruction *, BasicBlock *> const> Candidates_);
   void addCandidate(Instruction *Value_, BasicBlock *Path_);
   bytecode::ValueType getType() const;
   void setType(bytecode::ValueType Type_);
-  void detach_definition(Instruction const *Operand_) noexcept override;
-  void detach_definition(BasicBlock const *Operand_) noexcept override;
+  void detach(ASTNode const *) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
+};
+
+//////////////////////////////// Intrinsic /////////////////////////////////////
+enum class IntrinsicFunction { MemoryGrow, MemorySize };
+
+class Intrinsic : public Instruction {
+  std::vector<ASTNode *> Operands;
+  IntrinsicFunction Function;
+
+public:
+  Intrinsic(
+      BasicBlock *Parent_, IntrinsicFunction Function_,
+      std::span<ASTNode *const> Operands_);
+  Intrinsic(Intrinsic const &) = delete;
+  Intrinsic(Intrinsic &&) noexcept = delete;
+  Intrinsic &operator=(Intrinsic const &) = delete;
+  Intrinsic &operator=(Intrinsic &&) noexcept = delete;
+  ~Intrinsic() noexcept override;
+
+  std::span<ASTNode *const> getOperands() const;
+  void setOperands(std::span<ASTNode *const> Operands_);
+  IntrinsicFunction getFunction() const;
+  void setFunction(IntrinsicFunction Function_);
+  void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -826,14 +789,13 @@ public:
     case IKind::FPBinaryOp  : return castAndCall<FPBinaryOp>(Inst);
     case IKind::Load        : return castAndCall<Load>(Inst);
     case IKind::Store       : return castAndCall<Store>(Inst);
-    case IKind::MemorySize  : return castAndCall<MemorySize>(Inst);
-    case IKind::MemoryGrow  : return castAndCall<MemoryGrow>(Inst);
     case IKind::MemoryGuard : return castAndCall<MemoryGuard>(Inst);
     case IKind::Cast        : return castAndCall<Cast>(Inst);
     case IKind::Extend      : return castAndCall<Extend>(Inst);
     case IKind::Pack        : return castAndCall<Pack>(Inst);
     case IKind::Unpack      : return castAndCall<Unpack>(Inst);
     case IKind::Phi         : return castAndCall<Phi>(Inst);
+    case IKind::Intrinsic   : return castAndCall<Intrinsic>(Inst);
     default: SABLE_UNREACHABLE();
     }
     // clang-format on

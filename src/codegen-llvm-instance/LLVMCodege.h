@@ -6,10 +6,6 @@
 
 #include <llvm/IR/Module.h>
 
-namespace codegen::llvm_instance {
-
-void setupRuntimeSupport(bytecode::ModuleView const &, llvm::Module &);
-
-} // namespace codegen::llvm_instance
+namespace codegen::llvm_instance {} // namespace codegen::llvm_instance
 
 #endif

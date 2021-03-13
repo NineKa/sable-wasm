@@ -15,7 +15,9 @@ enum class ASTNodeKind : std::uint8_t {
   Memory,
   Table,
   Global,
-  Module
+  Module,
+  DataSegment,
+  ElementSegment
 };
 
 class ASTNode {

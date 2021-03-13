@@ -28,7 +28,7 @@ typedef void *__sable_memory_ptr;
 struct __sable_table;
 typedef struct __sable_table *__sable_table_ptr;
 
-typedef void (*__sable_instance_getter)(__sable_instance_ptr, char const *);
+typedef void *(*__sable_instance_getter)(__sable_instance_ptr, char const *);
 typedef void (*__sable_trap_handler)(uint32_t trap_code);
 struct __sable_instance {
   __sable_instance_getter global_getter;

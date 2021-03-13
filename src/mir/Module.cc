@@ -36,7 +36,54 @@ void ExportableEntity::setExport(std::string EntityName) {
 }
 
 } // namespace detail
+/////////////////////////////// DataSegment ////////////////////////////////////
+DataSegment::DataSegment(
+    Module *Parent_, std::variant<std::uint32_t, Global *> Offset_,
+    std::span<std::byte const> Content_)
+    : ASTNode(ASTNodeKind::DataSegment), Parent(Parent_),
+      Content(Content_.begin(), Content_.end()) {
+  setOffset(Offset_);
+}
 
+bool DataSegment::isOffsettedByConstant() const {
+  return std::holds_alternative<std::uint32_t>(Offset);
+}
+
+bool DataSegment::isOffsettedByGlobalValue() const {
+  return std::holds_alternative<Global *>(Offset);
+}
+
+std::int32_t DataSegment::getConstantOffset() const {
+  return std::get<std::uint32_t>(Offset);
+}
+
+Global *DataSegment::getGlobalValueOffset() const {
+  return std::get<Global *>(Offset);
+}
+
+void DataSegment::setOffset(std::variant<std::uint32_t, Global *> Offset_) {
+  if (isOffsettedByGlobalValue() && (getGlobalValueOffset() != nullptr))
+    getGlobalValueOffset()->remove_use(this);
+  Offset = Offset_;
+  if (isOffsettedByGlobalValue() && (getGlobalValueOffset() != nullptr))
+    getGlobalValueOffset()->add_use(this);
+}
+
+std::size_t DataSegment::getSize() const { return Content.size(); }
+std::span<const std::byte> DataSegment::getContent() const { return Content; }
+void DataSegment::setContent(std::span<const std::byte> Content_) {
+  Content = std::vector<std::byte>(Content_.begin(), Content_.end());
+}
+
+void DataSegment::detach(ASTNode const *Node) noexcept {
+  if (isOffsettedByGlobalValue() && (getGlobalValueOffset() == Node)) {
+    setOffset(static_cast<Global *>(nullptr));
+  }
+  SABLE_UNREACHABLE();
+}
+/////////////////////////// ElementSegment /////////////////////////////////////
+
+///////////////////////////////// Function /////////////////////////////////////
 Function::Function(Module *Parent_, bytecode::FunctionType Type_)
     : ASTNode(ASTNodeKind::Function), Parent(Parent_), Type(std::move(Type_)) {}
 
@@ -79,6 +126,7 @@ Local *Function::BuildLocal(bytecode::ValueType Type_, Local *Before) {
   return AllocatedLocal;
 }
 
+////////////////////////////////// Local ///////////////////////////////////////
 Local::Local(IsParameterTag, Function *Parent_, bytecode::ValueType Type_)
     : ASTNode(ASTNodeKind::Local), Parent(Parent_), Type(Type_),
       IsParameter(true) {}
@@ -87,15 +135,19 @@ Local::Local(Function *Parent_, bytecode::ValueType Type_)
     : ASTNode(ASTNodeKind::Local), Parent(Parent_), Type(Type_),
       IsParameter(false) {}
 
+////////////////////////////////// Global //////////////////////////////////////
 Global::Global(Module *Parent_, bytecode::GlobalType Type_)
     : ASTNode(ASTNodeKind::Global), Parent(Parent_), Type(Type_) {}
 
+/////////////////////////////////// Memory /////////////////////////////////////
 Memory::Memory(Module *Parent_, bytecode::MemoryType Type_)
     : ASTNode(ASTNodeKind::Memory), Parent(Parent_), Type(Type_) {}
 
+/////////////////////////////////// Table //////////////////////////////////////
 Table::Table(Module *Parent_, bytecode::TableType Type_)
     : ASTNode(ASTNodeKind::Table), Parent(Parent_), Type(Type_) {}
 
+/////////////////////////////////// Module /////////////////////////////////////
 Module::Module() : ASTNode(ASTNodeKind::Module) {}
 
 Function *Module::BuildFunction(bytecode::FunctionType Type_) {

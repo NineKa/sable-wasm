@@ -51,9 +51,14 @@ int main(int argc, char const *argv[]) {
   ModuleTranslationTask Task(Module, M, Name);
   Task.perform();
 
+  std::ostream_iterator<char> It(std::cout);
+  mir::dump(It, M);
+
+  /*
   using namespace codegen::llvm_instance;
   llvm::LLVMContext CTX;
   llvm::Module LM("module", CTX);
-  setupRuntimeSupport(ModuleView, LM);
+  setupRuntimeSupport(LM);
   LM.print(llvm::outs(), nullptr);
+   */
 }

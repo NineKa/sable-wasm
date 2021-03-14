@@ -97,6 +97,8 @@ public:
   std::string_view getImportEntityName() const { return Import->EntityName; }
   bool isExported() const { return Export != nullptr; }
   std::string_view getExportName() const { return Export->Name; }
+  bool isDeclaration() const { return this->isImported(); }
+  bool isDefinition() const { return !this->isImported(); }
 };
 
 class Table : public Entity<TableType> {
@@ -187,6 +189,7 @@ class ModuleView {
 
 public:
   explicit ModuleView(Module const &M_);
+  Module const &module() const { return *(Storage->M); }
 
   auto types() const {
     auto TransformFn = [](FunctionType const &Type) {

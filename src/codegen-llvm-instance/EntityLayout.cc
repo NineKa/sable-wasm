@@ -15,6 +15,8 @@ llvm::Type *getVoidPtrTy(llvm::LLVMContext &Context) {
 llvm::Type *getFuncPtrTy(llvm::LLVMContext &Context) {
   return llvm::Type::getInt8PtrTy(Context); // void (*)()
 }
+} // namespace detail
+} // namespace
 
 void setupRuntimeSupport(llvm::Module &Module) {
   llvm::LLVMContext &Context = Module.getContext();
@@ -159,7 +161,4 @@ void setupRuntimeSupport(llvm::Module &Module) {
       /* Arg RHS            */ llvm::Type::getInt8PtrTy(Context));
 #undef DEFINE_BUILTIN_FUNC
 }
-} // namespace detail
-} // namespace
-
 } // namespace codegen::llvm_instance

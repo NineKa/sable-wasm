@@ -541,14 +541,14 @@ Constant::Constant(BasicBlock *Parent_, float Value_)
 Constant::Constant(BasicBlock *Parent_, double Value_)
     : Instruction(IKind::Constant, Parent_), Value(Value_) {}
 
-std::int32_t Constant::getI32() const { return std::get<std::int32_t>(Value); }
-void Constant::setI32(std::int32_t Value_) { Value = Value_; }
-std::int64_t Constant::getI64() const { return std::get<std::int64_t>(Value); }
-void Constant::setI64(std::int64_t Value_) { Value = Value_; }
-float Constant::getF32() const { return std::get<float>(Value); }
-void Constant::setF32(float Value_) { Value = Value_; }
-double Constant::getF64() const { return std::get<double>(Value); }
-void Constant::setF64(double Value_) { Value = Value_; }
+std::int32_t &Constant::asI32() { return std::get<std::int32_t>(Value); }
+std::int64_t &Constant::asI64() { return std::get<std::int64_t>(Value); }
+float &Constant::asF32() { return std::get<float>(Value); }
+double &Constant::asF64() { return std::get<double>(Value); }
+std::int32_t Constant::asI32() const { return std::get<std::int32_t>(Value); }
+std::int64_t Constant::asI64() const { return std::get<std::int64_t>(Value); }
+float Constant::asF32() const { return std::get<float>(Value); }
+double Constant::asF64() const { return std::get<double>(Value); }
 
 bytecode::ValueType Constant::getValueType() const {
   auto const Visitor = utility::Overload{
@@ -1119,6 +1119,7 @@ Intrinsic::Intrinsic(
     : Instruction(IKind::Intrinsic, Parent_), Function(Function_) {
   setOperands(Operands_);
 }
+
 Intrinsic::~Intrinsic() noexcept {
   for (auto *Operand : Operands)
     if (Operand != nullptr) Operand->remove_use(this);

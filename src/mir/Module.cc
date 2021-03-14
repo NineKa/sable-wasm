@@ -1,5 +1,8 @@
 #include "Module.h"
 
+#include <range/v3/algorithm/contains.hpp>
+#include <range/v3/algorithm/replace.hpp>
+
 namespace mir {
 namespace detail {
 bool ImportableEntity::isImported() const { return Import != nullptr; }
@@ -38,35 +41,14 @@ void ExportableEntity::setExport(std::string EntityName) {
 } // namespace detail
 /////////////////////////////// DataSegment ////////////////////////////////////
 DataSegment::DataSegment(
-    Module *Parent_, std::variant<std::uint32_t, Global *> Offset_,
+    Module *Parent_, std::unique_ptr<ConstantExpr> Offset_,
     std::span<std::byte const> Content_)
     : ASTNode(ASTNodeKind::DataSegment), Parent(Parent_),
-      Content(Content_.begin(), Content_.end()) {
-  setOffset(Offset_);
-}
+      Content(Content_.begin(), Content_.end()), Offset(std::move(Offset_)) {}
 
-bool DataSegment::isOffsettedByConstant() const {
-  return std::holds_alternative<std::uint32_t>(Offset);
-}
-
-bool DataSegment::isOffsettedByGlobalValue() const {
-  return std::holds_alternative<Global *>(Offset);
-}
-
-std::int32_t DataSegment::getConstantOffset() const {
-  return std::get<std::uint32_t>(Offset);
-}
-
-Global *DataSegment::getGlobalValueOffset() const {
-  return std::get<Global *>(Offset);
-}
-
-void DataSegment::setOffset(std::variant<std::uint32_t, Global *> Offset_) {
-  if (isOffsettedByGlobalValue() && (getGlobalValueOffset() != nullptr))
-    getGlobalValueOffset()->remove_use(this);
-  Offset = Offset_;
-  if (isOffsettedByGlobalValue() && (getGlobalValueOffset() != nullptr))
-    getGlobalValueOffset()->add_use(this);
+ConstantExpr *DataSegment::getOffset() const { return Offset.get(); }
+void DataSegment::setOffset(std::unique_ptr<ConstantExpr> Offset_) {
+  Offset = std::move(Offset_);
 }
 
 std::size_t DataSegment::getSize() const { return Content.size(); }
@@ -75,13 +57,47 @@ void DataSegment::setContent(std::span<const std::byte> Content_) {
   Content = std::vector<std::byte>(Content_.begin(), Content_.end());
 }
 
-void DataSegment::detach(ASTNode const *Node) noexcept {
-  if (isOffsettedByGlobalValue() && (getGlobalValueOffset() == Node)) {
-    setOffset(static_cast<Global *>(nullptr));
+void DataSegment::detach(ASTNode const *) noexcept { SABLE_UNREACHABLE(); }
+/////////////////////////// ElementSegment /////////////////////////////////////
+ElementSegment::ElementSegment(
+    Module *Parent_, std::unique_ptr<ConstantExpr> Offset_,
+    std::span<Function *const> Content_)
+    : ASTNode(ASTNodeKind::ElementSegment), Parent(Parent_),
+      Offset(std::move(Offset_)) {
+  setContent(Content_);
+}
+
+ElementSegment::~ElementSegment() noexcept {
+  for (auto *Function : Content)
+    if (Function != nullptr) Function->remove_use(this);
+}
+
+ConstantExpr *ElementSegment::getOffset() const { return Offset.get(); }
+void ElementSegment::setOffset(std::unique_ptr<ConstantExpr> Offset_) {
+  Offset = std::move(Offset_);
+}
+
+std::span<Function *const> ElementSegment::getContent() const {
+  return Content;
+}
+
+void ElementSegment::setContent(std::span<Function *const> Content_) {
+  for (auto *Function : Content)
+    if (Function != nullptr) Function->remove_use(this);
+  for (auto *Function : Content_)
+    if (Function != nullptr) Function->add_use(this);
+  Content = ranges::to<decltype(Content)>(Content_);
+}
+
+std::size_t ElementSegment::getSize() const { return Content.size(); }
+
+void ElementSegment::detach(ASTNode const *Node) noexcept {
+  if (ranges::contains(Content, Node)) {
+    ranges::replace(Content, Node, nullptr);
+    return;
   }
   SABLE_UNREACHABLE();
 }
-/////////////////////////// ElementSegment /////////////////////////////////////
 
 ///////////////////////////////// Function /////////////////////////////////////
 Function::Function(Module *Parent_, bytecode::FunctionType Type_)
@@ -143,9 +159,61 @@ Global::Global(Module *Parent_, bytecode::GlobalType Type_)
 Memory::Memory(Module *Parent_, bytecode::MemoryType Type_)
     : ASTNode(ASTNodeKind::Memory), Parent(Parent_), Type(Type_) {}
 
+Memory::~Memory() noexcept {
+  for (auto *Initializer : Initializers)
+    if (Initializer != nullptr) Initializer->remove_use(this);
+}
+
+void Memory::addInitializer(DataSegment *DataSegment_) {
+  if (DataSegment_ != nullptr) DataSegment_->add_use(this);
+  Initializers.push_back(DataSegment_);
+}
+
+void Memory::setInitializers(std::span<DataSegment *const> DataSegments_) {
+  for (auto *DataSegment : Initializers)
+    if (DataSegment != nullptr) DataSegment->remove_use(this);
+  for (auto *DataSegment : DataSegments_)
+    if (DataSegment != nullptr) DataSegment->add_use(this);
+  Initializers = ranges::to<decltype(Initializers)>(DataSegments_);
+}
+
+void Memory::detach(ASTNode const *Node) noexcept {
+  if (ranges::contains(Initializers, Node)) {
+    ranges::replace(Initializers, Node, nullptr);
+    return;
+  }
+  SABLE_UNREACHABLE();
+}
+
 /////////////////////////////////// Table //////////////////////////////////////
 Table::Table(Module *Parent_, bytecode::TableType Type_)
     : ASTNode(ASTNodeKind::Table), Parent(Parent_), Type(Type_) {}
+
+Table::~Table() noexcept {
+  for (auto *Initializer : Initializers)
+    if (Initializer != nullptr) Initializer->remove_use(this);
+}
+
+void Table::addInitializer(ElementSegment *ElementSegment_) {
+  if (ElementSegment_ != nullptr) ElementSegment_->add_use(this);
+  Initializers.push_back(ElementSegment_);
+}
+
+void Table::setInitializers(std::span<ElementSegment *const> ElementSegments_) {
+  for (auto *ElementSegment : Initializers)
+    if (ElementSegment != nullptr) ElementSegment->remove_use(this);
+  for (auto *ElementSegment : ElementSegments_)
+    if (ElementSegment != nullptr) ElementSegment->add_use(this);
+  Initializers = ranges::to<decltype(Initializers)>(ElementSegments_);
+}
+
+void Table::detach(ASTNode const *Node) noexcept {
+  if (ranges::contains(Initializers, Node)) {
+    ranges::replace(Initializers, Node, nullptr);
+    return;
+  }
+  SABLE_UNREACHABLE();
+}
 
 /////////////////////////////////// Module /////////////////////////////////////
 Module::Module() : ASTNode(ASTNodeKind::Module) {}
@@ -172,6 +240,24 @@ Table *Module::BuildTable(bytecode::TableType Type_) {
   auto *AllocatedTable = new Table(this, Type_);
   Tables.push_back(AllocatedTable);
   return AllocatedTable;
+}
+
+DataSegment *Module::BuildDataSegment(
+    std::unique_ptr<ConstantExpr> Offset_,
+    std::span<std::byte const> Content_) {
+  auto *AllocatedDataSegment =
+      new DataSegment(this, std::move(Offset_), Content_);
+  DataSegments.push_back(AllocatedDataSegment);
+  return AllocatedDataSegment;
+}
+
+ElementSegment *Module::BuildElementSegment(
+    std::unique_ptr<ConstantExpr> Offset_,
+    std::span<Function *const> Content_) {
+  auto *AllocatedElementSegment =
+      new ElementSegment(this, std::move(Offset_), Content_);
+  ElementSegments.push_back(AllocatedElementSegment);
+  return AllocatedElementSegment;
 }
 
 } // namespace mir

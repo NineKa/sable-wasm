@@ -25,11 +25,42 @@ void setImportExportInfo(MEntityType &MEntity, BEntityType const &BEntity) {
 template <ranges::random_access_range T, typename IndexType>
 typename T::value_type getFromContainer(T const &Container, IndexType Index) {
   auto CastedIndex = static_cast<std::size_t>(Index);
-  if (!(CastedIndex < Container.size())) return nullptr;
+  assert(CastedIndex < Container.size());
   return Container[CastedIndex];
 }
 } // namespace detail
 } // namespace
+
+// TODO: in the future, we need a better strategy handling constant offset
+//       initializer expression. Currently, due to WebAssembly validation,
+//       Constant expression, must be a constant or a GlobalGet instruction.
+std::unique_ptr<ConstantExpr>
+EntityLayout::solveInitializerExpr(bytecode::Expression const &Expr) {
+  assert(Expr.size() == 1);
+  auto const &Inst = Expr.front();
+  if (is_a<binsts::I32Const>(Inst)) {
+    auto const *CastedPtr = dyn_cast<binsts::I32Const>(Inst);
+    return std::make_unique<constant_expr::Constant>(CastedPtr->Value);
+  }
+  if (is_a<binsts::I64Const>(Inst)) {
+    auto const *CastedPtr = dyn_cast<binsts::I64Const>(Inst);
+    return std::make_unique<constant_expr::Constant>(CastedPtr->Value);
+  }
+  if (is_a<binsts::F32Const>(Inst)) {
+    auto const *CastedPtr = dyn_cast<binsts::F32Const>(Inst);
+    return std::make_unique<constant_expr::Constant>(CastedPtr->Value);
+  }
+  if (is_a<binsts::F64Const>(Inst)) {
+    auto const *CastedPtr = dyn_cast<binsts::F64Const>(Inst);
+    return std::make_unique<constant_expr::Constant>(CastedPtr->Value);
+  }
+  if (is_a<binsts::GlobalGet>(Inst)) {
+    auto const *CastedPtr = dyn_cast<binsts::GlobalGet>(Inst);
+    auto *Target = this->operator[](CastedPtr->Target);
+    return std::make_unique<constant_expr::GlobalGet>(Target);
+  }
+  SABLE_UNREACHABLE();
+}
 
 EntityLayout::EntityLayout(bytecode::Module const &BModule, Module &MModule)
     : BModuleView(BModule) {
@@ -46,12 +77,36 @@ EntityLayout::EntityLayout(bytecode::Module const &BModule, Module &MModule)
   for (auto const &BGlobal : BModuleView.globals()) {
     auto *MGlobal = MModule.BuildGlobal(*BGlobal.getType());
     detail::setImportExportInfo(MGlobal, BGlobal);
+    if (BGlobal.isDefinition())
+      MGlobal->setInitializer(solveInitializerExpr(*BGlobal.getInitializer()));
     Globals.push_back(MGlobal);
   }
   for (auto const &BFunction : BModuleView.functions()) {
     auto *MFunction = MModule.BuildFunction(*BFunction.getType());
     detail::setImportExportInfo(MFunction, BFunction);
     Functions.push_back(MFunction);
+  }
+  for (auto const &BDataSegment : BModuleView.module().Data) {
+    auto Offset = solveInitializerExpr(BDataSegment.Offset);
+    auto *Target = this->operator[](BDataSegment.Memory);
+    auto *MDataSegment =
+        MModule.BuildDataSegment(std::move(Offset), BDataSegment.Initializer);
+    Target->addInitializer(MDataSegment);
+  }
+  for (auto const &BElementSegment : BModuleView.module().Elements) {
+    auto Offset = solveInitializerExpr(BElementSegment.Offset);
+    auto *Target = this->operator[](BElementSegment.Table);
+    // clang-format off
+    auto Content =
+        BElementSegment.Initializer
+        | ranges::views::transform([this](bytecode::FuncIDX const &Index) {
+            return this->operator[](Index);
+          })
+        | ranges::to<std::vector<Function *>>();
+    // clang-format on
+    auto *MElementSegment =
+        MModule.BuildElementSegment(std::move(Offset), Content);
+    Target->addInitializer(MElementSegment);
   }
 }
 
@@ -889,7 +944,7 @@ ModuleTranslationTask::ModuleTranslationTask(
 void ModuleTranslationTask::perform() {
   LayOut = std::make_unique<EntityLayout>(*Source, *Target);
   for (auto const &[SourceFunc, TargetFunc] : LayOut->functions()) {
-    if (SourceFunc.isImported()) continue;
+    if (SourceFunc.isDeclaration()) continue;
     FunctionTranslationTask FTask(*LayOut, SourceFunc, *TargetFunc);
     FTask.perform();
   }

@@ -17,6 +17,11 @@ class EntityLayout {
   std::vector<Memory *> Memories;
   std::vector<Global *> Globals;
   std::vector<Table *> Tables;
+  std::vector<DataSegment *> DataSegments;
+  std::vector<ElementSegment *> ElementSegments;
+
+  std::unique_ptr<ConstantExpr>
+  solveInitializerExpr(bytecode::Expression const &Expr);
 
 public:
   EntityLayout(bytecode::Module const &BModule, Module &MModule);

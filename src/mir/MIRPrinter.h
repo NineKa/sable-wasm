@@ -156,12 +156,13 @@ public:
   { Out = fmt::format_to(Out, "{}", Value); return *this; }
   template <std::floating_point T> MIRIteratorWriter &operator<<(T Value)
   { Out = fmt::format_to(Out, "{}", Value); return *this; }
-
-  MIRIteratorWriter &attach(Iterator Out_)
-  { Out = Out_; return *this; }
   // clang-format on
 
   Iterator iterator() const { return Out; }
+  MIRIteratorWriter &attach(Iterator Out_) {
+    Out = Out_;
+    return *this;
+  }
 };
 
 template <std::output_iterator<char> Iterator>
@@ -174,6 +175,11 @@ Iterator dump(
     Iterator Out, Instruction const &Instruction_,
     EntityNameWriter const &ENameWriter = EntityNameWriter(),
     LocalNameWriter const &LNameWriter = LocalNameWriter());
+
+template <std::output_iterator<char> Iterator>
+Iterator dump(
+    Iterator Out, ConstantExpr const &ConstantExpr_,
+    EntityNameWriter const &ENameWriter = EntityNameWriter());
 
 template <std::output_iterator<char> Iterator>
 Iterator dump(

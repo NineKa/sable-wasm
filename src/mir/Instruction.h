@@ -60,17 +60,8 @@ protected:
       : ASTNode(ASTNodeKind::Instruction), Kind(Kind_), Parent(Parent_) {}
 
 public:
-  Instruction(Instruction const &) = delete;
-  Instruction(Instruction &&) noexcept = delete;
-  Instruction &operator=(Instruction const &) = delete;
-  Instruction &operator=(Instruction &&) noexcept = delete;
-  ~Instruction() noexcept override = default;
   BasicBlock *getParent() const { return Parent; }
   InstructionKind getInstructionKind() const { return Kind; }
-
-  auto getUsedSites() {
-    return ranges::subrange(use_site_begin(), use_site_end());
-  }
 
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::Instruction;
@@ -397,14 +388,14 @@ public:
   Constant(BasicBlock *Parent_, std::int64_t Value_);
   Constant(BasicBlock *Parent_, float Value_);
   Constant(BasicBlock *Parent_, double Value_);
-  std::int32_t getI32() const;
-  void setI32(std::int32_t Value_);
-  std::int64_t getI64() const;
-  void setI64(std::int64_t Value_);
-  float getF32() const;
-  void setF32(float Value_);
-  double getF64() const;
-  void setF64(double Value_);
+  std::int32_t &asI32();
+  std::int64_t &asI64();
+  float &asF32();
+  double &asF64();
+  std::int32_t asI32() const;
+  std::int64_t asI64() const;
+  float asF32() const;
+  double asF64() const;
   bytecode::ValueType getValueType() const;
   void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);

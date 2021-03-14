@@ -6,6 +6,8 @@
 
 #include <llvm/IR/Module.h>
 
-namespace codegen::llvm_instance {} // namespace codegen::llvm_instance
+namespace codegen::llvm_instance {
+void setupRuntimeSupport(llvm::Module &Module);
+} // namespace codegen::llvm_instance
 
 #endif

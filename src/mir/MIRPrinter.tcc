@@ -513,10 +513,10 @@ public:
     Writer << Inst << " = const " << ConstValueType << " ";
     using VKind = bytecode::ValueTypeKind;
     switch (ConstValueType.getKind()) {
-    case VKind::I32: Writer << Inst->getI32(); break;
-    case VKind::I64: Writer << Inst->getI64(); break;
-    case VKind::F32: Writer << Inst->getF32(); break;
-    case VKind::F64: Writer << Inst->getF64(); break;
+    case VKind::I32: Writer << Inst->asI32(); break;
+    case VKind::I64: Writer << Inst->asI64(); break;
+    case VKind::F32: Writer << Inst->asF32(); break;
+    case VKind::F64: Writer << Inst->asF64(); break;
     default: SABLE_UNREACHABLE();
     }
     return Writer.iterator();
@@ -645,14 +645,53 @@ Iterator dump(
 }
 
 template <std::output_iterator<char> Iterator>
+Iterator dump(
+    Iterator Out, ConstantExpr const &ConstantExpr_,
+    EntityNameWriter const &ENameWriter) {
+  MIRIteratorWriter Writer(Out, ENameWriter);
+  switch (ConstantExpr_.getConstantExprKind()) {
+  case ConstantExprKind::Constant: {
+    auto *CastedPtr =
+        dyn_cast<constant_expr::Constant>(std::addressof(ConstantExpr_));
+    using VKind = bytecode::ValueTypeKind;
+    switch (CastedPtr->getValueType().getKind()) {
+    case VKind::I32: return (Writer << "i32 " << CastedPtr->asI32()).iterator();
+    case VKind::I64: return (Writer << "i64 " << CastedPtr->asI64()).iterator();
+    case VKind::F32: return (Writer << "f32 " << CastedPtr->asF32()).iterator();
+    case VKind::F64: return (Writer << "f64 " << CastedPtr->asF64()).iterator();
+    default: SABLE_UNREACHABLE();
+    }
+  }
+  case ConstantExprKind::GlobalGet: {
+    auto *CastedPtr =
+        dyn_cast<constant_expr::GlobalGet>(std::addressof(ConstantExpr_));
+    Writer << CastedPtr->getGlobalValue();
+    return Writer.iterator();
+  }
+  default: SABLE_UNREACHABLE();
+  }
+}
+
+template <std::output_iterator<char> Iterator>
 Iterator
 dump(Iterator Out, Memory const &Memory_, EntityNameWriter const &ENameWriter) {
   if (Memory_.isImported()) Out = dumpImportInfo(Out, Memory_);
   if (Memory_.isExported()) Out = dumpExportInfo(Out, Memory_);
   MIRIteratorWriter Writer(Out, ENameWriter);
-  Writer << "memory " << Memory_ << " : " << Memory_.getType()
-         << Writer.linebreak();
-  return Writer.iterator();
+  Writer << "memory " << Memory_ << " : " << Memory_.getType();
+  if (!Memory_.getInitializers().empty()) {
+    Writer << " {" << Writer.linebreak();
+    for (auto const *Initializer : Memory_.getInitializers()) {
+      Writer << Writer.indent();
+      Writer << "<" << Initializer->getSize() << " byte(s)...> at ";
+      Writer.attach(
+          dump(Writer.iterator(), *Initializer->getOffset(), ENameWriter));
+      Writer << Writer.linebreak();
+    }
+    Writer << '}';
+  }
+
+  return (Writer << Writer.linebreak()).iterator();
 }
 
 template <std::output_iterator<char> Iterator>
@@ -661,9 +700,20 @@ dump(Iterator Out, Table const &Table_, EntityNameWriter const &ENameWriter) {
   if (Table_.isImported()) Out = dumpImportInfo(Out, Table_);
   if (Table_.isExported()) Out = dumpExportInfo(Out, Table_);
   MIRIteratorWriter Writer(Out, ENameWriter);
-  Writer << "table " << Table_ << " : " << Table_.getType()
-         << Writer.linebreak();
-  return Writer.iterator();
+  Writer << "table " << Table_ << " : " << Table_.getType();
+  if (!Table_.getInitializers().empty()) {
+    Writer << " {" << Writer.linebreak();
+    for (auto const *Initializer : Table_.getInitializers()) {
+      Writer << Writer.indent();
+      Writer << "<" << Initializer->getSize() << " function(s)...> at ";
+      Writer.attach(
+          dump(Writer.iterator(), *Initializer->getOffset(), ENameWriter));
+      Writer << Writer.linebreak();
+    }
+    Writer << '}';
+  }
+
+  return (Writer << Writer.linebreak()).iterator();
 }
 
 template <std::output_iterator<char> Iterator>
@@ -672,9 +722,13 @@ dump(Iterator Out, Global const &Global_, EntityNameWriter const &ENameWriter) {
   if (Global_.isImported()) Out = dumpImportInfo(Out, Global_);
   if (Global_.isExported()) Out = dumpExportInfo(Out, Global_);
   MIRIteratorWriter Writer(Out, ENameWriter);
-  Writer << "global " << Global_ << " : " << Global_.getType()
-         << Writer.linebreak();
-  return Writer.iterator();
+  Writer << "global " << Global_ << " : " << Global_.getType();
+  if (Global_.isDefinition()) {
+    Writer << " = ";
+    Out = dump(Writer.iterator(), *Global_.getInitializer(), ENameWriter);
+    Writer.attach(Out);
+  }
+  return (Writer << Writer.linebreak()).iterator();
 }
 
 template <std::output_iterator<char> Iterator>

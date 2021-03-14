@@ -19,6 +19,8 @@ class ImportableEntity {
 
 public:
   bool isImported() const;
+  bool isDeclaration() const { return this->isImported(); }
+  bool isDefinition() const { return !this->isImported(); }
   std::string_view getImportModuleName() const;
   std::string_view getImportEntityName() const;
   void setImport(std::string ModuleName, std::string EntityName);
@@ -39,19 +41,17 @@ class DataSegment :
     public llvm::ilist_node_with_parent<DataSegment, Module> {
   Module *Parent;
   std::vector<std::byte> Content;
-  std::variant<std::uint32_t, Global *> Offset;
+  std::unique_ptr<ConstantExpr> Offset;
 
 public:
   DataSegment(
-      Module *Parent_, std::variant<std::uint32_t, Global *> Offset_,
+      Module *Parent_, std::unique_ptr<ConstantExpr> Offset_,
       std::span<std::byte const> Content_);
 
   Module *getParent() const { return Parent; }
-  bool isOffsettedByConstant() const;
-  bool isOffsettedByGlobalValue() const;
-  std::int32_t getConstantOffset() const;
-  Global *getGlobalValueOffset() const;
-  void setOffset(std::variant<std::uint32_t, Global *> Offset_);
+
+  ConstantExpr *getOffset() const;
+  void setOffset(std::unique_ptr<ConstantExpr> Offset_);
 
   std::span<std::byte const> getContent() const;
   void setContent(std::span<std::byte const> Content_);
@@ -68,18 +68,22 @@ class ElementSegment :
     public llvm::ilist_node_with_parent<ElementSegment, Module> {
   Module *Parent;
   std::vector<Function *> Content;
-  std::variant<Global *, std::uint32_t> Offset;
+  std::unique_ptr<ConstantExpr> Offset;
 
 public:
   ElementSegment(
-      Module *Parent_, std::variant<std::uint32_t, Global *> Offset_,
+      Module *Parent_, std::unique_ptr<ConstantExpr> Offset_,
       std::span<Function *const> Content_);
+  ElementSegment(ElementSegment const &) = delete;
+  ElementSegment(ElementSegment &&) noexcept = delete;
+  ElementSegment &operator=(ElementSegment const &) = delete;
+  ElementSegment &operator=(ElementSegment &&) noexcept = delete;
+  ~ElementSegment() noexcept;
 
   Module *getParent() const { return Parent; }
-  bool isOffsetedByConstant() const;
-  bool isOffsetedByGlobalValue() const;
-  std::int32_t getConstantOffset() const;
-  Global *getGlobalValueOffset() const;
+
+  ConstantExpr *getOffset() const;
+  void setOffset(std::unique_ptr<ConstantExpr> Offset_);
 
   std::span<Function *const> getContent() const;
   void setContent(std::span<Function *const> Content_);
@@ -184,11 +188,16 @@ class Global :
     public llvm::ilist_node_with_parent<Global, Module> {
   Module *Parent;
   bytecode::GlobalType Type;
+  std::unique_ptr<ConstantExpr> Initializer;
 
 public:
   Global(Module *Parent_, bytecode::GlobalType Type_);
   Module *getParent() const { return Parent; }
   bytecode::GlobalType const &getType() const { return Type; }
+  ConstantExpr *getInitializer() const { return Initializer.get(); }
+  void setInitializer(std::unique_ptr<ConstantExpr> Initializer_) {
+    Initializer = std::move(Initializer_);
+  }
   void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::Global;
@@ -206,6 +215,12 @@ class Memory :
 
 public:
   Memory(Module *Parent_, bytecode::MemoryType Type_);
+  Memory(Memory const &) = delete;
+  Memory(Memory &&) noexcept = delete;
+  Memory &operator=(Memory const &) = delete;
+  Memory &operator=(Memory &&) noexcept = delete;
+  ~Memory() noexcept;
+
   Module *getParent() const { return Parent; }
   bytecode::MemoryType const &getType() const { return Type; }
 
@@ -239,6 +254,12 @@ class Table :
 
 public:
   Table(Module *Parent_, bytecode::TableType Type_);
+  Table(Table const &) = delete;
+  Table(Table &&) = delete;
+  Table &operator=(Table const &) = delete;
+  Table &operator=(Table &&) noexcept = delete;
+  ~Table() noexcept;
+
   Module *getParent() const { return Parent; }
   bytecode::TableType const &getType() const { return Type; }
 
@@ -253,7 +274,7 @@ public:
   }
 
   void addInitializer(ElementSegment *ElementSegment_);
-  void setinitializers(std::span<ElementSegment *const> ElementSegments_);
+  void setInitializers(std::span<ElementSegment *const> ElementSegments_);
 
   void detach(ASTNode const *) noexcept override;
   static bool classof(ASTNode const *Node) {
@@ -357,11 +378,11 @@ public:
   Memory *BuildMemory(bytecode::MemoryType Type_);
   Table *BuildTable(bytecode::TableType Type_);
   DataSegment *BuildDataSegment(
-      std::variant<std::uint32_t, Global *> Offset_,
+      std::unique_ptr<ConstantExpr> Offset_,
       std::span<std::byte const> Content_);
   ElementSegment *BuildElementSegment(
-      std::variant<std::uint32_t, Global *> Offset_,
-      std::span<Function *> Content_);
+      std::unique_ptr<ConstantExpr> Offset_,
+      std::span<Function *const> Content_);
 
   static llvm::ilist<Function> Module::*getSublistAccess(Function *) {
     return &Module::Functions;

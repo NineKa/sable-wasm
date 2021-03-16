@@ -1,164 +1,265 @@
 #include "LLVMCodege.h"
 
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalValue.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Type.h>
+
+#include <range/v3/range/conversion.hpp>
+#include <range/v3/view/enumerate.hpp>
+#include <range/v3/view/transform.hpp>
 
 namespace codegen::llvm_instance {
-namespace {
-namespace detail {
-llvm::Type *getVoidPtrTy(llvm::LLVMContext &Context) {
-  return llvm::Type::getInt8PtrTy(Context); // void *
+void EntityLayout::setupOffsetMap() {
+  for (auto const &Memory : Source.getMemories())
+    OffsetMap.insert(std::make_pair(std::addressof(Memory), OffsetMap.size()));
+  for (auto const &Table : Source.getTables())
+    OffsetMap.insert(std::make_pair(std::addressof(Table), OffsetMap.size()));
+  for (auto const &Global : Source.getGlobals())
+    OffsetMap.insert(std::make_pair(std::addressof(Global), OffsetMap.size()));
+  for (auto const &Function : Source.getFunctions())
+    OffsetMap.insert(
+        std::make_pair(std::addressof(Function), OffsetMap.size()));
 }
 
-llvm::Type *getFuncPtrTy(llvm::LLVMContext &Context) {
-  return llvm::Type::getInt8PtrTy(Context); // void (*)()
+std::size_t EntityLayout::getOffset(mir::ASTNode const &Node) const {
+  auto SearchIter = OffsetMap.find(std::addressof(Node));
+  assert(SearchIter != OffsetMap.end());
+  return std::get<1>(*SearchIter) + 4;
 }
-} // namespace detail
-} // namespace
 
-void setupRuntimeSupport(llvm::Module &Module) {
-  llvm::LLVMContext &Context = Module.getContext();
+llvm::Type *EntityLayout::convertType(bytecode::ValueType const &Type) {
+  auto &Context = Target.getContext();
+  using VKind = bytecode::ValueTypeKind;
+  switch (Type.getKind()) {
+  case VKind::I32: return llvm::Type::getInt32Ty(Context);
+  case VKind::I64: return llvm::Type::getInt64Ty(Context);
+  case VKind::F32: return llvm::Type::getFloatTy(Context);
+  case VKind::F64: return llvm::Type::getDoubleTy(Context);
+  default: SABLE_UNREACHABLE();
+  }
+}
 
-  auto *InstanceTy = llvm::StructType::create(Context, "__sable_instance_t");
-  auto *InstancePtrTy = llvm::PointerType::getUnqual(InstanceTy);
-  auto *GlobalTy = llvm::StructType::create(Context, "__sable_global_t");
-  auto *GlobalPtrTy = llvm::PointerType::getUnqual(GlobalTy);
-  auto *MemoryPtrTy = detail::getVoidPtrTy(Context);
-  auto *TableTy = llvm::StructType::create(Context, "__sable_table_t");
-  auto *TablePtrTy = llvm::PointerType::getUnqual(TableTy);
+llvm::FunctionType *
+EntityLayout::convertType(bytecode::FunctionType const &Type) {
+  auto &Context = Target.getContext();
+  std::vector<llvm::Type *> ParamTypes;
+  ParamTypes.reserve(Type.getNumParameter() + 1);
+  ParamTypes.push_back(SableInstancePtrTy);
+  for (auto const &ValueType : Type.getParamTypes())
+    ParamTypes.push_back(convertType(ValueType));
+  if (Type.isVoidResult()) {
+    auto *ResultType = llvm::Type::getVoidTy(Context);
+    return llvm::FunctionType::get(ResultType, ParamTypes, false);
+  }
+  if (Type.isSingleValueResult()) {
+    auto *ResultType = convertType(Type.getResultTypes()[0]);
+    return llvm::FunctionType::get(ResultType, ParamTypes, false);
+  }
+  if (Type.isMultiValueResult()) {
+    // clang-format off
+    auto ResultTypes = Type.getResultTypes() 
+        | ranges::views::transform([&](bytecode::ValueType const &ValueType) {
+            return convertType(ValueType);
+          }) 
+        | ranges::to<std::vector<llvm::Type *>>();
+    // clang-format on
+    auto *ResultType = llvm::StructType::get(Context, ResultTypes);
+    return llvm::FunctionType::get(ResultType, ParamTypes, false);
+  }
+  SABLE_UNREACHABLE();
+}
 
-#define DEFINE_BUILTIN_FUNC(Name, RetType, ...)                                \
-  llvm::Function::Create(                                                      \
-      llvm::FunctionType::get(RetType, {__VA_ARGS__}, false),                  \
-      llvm::GlobalValue::LinkageTypes::ExternalLinkage, #Name, Module)
+llvm::Type *EntityLayout::getCStringPtrTy() {
+  return llvm::Type::getInt8PtrTy(Target.getContext());
+}
 
-  auto *InstanceGetterTy = llvm::PointerType::getUnqual(llvm::FunctionType::get(
-      detail::getVoidPtrTy(Context),
-      {InstancePtrTy, llvm::Type::getInt8PtrTy(Context)}, false));
-  auto *TrapHandlerTy = llvm::PointerType::getUnqual(llvm::FunctionType::get(
-      llvm::Type::getVoidTy(Context), {llvm::Type::getInt32Ty(Context)},
-      false));
-  DEFINE_BUILTIN_FUNC(
-      __sable_instance_allocate,
-      /* Ret */ InstancePtrTy,
-      /* Arg GlobalGetter   */ InstanceGetterTy,
-      /* Arg MemoryGetter   */ InstanceGetterTy,
-      /* Arg TableGetter    */ InstanceGetterTy,
-      /* Arg FunctionGetter */ InstanceGetterTy,
-      /* Arg TrapHandler    */ TrapHandlerTy);
+llvm::Constant *EntityLayout::getI32Constant(std::int32_t Value) {
+  auto &Context = Target.getContext();
+  auto *ContentConstant =
+      llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), Value);
+  return ContentConstant;
+}
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_intance_free,
-      /* Ret                */ llvm::Type::getVoidTy(Context),
-      /* Arg Instance       */ InstancePtrTy);
+llvm::Constant *
+EntityLayout::getCString(std::string_view Content, std::string_view Name) {
+  auto &Context = Target.getContext();
+  auto *ContentConstant = llvm::ConstantDataArray::getString(Context, Content);
+  auto *CString = new llvm::GlobalVariable(
+      /* Parent      */ Target,
+      /* Type        */ ContentConstant->getType(),
+      /* IsConstant  */ true,
+      /* Linkage     */ llvm::GlobalVariable::PrivateLinkage,
+      /* Initializer */ ContentConstant);
+  CString->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
+  CString->setAlignment(llvm::Align(1));
+  CString->setName(llvm::StringRef(Name));
+  return CString;
+}
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_global_allocate,
-      /* Ret                */ GlobalPtrTy,
-      /* Arg Type           */ llvm::Type::getInt8Ty(Context));
+llvm::Constant *
+EntityLayout::getCStringPtr(std::string_view Content, std::string_view Name) {
+  auto *CString = getCString(Content, Name);
+  auto *Zero = getI32Constant(0);
+  std::array<llvm::Constant *, 2> Indices{Zero, Zero};
+  return llvm::ConstantExpr::getInBoundsGetElementPtr(
+      llvm::dyn_cast<llvm::GlobalVariable>(CString)->getValueType(), CString,
+      Indices);
+}
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_global_free,
-      /* Ret                */ llvm::Type::getVoidTy(Context),
-      /* Arg Global         */ GlobalPtrTy);
+char EntityLayout::getTypeChar(bytecode::ValueType const &Type) {
+  switch (Type.getKind()) {
+  case bytecode::ValueTypeKind::I32: return 'I';
+  case bytecode::ValueTypeKind::I64: return 'J';
+  case bytecode::ValueTypeKind::F32: return 'F';
+  case bytecode::ValueTypeKind::F64: return 'D';
+  default: SABLE_UNREACHABLE();
+  }
+}
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_global_get,
-      /* Ret                */ detail::getVoidPtrTy(Context),
-      /* Arg Global         */ GlobalPtrTy);
+std::string EntityLayout::getTypeString(bytecode::FunctionType const &Type) {
+  std::string Result;
+  Result.reserve(Type.getNumParameter() + Type.getNumResult() + 1);
+  for (auto const &ValueType : Type.getParamTypes())
+    Result.push_back(getTypeChar(ValueType));
+  Result.push_back(':');
+  for (auto const &ValueType : Type.getResultTypes())
+    Result.push_back(getTypeChar(ValueType));
+  return Result;
+}
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_global_type,
-      /* Ret                */ llvm::Type::getInt8Ty(Context),
-      /* Arg Global         */ GlobalPtrTy);
+void EntityLayout::setupFunctionMetadata() {
+  auto &Context = Target.getContext();
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_memory_allocate,
-      /* Ret                */ MemoryPtrTy,
-      /* Arg NumPage        */ llvm::Type::getInt32Ty(Context));
+  auto *EntityTy = getCStringPtrTy();
+  auto *ImportTy = llvm::StructType::get(
+      Context,
+      {llvm::Type::getInt32Ty(Context), getCStringPtrTy(), getCStringPtrTy()});
+  auto *ExportTy = llvm::StructType::get(
+      Context, {llvm::Type::getInt32Ty(Context), getCStringPtrTy()});
+  std::vector<llvm::Constant *> Entities;
+  std::vector<llvm::Constant *> Imports;
+  std::vector<llvm::Constant *> Exports;
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_memory_allocate_with_bound,
-      /* Ret                */ MemoryPtrTy,
-      /* Arg NumPage        */ llvm::Type::getInt32Ty(Context),
-      /* Arg MaxNumPage     */ llvm::Type::getInt32Ty(Context));
+  for (auto const &Function : Source.getFunctions())
+    Entities.push_back(get(Function).TypeString);
+  for (auto const &[Index, Function] :
+       ranges::views::enumerate(Source.getFunctions())) {
+    if (!Function.isImported()) continue;
+    auto *ModuleName = getCStringPtr(Function.getImportModuleName());
+    auto *EntityName = getCStringPtr(Function.getImportEntityName());
+    auto *ImportConstant = llvm::ConstantStruct::get(
+        ImportTy, {getI32Constant(Index), ModuleName, EntityName});
+    Imports.push_back(ImportConstant);
+  }
+  for (auto const &[Index, Function] :
+       ranges::views::enumerate(Source.getFunctions())) {
+    if (!Function.isExported()) continue;
+    auto *EntityName = getCStringPtr(Function.getExportName());
+    auto *ExportConstant = llvm::ConstantStruct::get(
+        ExportTy, {getI32Constant(Index), EntityName});
+    Exports.push_back(ExportConstant);
+  }
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_memory_free,
-      /* Ret                */ llvm::Type::getVoidTy(Context),
-      /* Arg Memory         */ MemoryPtrTy);
+  auto *EntitiesConstant = llvm::ConstantArray::get(
+      llvm::ArrayType::get(EntityTy, Entities.size()), Entities);
+  auto *EntitiesGlobal = new llvm::GlobalVariable(
+      /* Parent      */ Target,
+      /* Type        */ EntitiesConstant->getType(),
+      /* IsConstant  */ true,
+      /* Linkage     */ llvm::GlobalVariable::PrivateLinkage,
+      /* Initializer */ EntitiesConstant,
+      /* Name        */ "__sable_function_metadata.entities");
+  auto *ImportsConstant = llvm::ConstantArray::get(
+      llvm::ArrayType::get(ImportTy, Imports.size()), Imports);
+  auto *ImportsGlobal = new llvm::GlobalVariable(
+      /* Parent      */ Target,
+      /* Type        */ ImportsConstant->getType(),
+      /* IsConstant  */ true,
+      /* Linkage     */ llvm::GlobalVariable::PrivateLinkage,
+      /* Initializer */ ImportsConstant,
+      /* Name        */ "__sable_function_metadata.imports");
+  auto *ExportsConstant = llvm::ConstantArray::get(
+      llvm::ArrayType::get(ExportTy, Exports.size()), Exports);
+  auto *ExportsGlobal = new llvm::GlobalVariable(
+      /* Parent      */ Target,
+      /* Type        */ ExportsConstant->getType(),
+      /* IsConstant  */ true,
+      /* Linkage     */ llvm::GlobalVariable::PrivateLinkage,
+      /* Initializer */ ExportsConstant,
+      /* Name        */ "__sable_function_metadata.exports");
+  auto *MetadataTy = llvm::StructType::get(
+      Context,
+      {llvm::Type::getInt32Ty(Context), llvm::Type::getInt32Ty(Context),
+       llvm::Type::getInt32Ty(Context), EntitiesGlobal->getType(),
+       ImportsGlobal->getType(), ExportsGlobal->getType()});
+  auto *MetadataConstant = llvm::ConstantStruct::get(
+      MetadataTy,
+      {getI32Constant(Entities.size()), getI32Constant(Imports.size()),
+       getI32Constant(Exports.size()), EntitiesGlobal, ImportsGlobal,
+       ExportsGlobal});
+  new llvm::GlobalVariable(
+      /* Parent      */ Target,
+      /* Type        */ MetadataTy,
+      /* IsConstant  */ true,
+      /* Linkage     */ llvm::GlobalVariable::ExternalLinkage,
+      /* Initializer */ MetadataConstant,
+      /* Name        */ "__sable_function_metadata");
+}
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_memory_size,
-      /* Ret                */ llvm::Type::getInt32Ty(Context),
-      /* Arg Memory         */ MemoryPtrTy);
+EntityLayout::FunctionEntry const &
+EntityLayout::get(mir::Function const &Function) const {
+  auto SearchIter = FunctionMap.find(std::addressof(Function));
+  assert(SearchIter != FunctionMap.end());
+  return std::get<1>(*SearchIter);
+}
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_memory_grow,
-      /* Ret                */ llvm::Type::getInt32Ty(Context),
-      /* Arg MemoryPtr      */ llvm::PointerType::getUnqual(MemoryPtrTy),
-      /* Arg DeltaNumPage   */ llvm::Type::getInt32Ty(Context));
+void EntityLayout::setupFunction() {
+  for (auto const &Function : Source.getFunctions()) {
+    auto *TypeString = getCStringPtr(
+        getTypeString(Function.getType()),
+        Function.hasName() ? fmt::format("typestr.{}", Function.getName())
+                           : "typestr");
+    auto *Definition = llvm::Function::Create(
+        /* Type    */ convertType(Function.getType()),
+        /* Linkage */ llvm::GlobalVariable::PrivateLinkage,
+        /* Name    */ llvm::StringRef(Function.getName()),
+        /* Parent  */ Target);
+    FunctionMap.insert(std::make_pair(
+        std::addressof(Function),
+        FunctionEntry{.Definition = Definition, .TypeString = TypeString}));
+    if (Function.isImported()) setupImportForwarding(Function, *Definition);
+  }
+}
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_memory_guard,
-      /* Ret                */ llvm::Type::getVoidTy(Context),
-      /* Arg Instance       */ InstancePtrTy,
-      /* Arg Memory         */ MemoryPtrTy,
-      /* Arg Address        */ llvm::Type::getInt32Ty(Context));
+void EntityLayout::setupImportForwarding(
+    mir::Function const &MFunction, llvm::Function &LFunction) {
+  auto Offset = getOffset(MFunction);
+  auto *EntryBasicBlock = llvm::BasicBlock::Create(
+      /* Context */ Target.getContext(),
+      /* Name    */ "entry",
+      /* Parent  */ std::addressof(LFunction));
+  llvm::IRBuilder<> Builder(EntryBasicBlock);
+  // clang-format off
+  auto Arguments = ranges::subrange(LFunction.arg_begin(), LFunction.arg_end())
+    | ranges::views::transform([](llvm::Argument &Argument) {
+        return std::addressof(Argument);
+      })
+    | ranges::to<std::vector<llvm::Value *>>();
+  // clang-format on
+}
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_table_allocate,
-      /* Ret                */ TablePtrTy,
-      /* Arg NumEntries     */ llvm::Type::getInt32Ty(Context));
+EntityLayout::EntityLayout(mir::Module const &Source_, llvm::Module &Target_)
+    : Source(Source_), Target(Target_), SableInstancePtrTy() {
+  auto *SableInstanceTy = llvm::StructType::get(Target.getContext());
+  SableInstanceTy->setName("__sable_instance_t");
+  SableInstancePtrTy = llvm::PointerType::getUnqual(SableInstanceTy);
 
-  DEFINE_BUILTIN_FUNC(
-      __sable_table_allocate_with_bound,
-      /* Ret                */ TablePtrTy,
-      /* Arg NumEntries     */ llvm::Type::getInt32Ty(Context),
-      /* Arg MaxNumEntries  */ llvm::Type::getInt32Ty(Context));
-
-  DEFINE_BUILTIN_FUNC(
-      __sable_table_free,
-      /* Ret                */ llvm::Type::getVoidTy(Context),
-      /* Arg Table          */ TablePtrTy);
-
-  DEFINE_BUILTIN_FUNC(
-      __sable_table_size,
-      /* Ret                */ llvm::Type::getInt32Ty(Context),
-      /* Arg Table          */ TablePtrTy);
-
-  DEFINE_BUILTIN_FUNC(
-      __sable_table_guard,
-      /* Ret                */ llvm::Type::getVoidTy(Context),
-      /* Arg Instance       */ InstancePtrTy,
-      /* Arg Table          */ TablePtrTy,
-      /* Arg Index          */ llvm::Type::getInt32Ty(Context));
-
-  DEFINE_BUILTIN_FUNC(
-      __sable_table_set,
-      /* Ret                */ detail::getFuncPtrTy(Context),
-      /* Arg Table          */ TablePtrTy,
-      /* Arg FunctionPtr    */ detail::getFuncPtrTy(Context),
-      /* Arg Index          */ llvm::Type::getInt32Ty(Context));
-
-  DEFINE_BUILTIN_FUNC(
-      __sable_table_type,
-      /* Ret                */ TablePtrTy,
-      /* Arg Index          */ llvm::Type::getInt32Ty(Context));
-
-  DEFINE_BUILTIN_FUNC(
-      __sable_table_get,
-      /* Ret                */ detail::getFuncPtrTy(Context),
-      /* Arg Table          */ TablePtrTy,
-      /* Arg Index          */ llvm::Type::getInt32Ty(Context));
-
-  DEFINE_BUILTIN_FUNC(
-      __sable_strcmp,
-      /* Ret                */ llvm::Type::getInt32Ty(Context),
-      /* Arg LHS            */ llvm::Type::getInt8PtrTy(Context),
-      /* Arg RHS            */ llvm::Type::getInt8PtrTy(Context));
-#undef DEFINE_BUILTIN_FUNC
+  setupOffsetMap();
+  setupFunction();
+  setupFunctionMetadata();
 }
 } // namespace codegen::llvm_instance

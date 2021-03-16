@@ -64,6 +64,7 @@ public:
   bool isSingleValueResult() const { return ResultTypes.size() == 1; }
   bool isMultiValueResult() const { return ResultTypes.size() > 1; }
   std::size_t getNumResult() const { return ResultTypes.size(); }
+  std::size_t getNumParameter() const { return ParamTypes.size(); }
 
   bool operator==(FunctionType const &Other) const = default;
 };

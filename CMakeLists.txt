@@ -38,9 +38,6 @@ add_library(sablewasm
         src/codegen-llvm-instance/LLVMCodegen.cc
         src/codegen-llvm-instance/EntityLayout.cc)
 
-add_library(sablewasm-runtime SHARED
-        src/codegen-llvm-instance/runtime/Base.c)
-
 target_link_libraries(sablewasm
         fmt::fmt
         mio::mio

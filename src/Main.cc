@@ -21,8 +21,8 @@ int main(int argc, char const *argv[]) {
   (void)argv;
 
   mio::basic_mmap_source<std::byte> Source(
-      //    "../test/polybench-c-4.2.1-beta/2mm.wasm");
-      "../test/main.wasm");
+      "../test/polybench-c-4.2.1-beta/2mm.wasm");
+  //"../test/main.wasm");
   //"../test/viu.wasm");
   parser::ByteArrayReader Reader(Source);
   parser::ModuleBuilderDelegate Delegate;
@@ -51,14 +51,12 @@ int main(int argc, char const *argv[]) {
   ModuleTranslationTask Task(Module, M, Name);
   Task.perform();
 
-  std::ostream_iterator<char> It(std::cout);
-  mir::dump(It, M);
+  // std::ostream_iterator<char> It(std::cout);
+  // mir::dump(It, M);
 
-  /*
   using namespace codegen::llvm_instance;
   llvm::LLVMContext CTX;
   llvm::Module LM("module", CTX);
-  setupRuntimeSupport(LM);
+  codegen::llvm_instance::EntityLayout ELayout(M, LM);
   LM.print(llvm::outs(), nullptr);
-   */
 }

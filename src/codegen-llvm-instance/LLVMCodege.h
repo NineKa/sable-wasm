@@ -19,7 +19,11 @@ namespace codegen::llvm_instance {
 class EntityLayout {
   mir::Module const &Source;
   llvm::Module &Target;
-  llvm::Type *SableInstancePtrTy;
+
+  llvm::StructType *declareOpaqueTy(std::string_view Name);
+  llvm::StructType *getOpaqueTy(std::string_view Name);
+  llvm::StructType *createNamedStructTy(std::string_view Name);
+  llvm::StructType *getNamedStructTy(std::string_view Name);
 
   /*
    * Instance Struct Layout:
@@ -27,15 +31,14 @@ class EntityLayout {
    * __sable_table_metadata_t *
    * __sable_global_metadata_t *
    * __sable_function_metadata_t *
-   * ...... Memory Instance Ptrs   ......
-   * ...... Table Instance Ptrs    ......
-   * ...... Global Instance Ptrs   ......
-   * ...... Function Ptrs          ......
+   * ...... Memory Instance Pointers   ......
+   * ...... Table Instance Pointers    ......
+   * ...... Global Instance Pointers   ......
+   * ...... Function Pointers          ......
    */
 
   llvm::DenseMap<mir::ASTNode const *, std::size_t> OffsetMap;
-  void setupOffsetMap();
-  std::size_t getOffset(mir::ASTNode const &Node) const;
+  void setupInstanceType();
 
   llvm::Type *convertType(bytecode::ValueType const &Type);
   llvm::FunctionType *convertType(bytecode::FunctionType const &Type);
@@ -47,6 +50,23 @@ class EntityLayout {
   char getTypeChar(bytecode::ValueType const &Type);
   std::string getTypeString(bytecode::FunctionType const &Type);
 
+  llvm::Value *translateInitExpr(
+      llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+      mir::ConstantExpr const &Expr);
+
+  llvm::DenseMap<mir::DataSegment const *, llvm::GlobalVariable *> Data;
+  void setupDataSegments();
+
+  llvm::GlobalVariable *setupArrayGlobal(
+      llvm::Type *ElementType, std::span<llvm::Constant *const> Elements);
+  llvm::GlobalVariable *setupMetadataGlobals(
+      std::string_view Prefix, std::uint32_t Size, std::uint32_t ImportSize,
+      std::uint32_t ExportSize, llvm::GlobalVariable *Entities,
+      llvm::GlobalVariable *Imports, llvm::GlobalVariable *Exports);
+
+  void setupMemoryMetadata();
+  void setupTableMetadata();
+  void setupGlobalMetadata();
   void setupFunctionMetadata();
 
   struct FunctionEntry {
@@ -55,12 +75,22 @@ class EntityLayout {
   };
   llvm::DenseMap<mir::Function const *, FunctionEntry> FunctionMap;
   FunctionEntry const &get(mir::Function const &Function) const;
-  void setupFunction();
+  void setupFunctions();
   void setupImportForwarding(
       mir::Function const &MFunction, llvm::Function &LFunction);
 
+  void setupInitializationFunction();
+
 public:
   EntityLayout(mir::Module const &Source_, llvm::Module &Target_);
+  std::size_t getOffset(mir::ASTNode const &Node) const;
+
+  llvm::Value *
+  get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+      mir::Global const &MGlobal);
+  llvm::Value *
+  get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+      mir::Function const &MFunction);
 };
 } // namespace codegen::llvm_instance
 

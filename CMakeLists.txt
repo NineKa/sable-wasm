@@ -26,7 +26,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 llvm_map_components_to_libnames(llvm_libs support core)
 
-add_library(sablewasm
+add_library(sablewasm SHARED
         src/bytecode/Module.cc
         src/bytecode/Validation.cc
         src/mir/ASTNode.cc
@@ -48,3 +48,6 @@ target_link_libraries(sablewasm
 
 add_executable(sable-wasm src/Main.cc)
 target_link_libraries(sable-wasm sablewasm)
+
+add_library(tester src/codegen-llvm-instance/InstanceTester.cc)
+target_link_libraries(tester range-v3 fmt::fmt)

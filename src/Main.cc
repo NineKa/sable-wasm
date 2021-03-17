@@ -21,8 +21,8 @@ int main(int argc, char const *argv[]) {
   (void)argv;
 
   mio::basic_mmap_source<std::byte> Source(
-      "../test/polybench-c-4.2.1-beta/2mm.wasm");
-  //"../test/main.wasm");
+      // "../test/polybench-c-4.2.1-beta/2mm.wasm");
+      "../test/main.wasm");
   //"../test/viu.wasm");
   parser::ByteArrayReader Reader(Source);
   parser::ModuleBuilderDelegate Delegate;

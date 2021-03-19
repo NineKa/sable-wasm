@@ -12,13 +12,40 @@
 #include <llvm/IR/Type.h>
 
 #include <string_view>
-#include <unordered_map>
 
 namespace codegen::llvm_instance {
 
 class EntityLayout {
+public:
+  class FunctionEntry {
+    llvm::Function *Definition;
+    llvm::Constant *TypeString;
+
+  public:
+    FunctionEntry(llvm::Function *Definition_, llvm::Constant *TypeString_)
+        : Definition(Definition_), TypeString(TypeString_) {}
+    llvm::Function *definition() const { return Definition; }
+    llvm::Constant *typeString() const { return TypeString; }
+  };
+
+  class ElementEntry {
+    llvm::Constant *Pointers;
+    llvm::Constant *TypeStrings;
+
+  public:
+    ElementEntry(llvm::Constant *Pointers_, llvm::Constant *TypeStrings_)
+        : Pointers(Pointers_), TypeStrings(TypeStrings_) {}
+    llvm::Constant *pointers() const { return Pointers; }
+    llvm::Constant *typeStrings() const { return TypeStrings; }
+  };
+
+private:
   mir::Module const &Source;
   llvm::Module &Target;
+  llvm::DenseMap<mir::ASTNode const *, std::size_t> OffsetMap;
+  llvm::DenseMap<mir::DataSegment const *, llvm::Constant *> DataMap;
+  llvm::DenseMap<mir::ElementSegment const *, ElementEntry> ElementMap;
+  llvm::DenseMap<mir::Function const *, FunctionEntry> FunctionMap;
 
   llvm::StructType *declareOpaqueTy(std::string_view Name);
   llvm::StructType *getOpaqueTy(std::string_view Name);
@@ -37,29 +64,18 @@ class EntityLayout {
    * ...... Function Pointers          ......
    */
 
-  llvm::DenseMap<mir::ASTNode const *, std::size_t> OffsetMap;
   void setupInstanceType();
-
-  llvm::Type *convertType(bytecode::ValueType const &Type);
-  llvm::FunctionType *convertType(bytecode::FunctionType const &Type);
-
-  llvm::Type *getCStringPtrTy();
-  llvm::Constant *getI32Constant(std::int32_t Value);
-  llvm::Constant *getCString(std::string_view, std::string_view Name = "");
-  llvm::Constant *getCStringPtr(std::string_view, std::string_view Name = "");
-  char getTypeChar(bytecode::ValueType const &Type);
-  std::string getTypeString(bytecode::FunctionType const &Type);
 
   llvm::Value *translateInitExpr(
       llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::ConstantExpr const &Expr);
+      mir::InitializerExpr const &Expr);
 
-  llvm::DenseMap<mir::DataSegment const *, llvm::GlobalVariable *> Data;
   void setupDataSegments();
+  void setupElementSegments();
 
   llvm::GlobalVariable *setupArrayGlobal(
       llvm::Type *ElementType, std::span<llvm::Constant *const> Elements);
-  llvm::GlobalVariable *setupMetadataGlobals(
+  llvm::GlobalVariable *setupMetadata(
       std::string_view Prefix, std::uint32_t Size, std::uint32_t ImportSize,
       std::uint32_t ExportSize, llvm::GlobalVariable *Entities,
       llvm::GlobalVariable *Imports, llvm::GlobalVariable *Exports);
@@ -68,22 +84,23 @@ class EntityLayout {
   void setupTableMetadata();
   void setupGlobalMetadata();
   void setupFunctionMetadata();
-
-  struct FunctionEntry {
-    llvm::Function *Definition;
-    llvm::Constant *TypeString;
-  };
-  llvm::DenseMap<mir::Function const *, FunctionEntry> FunctionMap;
-  FunctionEntry const &get(mir::Function const &Function) const;
   void setupFunctions();
-  void setupImportForwarding(
-      mir::Function const &MFunction, llvm::Function &LFunction);
-
-  void setupInitializationFunction();
+  void setupInitialization();
+  void setupBuiltins();
 
 public:
   EntityLayout(mir::Module const &Source_, llvm::Module &Target_);
+  llvm::Type *convertType(bytecode::ValueType const &Type);
+  llvm::FunctionType *convertType(bytecode::FunctionType const &Type);
+
   std::size_t getOffset(mir::ASTNode const &Node) const;
+
+  llvm::Constant *operator[](mir::DataSegment const &DataSegment) const;
+  FunctionEntry const &operator[](mir::Function const &Function) const;
+  ElementEntry const &
+  operator[](mir::ElementSegment const &ElementSegment) const;
+
+  llvm::Function *getBuiltin(std::string_view Name);
 
   llvm::Value *
   get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
@@ -91,6 +108,64 @@ public:
   llvm::Value *
   get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
       mir::Function const &MFunction);
+  llvm::Value *
+  get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+      mir::Memory const &MMemory);
+  llvm::Value *
+  get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+      mir::Table const &MTable);
+
+  char getTypeChar(bytecode::ValueType const &Type);
+  std::string getTypeString(bytecode::FunctionType const &Type);
+
+  /* void          */ llvm::Type *getVoidTy();
+  /* void *        */ llvm::PointerType *getVoidPtrTy();
+  /* char const *  */ llvm::PointerType *getCStringPtrTy();
+  llvm::Constant *getCStringPtr(std::string_view, std::string_view Name = "");
+  /* std::int32_t  */ llvm::IntegerType *getI32Ty();
+  llvm::Constant *getI32Constant(std::int32_t Value);
+  /* std::int64_t  */ llvm::IntegerType *getI64Ty();
+  llvm::Constant *getI64Constant(std::int64_t Value);
+  /* float         */ llvm::Type *getF32Ty();
+  llvm::Constant *getF32Constant(float Value);
+  /* double        */ llvm::Type *getF64Ty();
+  llvm::Constant *getF64Constant(double Value);
+  /* std::intptr_t */ llvm::Type *getPtrIntTy();
+
+  /* __sable_instance_t * */ llvm::PointerType *getInstancePtrTy();
+
+  /* __sable_memory_metadata_t   */ llvm::StructType *getMemoryMetadataTy();
+  /* __sable_table_metadata_t    */ llvm::StructType *getTableMetadataTy();
+  /* __sable_global_metadata_t   */ llvm::StructType *getGlobalMetadataTy();
+  /* __sable_function_metadata_t */ llvm::StructType *getFunctionMetadataTy();
+
+  /* __sable_memory_t *   */ llvm::PointerType *getMemoryPtrTy();
+  /* __sable_table_t *    */ llvm::PointerType *getTablePtrTy();
+  /* __sable_global_t *   */ llvm::PointerType *getGlobalPtrTy();
+  /* __sable_function_t * */ llvm::PointerType *getFunctionPtrTy();
+
+  llvm::GlobalVariable *getMemoryMetadata();
+  llvm::GlobalVariable *getTableMetadata();
+  llvm::GlobalVariable *getGlobalMetadata();
+  llvm::GlobalVariable *getFunctionMetadata();
+};
+
+class FunctionTranslationTask {
+  class TranslationContext;
+  class TranslationVisitor;
+  std::unique_ptr<TranslationContext> Context;
+
+public:
+  FunctionTranslationTask(
+      EntityLayout const &EntityLayout_, mir::Function const &Source_,
+      llvm::Function &Target_);
+  FunctionTranslationTask(FunctionTranslationTask const &) = delete;
+  FunctionTranslationTask(FunctionTranslationTask &&) noexcept;
+  FunctionTranslationTask &operator=(FunctionTranslationTask const &) = delete;
+  FunctionTranslationTask &operator=(FunctionTranslationTask &&) noexcept;
+  ~FunctionTranslationTask() noexcept;
+
+  void perform();
 };
 } // namespace codegen::llvm_instance
 

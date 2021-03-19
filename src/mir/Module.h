@@ -41,17 +41,17 @@ class DataSegment :
     public llvm::ilist_node_with_parent<DataSegment, Module> {
   Module *Parent;
   std::vector<std::byte> Content;
-  std::unique_ptr<ConstantExpr> Offset;
+  std::unique_ptr<InitializerExpr> Offset;
 
 public:
   DataSegment(
-      Module *Parent_, std::unique_ptr<ConstantExpr> Offset_,
+      Module *Parent_, std::unique_ptr<InitializerExpr> Offset_,
       std::span<std::byte const> Content_);
 
   Module *getParent() const { return Parent; }
 
-  ConstantExpr *getOffset() const;
-  void setOffset(std::unique_ptr<ConstantExpr> Offset_);
+  InitializerExpr *getOffset() const;
+  void setOffset(std::unique_ptr<InitializerExpr> Offset_);
 
   std::span<std::byte const> getContent() const;
   void setContent(std::span<std::byte const> Content_);
@@ -68,22 +68,22 @@ class ElementSegment :
     public llvm::ilist_node_with_parent<ElementSegment, Module> {
   Module *Parent;
   std::vector<Function *> Content;
-  std::unique_ptr<ConstantExpr> Offset;
+  std::unique_ptr<InitializerExpr> Offset;
 
 public:
   ElementSegment(
-      Module *Parent_, std::unique_ptr<ConstantExpr> Offset_,
+      Module *Parent_, std::unique_ptr<InitializerExpr> Offset_,
       std::span<Function *const> Content_);
   ElementSegment(ElementSegment const &) = delete;
   ElementSegment(ElementSegment &&) noexcept = delete;
   ElementSegment &operator=(ElementSegment const &) = delete;
   ElementSegment &operator=(ElementSegment &&) noexcept = delete;
-  ~ElementSegment() noexcept;
+  ~ElementSegment() noexcept override;
 
   Module *getParent() const { return Parent; }
 
-  ConstantExpr *getOffset() const;
-  void setOffset(std::unique_ptr<ConstantExpr> Offset_);
+  InitializerExpr *getOffset() const;
+  void setOffset(std::unique_ptr<InitializerExpr> Offset_);
 
   std::span<Function *const> getContent() const;
   void setContent(std::span<Function *const> Content_);
@@ -153,7 +153,7 @@ public:
     return &Function::Locals;
   }
 
-  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  void detach(ASTNode const *) noexcept override { utility::unreachable(); }
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::Function;
   }
@@ -175,7 +175,7 @@ public:
   Function *getParent() const { return Parent; }
   bytecode::ValueType const &getType() const { return Type; }
   bool isParameter() const { return IsParameter; }
-  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  void detach(ASTNode const *) noexcept override { utility::unreachable(); }
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::Local;
   }
@@ -188,17 +188,17 @@ class Global :
     public llvm::ilist_node_with_parent<Global, Module> {
   Module *Parent;
   bytecode::GlobalType Type;
-  std::unique_ptr<ConstantExpr> Initializer;
+  std::unique_ptr<InitializerExpr> Initializer;
 
 public:
   Global(Module *Parent_, bytecode::GlobalType Type_);
   Module *getParent() const { return Parent; }
   bytecode::GlobalType const &getType() const { return Type; }
-  ConstantExpr *getInitializer() const { return Initializer.get(); }
-  void setInitializer(std::unique_ptr<ConstantExpr> Initializer_) {
+  InitializerExpr *getInitializer() const { return Initializer.get(); }
+  void setInitializer(std::unique_ptr<InitializerExpr> Initializer_) {
     Initializer = std::move(Initializer_);
   }
-  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  void detach(ASTNode const *) noexcept override { utility::unreachable(); }
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::Global;
   }
@@ -219,7 +219,7 @@ public:
   Memory(Memory &&) noexcept = delete;
   Memory &operator=(Memory const &) = delete;
   Memory &operator=(Memory &&) noexcept = delete;
-  ~Memory() noexcept;
+  ~Memory() noexcept override;
 
   Module *getParent() const { return Parent; }
   bytecode::MemoryType const &getType() const { return Type; }
@@ -258,7 +258,7 @@ public:
   Table(Table &&) = delete;
   Table &operator=(Table const &) = delete;
   Table &operator=(Table &&) noexcept = delete;
-  ~Table() noexcept;
+  ~Table() noexcept override;
 
   Module *getParent() const { return Parent; }
   bytecode::TableType const &getType() const { return Type; }
@@ -378,10 +378,10 @@ public:
   Memory *BuildMemory(bytecode::MemoryType Type_);
   Table *BuildTable(bytecode::TableType Type_);
   DataSegment *BuildDataSegment(
-      std::unique_ptr<ConstantExpr> Offset_,
+      std::unique_ptr<InitializerExpr> Offset_,
       std::span<std::byte const> Content_);
   ElementSegment *BuildElementSegment(
-      std::unique_ptr<ConstantExpr> Offset_,
+      std::unique_ptr<InitializerExpr> Offset_,
       std::span<Function *const> Content_);
 
   static llvm::ilist<Function> Module::*getSublistAccess(Function *) {
@@ -404,7 +404,7 @@ public:
     return &Module::ElementSegments;
   }
 
-  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  void detach(ASTNode const *) noexcept override { utility::unreachable(); }
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::Module;
   }

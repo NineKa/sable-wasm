@@ -21,7 +21,7 @@ enum class ASTNodeKind : std::uint8_t {
   Module,
   DataSegment,
   ElementSegment,
-  ConstantExpr
+  InitializerExpr
 };
 
 class ASTNode {
@@ -79,45 +79,45 @@ template <ast_node T> T const *dyn_cast(ASTNode const *Node) {
   return static_cast<T const *>(Node);
 }
 
-enum class ConstantExprKind { Constant, GlobalGet };
-class ConstantExpr : public ASTNode {
-  ConstantExprKind Kind;
+enum class InitializerExprKind { Constant, GlobalGet };
+class InitializerExpr : public ASTNode {
+  InitializerExprKind Kind;
 
 protected:
-  explicit ConstantExpr(ConstantExprKind Kind_)
-      : ASTNode(ASTNodeKind::ConstantExpr), Kind(Kind_) {}
+  explicit InitializerExpr(InitializerExprKind Kind_)
+      : ASTNode(ASTNodeKind::InitializerExpr), Kind(Kind_) {}
 
 public:
-  ConstantExprKind getConstantExprKind() const { return Kind; }
+  InitializerExprKind getInitializerExprKind() const { return Kind; }
   static bool classof(ASTNode const *Node) {
-    return Node->getASTNodeKind() == ASTNodeKind::ConstantExpr;
+    return Node->getASTNodeKind() == ASTNodeKind::InitializerExpr;
   }
 };
 
 template <typename T>
-concept constant_epxr = ast_node<T> &&
-    std::derived_from<T, ConstantExpr> &&requires() {
-  { T::classof(std::declval<ConstantExpr const *>()) }
+concept initializer_expr = ast_node<T> &&
+    std::derived_from<T, InitializerExpr> &&requires() {
+  { T::classof(std::declval<InitializerExpr const *>()) }
   ->std::convertible_to<bool>;
 };
 
-template <constant_epxr T> bool is_a(ConstantExpr const *Node) {
+template <initializer_expr T> bool is_a(InitializerExpr const *Node) {
   return T::classof(Node);
 }
 
-template <constant_epxr T> T *dyn_cast(ConstantExpr *Node) {
+template <initializer_expr T> T *dyn_cast(InitializerExpr *Node) {
   assert(is_a<T>(Node));
   return static_cast<T *>(Node);
 }
 
-template <constant_epxr T> T const *dyn_cast(ConstantExpr const *Node) {
+template <initializer_expr T> T const *dyn_cast(InitializerExpr const *Node) {
   assert(is_a<T>(Node));
   return static_cast<T const *>(Node);
 }
 
 class Global;
-namespace constant_expr {
-class Constant : public ConstantExpr {
+namespace initializer {
+class Constant : public InitializerExpr {
   std::variant<std::int32_t, std::int64_t, float, double> Storage;
 
 public:
@@ -135,11 +135,11 @@ public:
   double asF64() const;
   bytecode::ValueType getValueType() const;
   void detach(ASTNode const *) noexcept override;
-  static bool classof(ConstantExpr const *ConstExpr);
+  static bool classof(InitializerExpr const *ConstExpr);
   static bool classof(ASTNode const *Node);
 };
 
-class GlobalGet : public ConstantExpr {
+class GlobalGet : public InitializerExpr {
   Global *GlobalValue;
 
 public:
@@ -152,10 +152,10 @@ public:
   Global *getGlobalValue() const;
   void setGlobalValue(Global *GlobalValue_);
   void detach(ASTNode const *) noexcept override;
-  static bool classof(ConstantExpr const *ConstExpr);
+  static bool classof(InitializerExpr const *ConstExpr);
   static bool classof(ASTNode const *Node);
 };
-} // namespace constant_expr
+} // namespace initializer
 } // namespace mir
 
 #endif

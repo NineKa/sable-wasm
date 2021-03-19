@@ -41,12 +41,13 @@ enum class InstructionKind : std::uint8_t {
   Load,
   Store,
   MemoryGuard,
+  MemoryGrow,
+  MemorySize,
   Cast,
   Extend,
   Pack,
   Unpack,
-  Phi,
-  Intrinsic
+  Phi
 };
 
 class Instruction :
@@ -123,17 +124,13 @@ public:
   const_iterator begin() const { return Instructions.begin(); }
   const_iterator end() const { return Instructions.end(); }
 
-  auto getUsedSites() {
-    return ranges::subrange(use_site_begin(), use_site_end());
-  }
-
   static llvm::ilist<Instruction> BasicBlock::*getSublistAccess(Instruction *);
 
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::BasicBlock;
   }
 
-  void detach(ASTNode const *) noexcept override { SABLE_UNREACHABLE(); }
+  void detach(ASTNode const *) noexcept override { utility::unreachable(); }
 };
 } // namespace mir
 
@@ -599,6 +596,45 @@ public:
   static bool classof(ASTNode const *Node);
 };
 
+/////////////////////////////// MemoryGrow /////////////////////////////////////
+class MemoryGrow : public Instruction {
+  Memory *LinearMemory;
+  Instruction *Size;
+
+public:
+  MemoryGrow(BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Size_);
+  MemoryGrow(MemoryGrow const &) = delete;
+  MemoryGrow(MemoryGrow &&) noexcept = delete;
+  MemoryGrow &operator=(MemoryGrow const &) = delete;
+  MemoryGrow &operator=(MemoryGrow &&) noexcept = delete;
+  ~MemoryGrow() noexcept override;
+  Memory *getLinearMemory() const;
+  void setLinearMemory(Memory *LinearMemory_);
+  Instruction *getSize() const;
+  void setSize(Instruction *Size_);
+  void detach(ASTNode const *) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
+};
+
+/////////////////////////////// MemorySize /////////////////////////////////////
+class MemorySize : public Instruction {
+  Memory *LinearMemory;
+
+public:
+  MemorySize(BasicBlock *Parent_, Memory *LinearMemory_);
+  MemorySize(MemorySize const &) = delete;
+  MemorySize(MemorySize &&) noexcept = delete;
+  MemorySize &operator=(MemorySize const &) = delete;
+  MemorySize &operator=(MemorySize &&) noexcept = delete;
+  ~MemorySize() noexcept override;
+  Memory *getLinearMemory() const;
+  void setLinearMemory(Memory *LinearMemory_);
+  void detach(ASTNode const *) noexcept override;
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
+};
+
 ////////////////////////////////// Cast ////////////////////////////////////////
 enum class CastMode {
   Conversion,
@@ -717,33 +753,6 @@ public:
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
-
-//////////////////////////////// Intrinsic /////////////////////////////////////
-enum class IntrinsicFunction { MemoryGrow, MemorySize };
-
-class Intrinsic : public Instruction {
-  std::vector<ASTNode *> Operands;
-  IntrinsicFunction Function;
-
-public:
-  Intrinsic(
-      BasicBlock *Parent_, IntrinsicFunction Function_,
-      std::span<ASTNode *const> Operands_);
-  Intrinsic(Intrinsic const &) = delete;
-  Intrinsic(Intrinsic &&) noexcept = delete;
-  Intrinsic &operator=(Intrinsic const &) = delete;
-  Intrinsic &operator=(Intrinsic &&) noexcept = delete;
-  ~Intrinsic() noexcept override;
-
-  std::span<ASTNode *const> getOperands() const;
-  void setOperands(std::span<ASTNode *const> Operands_);
-  IntrinsicFunction getFunction() const;
-  void setFunction(IntrinsicFunction Function_);
-  void detach(ASTNode const *) noexcept override;
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
 } // namespace mir::instructions
 
 namespace mir {
@@ -781,13 +790,14 @@ public:
     case IKind::Load        : return castAndCall<Load>(Inst);
     case IKind::Store       : return castAndCall<Store>(Inst);
     case IKind::MemoryGuard : return castAndCall<MemoryGuard>(Inst);
+    case IKind::MemoryGrow  : return castAndCall<MemoryGrow>(Inst);
+    case IKind::MemorySize  : return castAndCall<MemorySize>(Inst);
     case IKind::Cast        : return castAndCall<Cast>(Inst);
     case IKind::Extend      : return castAndCall<Extend>(Inst);
     case IKind::Pack        : return castAndCall<Pack>(Inst);
     case IKind::Unpack      : return castAndCall<Unpack>(Inst);
     case IKind::Phi         : return castAndCall<Phi>(Inst);
-    case IKind::Intrinsic   : return castAndCall<Intrinsic>(Inst);
-    default: SABLE_UNREACHABLE();
+    default: utility::unreachable();
     }
     // clang-format on
   }

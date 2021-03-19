@@ -131,7 +131,7 @@ public:
     CastedIndex = CastedIndex - ranges::size(Parameters);
     if (CastedIndex < ranges::size(Entity->Locals))
       return Entity->Locals[CastedIndex];
-    SABLE_UNREACHABLE();
+    utility::unreachable();
   }
   std::optional<ValueType> get(LocalIDX const &Index_) const {
     auto Parameters = getType()->getParamTypes();
@@ -152,7 +152,6 @@ public:
   bytecode::Expression const *getBody() const {
     return std::addressof(Entity->Body);
   }
-  bool isDefinition() const { return Entity != nullptr; }
 };
 
 class Global : public Entity<GlobalType> {

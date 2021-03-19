@@ -452,7 +452,7 @@ void Parser<ReaderImpl, DelegateImpl>::parseInstruction() {
       auto ReverseView = ranges::views::reverse(Bytes);
       ranges::copy(ReverseView, ranges::begin(ResultByteView));
     } else {
-      SABLE_UNREACHABLE();
+      utility::unreachable();
     }
     Delegate.onInstF32Const(Result[0]);
     break;
@@ -468,7 +468,7 @@ void Parser<ReaderImpl, DelegateImpl>::parseInstruction() {
       auto ReverseView = ranges::views::reverse(Bytes);
       ranges::copy(ReverseView, ranges::begin(ResultByteView));
     } else {
-      SABLE_UNREACHABLE();
+      utility::unreachable();
     }
     Delegate.onInstF64Const(Result[0]);
     break;

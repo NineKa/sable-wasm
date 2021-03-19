@@ -193,7 +193,7 @@ MIRIteratorWriter<Iterator>::toString(instructions::IntUnaryOperator Op) {
   case UnaryOp::Clz      : return "int.clz";
   case UnaryOp::Ctz      : return "int.ctz";
   case UnaryOp::Popcnt   : return "int.popcnt";
-  default:SABLE_UNREACHABLE();
+  default:utility::unreachable();
   }
   // clang-format on
 }
@@ -229,7 +229,7 @@ MIRIteratorWriter<Iterator>::toString(instructions::IntBinaryOperator Op) {
   case BinaryOp::ShrU    : return "int.shr.u";
   case BinaryOp::Rotl    : return "int.rotl";
   case BinaryOp::Rotr    : return "int.rotr";
-  default: SABLE_UNREACHABLE();
+  default: utility::unreachable();
   }
   // clang-format on
 }
@@ -247,7 +247,7 @@ MIRIteratorWriter<Iterator>::toString(instructions::FPUnaryOperator Op) {
   case UnaryOp::Trunc    : return "fp.truncate";
   case UnaryOp::Nearest  : return "fp.nearest";
   case UnaryOp::Sqrt     : return "fp.sqrt";
-  default: SABLE_UNREACHABLE();
+  default: utility::unreachable();
   }
   // clang-format on
 }
@@ -271,7 +271,7 @@ MIRIteratorWriter<Iterator>::toString(instructions::FPBinaryOperator Op) {
   case BinaryOp::Min     : return "fp.min";
   case BinaryOp::Max     : return "fp.max";
   case BinaryOp::CopySign: return "fp.copysign";
-  default: SABLE_UNREACHABLE();
+  default: utility::unreachable();
   }
   // clang-format on
 }
@@ -287,7 +287,7 @@ char const *MIRIteratorWriter<Iterator>::toString(instructions::CastMode Mode) {
   case MKind::SatConversionSigned  : return "cast.sat.s";
   case MKind::SatConversionUnsigned: return "cast.sat.u";
   case MKind::Reinterpret          : return "cast.bit";
-  default: SABLE_UNREACHABLE();
+  default: utility::unreachable();
   }
   // clang-format on
 }
@@ -347,7 +347,7 @@ MIRIteratorWriter<Iterator>::operator<<(ASTNode const *Node) {
   case ASTNodeKind::Memory     : return *this << dyn_cast<Memory>(Node);
   case ASTNodeKind::Table      : return *this << dyn_cast<Table>(Node);
   case ASTNodeKind::Global     : return *this << dyn_cast<Global>(Node);
-  default: SABLE_UNREACHABLE();
+  default: utility::unreachable();
   }
   // clang-format on
 }
@@ -517,7 +517,7 @@ public:
     case VKind::I64: Writer << Inst->asI64(); break;
     case VKind::F32: Writer << Inst->asF32(); break;
     case VKind::F64: Writer << Inst->asF64(); break;
-    default: SABLE_UNREACHABLE();
+    default: utility::unreachable();
     }
     return Writer.iterator();
   }
@@ -580,6 +580,19 @@ public:
     return Writer.iterator();
   }
 
+  Iterator operator()(instructions::MemoryGrow const *Inst) {
+    auto const *Memory = Inst->getLinearMemory();
+    auto const *Size = Inst->getSize();
+    Writer << Inst << " = memory.grow " << Memory << ' ' << Size;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::MemorySize const *Inst) {
+    auto const *Memory = Inst->getLinearMemory();
+    Writer << Inst << " = memory.size " << Memory;
+    return Writer.iterator();
+  }
+
   Iterator operator()(instructions::Cast const *Inst) {
     auto Mode = Inst->getMode();
     auto Type = Inst->getType();
@@ -615,24 +628,6 @@ public:
              << ']';
     return Writer.iterator();
   }
-
-  Iterator operator()(instructions::Intrinsic const *Inst) {
-    switch (Inst->getFunction()) {
-    case instructions::IntrinsicFunction::MemorySize: {
-      auto *LinearMemory = Inst->getOperands()[0];
-      Writer << Inst << " = memory.size(" << LinearMemory << ')';
-      return Writer.iterator();
-    }
-    case instructions::IntrinsicFunction::MemoryGrow: {
-      auto *LinearMemory = Inst->getOperands()[0];
-      auto *DeltaNumPage = Inst->getOperands()[1];
-      Writer << Inst << " = memory.grow(" << LinearMemory << ", "
-             << DeltaNumPage << ')';
-      return Writer.iterator();
-    }
-    default: SABLE_UNREACHABLE();
-    }
-  }
 };
 } // namespace detail
 
@@ -646,29 +641,32 @@ Iterator dump(
 
 template <std::output_iterator<char> Iterator>
 Iterator dump(
-    Iterator Out, ConstantExpr const &ConstantExpr_,
+    Iterator Out, InitializerExpr const &ConstantExpr_,
     EntityNameWriter const &ENameWriter) {
   MIRIteratorWriter Writer(Out, ENameWriter);
-  switch (ConstantExpr_.getConstantExprKind()) {
-  case ConstantExprKind::Constant: {
+  // TODO: in the future, we need a better strategy handling constant offset
+  //       initializer expression. Currently, due to WebAssembly validation,
+  //       Constant expression, must be a constant or a GlobalGet instruction.
+  switch (ConstantExpr_.getInitializerExprKind()) {
+  case InitializerExprKind::Constant: {
     auto *CastedPtr =
-        dyn_cast<constant_expr::Constant>(std::addressof(ConstantExpr_));
+        dyn_cast<initializer::Constant>(std::addressof(ConstantExpr_));
     using VKind = bytecode::ValueTypeKind;
     switch (CastedPtr->getValueType().getKind()) {
     case VKind::I32: return (Writer << "i32 " << CastedPtr->asI32()).iterator();
     case VKind::I64: return (Writer << "i64 " << CastedPtr->asI64()).iterator();
     case VKind::F32: return (Writer << "f32 " << CastedPtr->asF32()).iterator();
     case VKind::F64: return (Writer << "f64 " << CastedPtr->asF64()).iterator();
-    default: SABLE_UNREACHABLE();
+    default: utility::unreachable();
     }
   }
-  case ConstantExprKind::GlobalGet: {
+  case InitializerExprKind::GlobalGet: {
     auto *CastedPtr =
-        dyn_cast<constant_expr::GlobalGet>(std::addressof(ConstantExpr_));
+        dyn_cast<initializer::GlobalGet>(std::addressof(ConstantExpr_));
     Writer << CastedPtr->getGlobalValue();
     return Writer.iterator();
   }
-  default: SABLE_UNREACHABLE();
+  default: utility::unreachable();
   }
 }
 

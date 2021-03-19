@@ -178,7 +178,7 @@ Iterator dump(
 
 template <std::output_iterator<char> Iterator>
 Iterator dump(
-    Iterator Out, ConstantExpr const &ConstantExpr_,
+    Iterator Out, InitializerExpr const &ConstantExpr_,
     EntityNameWriter const &ENameWriter = EntityNameWriter());
 
 template <std::output_iterator<char> Iterator>

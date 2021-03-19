@@ -644,7 +644,7 @@ ExprValidationVisitor<T>::validateBlockResult(BlockResultType const &Type) {
     return nullptr;
   }
   if (std::holds_alternative<BlockResultUnit>(Type)) return nullptr;
-  SABLE_UNREACHABLE();
+  utility::unreachable();
 }
 
 template <validation_context T>
@@ -665,7 +665,7 @@ ExprValidationVisitor<T>::convertBlockResult(BlockResultType const &Type) {
     std::array<ValueType, 0> Empty{};
     return FunctionType(Empty, Empty);
   }
-  SABLE_UNREACHABLE();
+  utility::unreachable();
 }
 
 template <validation_context T>

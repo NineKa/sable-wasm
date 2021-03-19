@@ -34,32 +34,32 @@ typename T::value_type getFromContainer(T const &Container, IndexType Index) {
 // TODO: in the future, we need a better strategy handling constant offset
 //       initializer expression. Currently, due to WebAssembly validation,
 //       Constant expression, must be a constant or a GlobalGet instruction.
-std::unique_ptr<ConstantExpr>
+std::unique_ptr<InitializerExpr>
 EntityLayout::solveInitializerExpr(bytecode::Expression const &Expr) {
   assert(Expr.size() == 1);
   auto const &Inst = Expr.front();
   if (is_a<binsts::I32Const>(Inst)) {
     auto const *CastedPtr = dyn_cast<binsts::I32Const>(Inst);
-    return std::make_unique<constant_expr::Constant>(CastedPtr->Value);
+    return std::make_unique<initializer::Constant>(CastedPtr->Value);
   }
   if (is_a<binsts::I64Const>(Inst)) {
     auto const *CastedPtr = dyn_cast<binsts::I64Const>(Inst);
-    return std::make_unique<constant_expr::Constant>(CastedPtr->Value);
+    return std::make_unique<initializer::Constant>(CastedPtr->Value);
   }
   if (is_a<binsts::F32Const>(Inst)) {
     auto const *CastedPtr = dyn_cast<binsts::F32Const>(Inst);
-    return std::make_unique<constant_expr::Constant>(CastedPtr->Value);
+    return std::make_unique<initializer::Constant>(CastedPtr->Value);
   }
   if (is_a<binsts::F64Const>(Inst)) {
     auto const *CastedPtr = dyn_cast<binsts::F64Const>(Inst);
-    return std::make_unique<constant_expr::Constant>(CastedPtr->Value);
+    return std::make_unique<initializer::Constant>(CastedPtr->Value);
   }
   if (is_a<binsts::GlobalGet>(Inst)) {
     auto const *CastedPtr = dyn_cast<binsts::GlobalGet>(Inst);
     auto *Target = this->operator[](CastedPtr->Target);
-    return std::make_unique<constant_expr::GlobalGet>(Target);
+    return std::make_unique<initializer::GlobalGet>(Target);
   }
-  SABLE_UNREACHABLE();
+  utility::unreachable();
 }
 
 EntityLayout::EntityLayout(bytecode::Module const &BModule, Module &MModule)
@@ -275,7 +275,7 @@ class FunctionTranslationTask::TranslationVisitor :
     }
     if (std::holds_alternative<bytecode::BlockResultUnit>(Type))
       return bytecode::FunctionType({}, {});
-    SABLE_UNREACHABLE();
+    utility::unreachable();
   }
 
 public:
@@ -659,18 +659,15 @@ public:
 
   void operator()(binsts::MemorySize const *) {
     auto *Mem = Context.getImplicitMemory();
-    std::array<ASTNode *, 1> Operands{Mem};
-    auto *Result = CurrentBasicBlock->BuildInst<minsts::Intrinsic>(
-        minsts::IntrinsicFunction::MemorySize, Operands);
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::MemorySize>(Mem);
     values().push(Result);
   }
 
   void operator()(binsts::MemoryGrow const *) {
     auto *Operand = values().pop();
     auto *Mem = Context.getImplicitMemory();
-    std::array<ASTNode *, 2> Operands{Mem, Operand};
-    auto *Result = CurrentBasicBlock->BuildInst<minsts::Intrinsic>(
-        minsts::IntrinsicFunction::MemoryGrow, Operands);
+    auto *Result =
+        CurrentBasicBlock->BuildInst<minsts::MemoryGrow>(Mem, Operand);
     values().push(Result);
   }
 

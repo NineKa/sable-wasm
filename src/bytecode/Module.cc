@@ -30,7 +30,7 @@ ModuleView::ModuleView(Module const &M_)
       GlobalView.Index = static_cast<GlobalIDX>(Storage->Globals.size());
       Storage->Globals.push_back(GlobalView);
     } else
-      SABLE_UNREACHABLE();
+      utility::unreachable();
   }
   Storage->NumImportedFunctions = Storage->Functions.size();
   Storage->NumImportedGlobals = Storage->Globals.size();
@@ -90,7 +90,7 @@ ModuleView::ModuleView(Module const &M_)
       auto &GlobalView = Storage->Globals[CastedIndex];
       GlobalView.Export = std::addressof(Export);
     } else
-      SABLE_UNREACHABLE();
+      utility::unreachable();
   }
 }
 

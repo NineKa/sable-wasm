@@ -140,7 +140,7 @@ template <> struct fmt::formatter<bytecode::ValueType, char> {
     case Kind::I64: return format_to(CTX.out(), "i64");
     case Kind::F32: return format_to(CTX.out(), "f32");
     case Kind::F64: return format_to(CTX.out(), "f64");
-    default: SABLE_UNREACHABLE();
+    default: utility::unreachable();
     }
   }
 };
@@ -207,7 +207,7 @@ template <> struct fmt::formatter<bytecode::GlobalType, char> {
     switch (Type.getMutability()) {
     case Kind::Const: return format_to(CTX.out(), "const {}", Type.getType());
     case Kind::Var: return format_to(CTX.out(), "var {}", Type.getType());
-    default: SABLE_UNREACHABLE();
+    default: utility::unreachable();
     }
   }
 };

@@ -41,13 +41,13 @@ void ExportableEntity::setExport(std::string EntityName) {
 } // namespace detail
 /////////////////////////////// DataSegment ////////////////////////////////////
 DataSegment::DataSegment(
-    Module *Parent_, std::unique_ptr<ConstantExpr> Offset_,
+    Module *Parent_, std::unique_ptr<InitializerExpr> Offset_,
     std::span<std::byte const> Content_)
     : ASTNode(ASTNodeKind::DataSegment), Parent(Parent_),
       Content(Content_.begin(), Content_.end()), Offset(std::move(Offset_)) {}
 
-ConstantExpr *DataSegment::getOffset() const { return Offset.get(); }
-void DataSegment::setOffset(std::unique_ptr<ConstantExpr> Offset_) {
+InitializerExpr *DataSegment::getOffset() const { return Offset.get(); }
+void DataSegment::setOffset(std::unique_ptr<InitializerExpr> Offset_) {
   Offset = std::move(Offset_);
 }
 
@@ -57,10 +57,10 @@ void DataSegment::setContent(std::span<const std::byte> Content_) {
   Content = std::vector<std::byte>(Content_.begin(), Content_.end());
 }
 
-void DataSegment::detach(ASTNode const *) noexcept { SABLE_UNREACHABLE(); }
+void DataSegment::detach(ASTNode const *) noexcept { utility::unreachable(); }
 /////////////////////////// ElementSegment /////////////////////////////////////
 ElementSegment::ElementSegment(
-    Module *Parent_, std::unique_ptr<ConstantExpr> Offset_,
+    Module *Parent_, std::unique_ptr<InitializerExpr> Offset_,
     std::span<Function *const> Content_)
     : ASTNode(ASTNodeKind::ElementSegment), Parent(Parent_),
       Offset(std::move(Offset_)) {
@@ -72,8 +72,8 @@ ElementSegment::~ElementSegment() noexcept {
     if (Function != nullptr) Function->remove_use(this);
 }
 
-ConstantExpr *ElementSegment::getOffset() const { return Offset.get(); }
-void ElementSegment::setOffset(std::unique_ptr<ConstantExpr> Offset_) {
+InitializerExpr *ElementSegment::getOffset() const { return Offset.get(); }
+void ElementSegment::setOffset(std::unique_ptr<InitializerExpr> Offset_) {
   Offset = std::move(Offset_);
 }
 
@@ -96,7 +96,7 @@ void ElementSegment::detach(ASTNode const *Node) noexcept {
     ranges::replace(Content, Node, nullptr);
     return;
   }
-  SABLE_UNREACHABLE();
+  utility::unreachable();
 }
 
 ///////////////////////////////// Function /////////////////////////////////////
@@ -182,7 +182,7 @@ void Memory::detach(ASTNode const *Node) noexcept {
     ranges::replace(Initializers, Node, nullptr);
     return;
   }
-  SABLE_UNREACHABLE();
+  utility::unreachable();
 }
 
 /////////////////////////////////// Table //////////////////////////////////////
@@ -212,7 +212,7 @@ void Table::detach(ASTNode const *Node) noexcept {
     ranges::replace(Initializers, Node, nullptr);
     return;
   }
-  SABLE_UNREACHABLE();
+  utility::unreachable();
 }
 
 /////////////////////////////////// Module /////////////////////////////////////
@@ -243,7 +243,7 @@ Table *Module::BuildTable(bytecode::TableType Type_) {
 }
 
 DataSegment *Module::BuildDataSegment(
-    std::unique_ptr<ConstantExpr> Offset_,
+    std::unique_ptr<InitializerExpr> Offset_,
     std::span<std::byte const> Content_) {
   auto *AllocatedDataSegment =
       new DataSegment(this, std::move(Offset_), Content_);
@@ -252,7 +252,7 @@ DataSegment *Module::BuildDataSegment(
 }
 
 ElementSegment *Module::BuildElementSegment(
-    std::unique_ptr<ConstantExpr> Offset_,
+    std::unique_ptr<InitializerExpr> Offset_,
     std::span<Function *const> Content_) {
   auto *AllocatedElementSegment =
       new ElementSegment(this, std::move(Offset_), Content_);

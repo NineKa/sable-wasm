@@ -7,11 +7,8 @@
 #define __has_builtin(x) 0
 #endif
 
-#if __has_builtin(__builtin_trap)
-#define SABLE_UNREACHABLE() __builtin_trap()
-#else
+#if !__has_builtin(__builtin_trap)
 #include <cstdlib>
-#define SABLE_UNREACHABLE() std::abort()
 #endif
 
 #if defined(__GNUC__)
@@ -27,6 +24,13 @@ constexpr std::byte operator""_byte(unsigned long long X) {
 } // namespace utility::literals
 
 namespace utility {
+[[noreturn]] inline void unreachable() {
+#if __has_builtin(__builtin_trap)
+  __builtin_trap();
+#else
+  std::abort();
+#endif
+}
 template <typename... ArgTypes> void ignore(ArgTypes &&.../* IGNORED */) {}
 
 template <typename... Ts> struct Overload : Ts... { using Ts::operator()...; };

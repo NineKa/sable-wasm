@@ -181,7 +181,7 @@ template <> struct formatter<bytecode::validation::OperandStackElement> {
       auto ID = std::get<TypeVariable>(Type).getID();
       return fmt::format_to(CTX.out(), "t{}", ID);
     }
-    SABLE_UNREACHABLE();
+    utility::unreachable();
   }
 };
 
@@ -217,7 +217,7 @@ template <> struct formatter<bytecode::validation::MalformedError> {
   case MalformedErrorKind::Name: return fmt::format_to(CTX.out(), Message);
       SABLE_VALIDATION_MALFORMED_ERROR_KINDS
 #undef X
-    default: SABLE_UNREACHABLE();
+    default: utility::unreachable();
     }
   }
 };

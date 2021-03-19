@@ -50,7 +50,7 @@ bytecode::ValueType convert(char TypeChar) {
   case 'J': return bytecode::valuetypes::I64;
   case 'F': return bytecode::valuetypes::F32;
   case 'D': return bytecode::valuetypes::F64;
-  default: SABLE_UNREACHABLE();
+  default: utility::unreachable();
   }
 }
 
@@ -60,7 +60,7 @@ bytecode::FunctionType convert(char const *TypeString) {
   bool SeenSeparator = false;
   for (char const *I = TypeString; *I != '\0'; ++I) {
     if (*I == ':') {
-      if (SeenSeparator) SABLE_UNREACHABLE();
+      if (SeenSeparator) utility::unreachable();
       SeenSeparator = true;
       continue;
     }
@@ -79,6 +79,19 @@ extern MemoryMetadata const __sable_memory_metadata;
 extern FunctionMetadata const __sable_function_metadata;
 
 void __sable_initialize(void *);
+
+void __sable_memory_guard(void *, std::uint32_t) {}
+void __sable_table_guard(void *, std::uint32_t) {}
+void *__sable_table_get(void *, std::uint32_t, char const *) { return nullptr; }
+void __sable_table_set(
+    void *Table[], std::uint32_t Offset, std::uint32_t Length, void *Ptrs[],
+    char const *TypeStrings[]) {
+  for (std::uint32_t I = 0; I < Length; ++I) {
+    Table[Offset + I] = Ptrs[I];
+    fmt::print("Table Set: {}\n", TypeStrings[I]);
+  }
+}
+void __sable_unreachable() { throw std::runtime_error("unreachable"); }
 }
 
 namespace fmt {
@@ -107,13 +120,21 @@ int main(int argc, char const *argv[]) {
   }
 
   int32_t a, b, c;
+  char memory[4096];
+  void *Table[10];
   void *Instance[20];
+  Instance[4] = memory;
+  Instance[5] = Table;
   Instance[6] = &a;
   Instance[7] = &b;
   Instance[8] = &c;
+  Instance[10] = nullptr;
   __sable_initialize(Instance);
+  fmt::print("string: {}\n", &memory[1024]);
 
   fmt::print("{}\n{}\n{}\n", a, b, c);
+  fmt::print("{}\n", fmt::ptr(Instance[10]));
+  fmt::print("{}\n", fmt::ptr(Table[0]));
 
   return 0;
 }

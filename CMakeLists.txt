@@ -7,11 +7,11 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 add_compile_options(-Wno-unused-parameter -Wall -Wextra -pedantic -Werror -Wfatal-errors)
 
-#add_compile_options($<$<CONFIG:RELEASE>:-flto>)
-#add_link_options($<$<CONFIG:RELEASE>:-flto>)
+add_compile_options($<$<CONFIG:RELEASE>:-flto>)
+add_link_options($<$<CONFIG:RELEASE>:-flto>)
 
-#add_compile_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)
-#add_link_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)
+add_compile_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)
+add_link_options($<$<CONFIG:DEBUG>:-fsanitize=undefined>)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/lib/fmt)
 add_subdirectory(${PROJECT_SOURCE_DIR}/lib/mio)
@@ -24,9 +24,9 @@ message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
-llvm_map_components_to_libnames(llvm_libs support core)
+llvm_map_components_to_libnames(llvm_libs support core target native)
 
-add_library(sablewasm SHARED
+add_library(sablewasm
         src/bytecode/Module.cc
         src/bytecode/Validation.cc
         src/mir/ASTNode.cc

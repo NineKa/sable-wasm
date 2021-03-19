@@ -20,7 +20,7 @@ class EntityLayout {
   std::vector<DataSegment *> DataSegments;
   std::vector<ElementSegment *> ElementSegments;
 
-  std::unique_ptr<ConstantExpr>
+  std::unique_ptr<InitializerExpr>
   solveInitializerExpr(bytecode::Expression const &Expr);
 
 public:

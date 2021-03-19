@@ -2,15 +2,15 @@
 
 #include "Module.h"
 
-namespace mir::constant_expr {
+namespace mir::initializer {
 Constant::Constant(std::int32_t Value)
-    : ConstantExpr(ConstantExprKind::Constant), Storage(Value) {}
+    : InitializerExpr(InitializerExprKind::Constant), Storage(Value) {}
 Constant::Constant(std::int64_t Value)
-    : ConstantExpr(ConstantExprKind::Constant), Storage(Value) {}
+    : InitializerExpr(InitializerExprKind::Constant), Storage(Value) {}
 Constant::Constant(float Value)
-    : ConstantExpr(ConstantExprKind::Constant), Storage(Value) {}
+    : InitializerExpr(InitializerExprKind::Constant), Storage(Value) {}
 Constant::Constant(double Value)
-    : ConstantExpr(ConstantExprKind::Constant), Storage(Value) {}
+    : InitializerExpr(InitializerExprKind::Constant), Storage(Value) {}
 
 std::int32_t &Constant::asI32() { return std::get<std::int32_t>(Storage); }
 std::int64_t &Constant::asI64() { return std::get<std::int64_t>(Storage); }
@@ -23,27 +23,27 @@ double Constant::asF64() const { return std::get<double>(Storage); }
 
 bytecode::ValueType Constant::getValueType() const {
   using namespace bytecode::valuetypes;
-  if (std::get<std::int32_t>(Storage)) return I32;
-  if (std::get<std::int64_t>(Storage)) return I64;
-  if (std::get<float>(Storage)) return F32;
-  if (std::get<double>(Storage)) return F64;
-  SABLE_UNREACHABLE();
+  if (std::holds_alternative<std::int32_t>(Storage)) return I32;
+  if (std::holds_alternative<std::int64_t>(Storage)) return I64;
+  if (std::holds_alternative<float>(Storage)) return F32;
+  if (std::holds_alternative<double>(Storage)) return F64;
+  utility::unreachable();
 }
 
-void Constant::detach(ASTNode const *) noexcept { SABLE_UNREACHABLE(); }
+void Constant::detach(ASTNode const *) noexcept { utility::unreachable(); }
 
-bool Constant::classof(ConstantExpr const *ConstExpr) {
-  return ConstExpr->getConstantExprKind() == ConstantExprKind::Constant;
+bool Constant::classof(InitializerExpr const *ConstExpr) {
+  return ConstExpr->getInitializerExprKind() == InitializerExprKind::Constant;
 }
 
 bool Constant::classof(ASTNode const *Node) {
-  if (ConstantExpr::classof(Node))
-    return Constant::classof(dyn_cast<ConstantExpr>(Node));
+  if (InitializerExpr::classof(Node))
+    return Constant::classof(dyn_cast<InitializerExpr>(Node));
   return false;
 }
 
 GlobalGet::GlobalGet(Global *GlobalValue_)
-    : ConstantExpr(ConstantExprKind::GlobalGet), GlobalValue() {
+    : InitializerExpr(InitializerExprKind::GlobalGet), GlobalValue() {
   setGlobalValue(GlobalValue_);
 }
 
@@ -64,16 +64,16 @@ void GlobalGet::detach(ASTNode const *Node) noexcept {
     GlobalValue = nullptr;
     return;
   }
-  SABLE_UNREACHABLE();
+  utility::unreachable();
 }
 
-bool GlobalGet::classof(ConstantExpr const *ConstExpr) {
-  return ConstExpr->getConstantExprKind() == ConstantExprKind::GlobalGet;
+bool GlobalGet::classof(InitializerExpr const *ConstExpr) {
+  return ConstExpr->getInitializerExprKind() == InitializerExprKind::GlobalGet;
 }
 
 bool GlobalGet::classof(ASTNode const *Node) {
-  if (ConstantExpr::classof(Node))
-    return GlobalGet::classof(dyn_cast<ConstantExpr>(Node));
+  if (InitializerExpr::classof(Node))
+    return GlobalGet::classof(dyn_cast<InitializerExpr>(Node));
   return false;
 }
-} // namespace mir::constant_expr
+} // namespace mir::initializer

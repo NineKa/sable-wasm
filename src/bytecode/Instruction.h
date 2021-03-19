@@ -226,7 +226,7 @@ public:
     return derived()(dyn_cast<instructions::Name>(Inst));
 #include "Instruction.defs"
 #undef X
-    default: SABLE_UNREACHABLE();
+    default: utility::unreachable();
     }
   }
 };
@@ -243,7 +243,7 @@ struct fmt::formatter<bytecode::Opcode> : fmt::formatter<char const *> {
     return NameString;
 #include "Instruction.defs"
 #undef X
-    default: SABLE_UNREACHABLE();
+    default: utility::unreachable();
     }
   }
   template <typename Context>

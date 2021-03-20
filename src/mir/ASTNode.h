@@ -48,8 +48,15 @@ public:
   using iterator = typename decltype(Uses)::iterator;
   iterator use_site_begin() { return Uses.begin(); }
   iterator use_site_end() { return Uses.end(); }
+  using const_iterator = typename decltype(Uses)::const_iterator;
+  const_iterator use_site_begin() const { return Uses.begin(); }
+  const_iterator use_site_end() const { return Uses.end(); }
 
   auto getUsedSites() {
+    return ranges::subrange(use_site_begin(), use_site_end());
+  }
+
+  auto getUsedSites() const {
     return ranges::subrange(use_site_begin(), use_site_end());
   }
 

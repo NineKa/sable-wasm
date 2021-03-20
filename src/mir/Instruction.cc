@@ -1,4 +1,5 @@
 #include "Instruction.h"
+#include "BasicBlock.h"
 #include "Module.h"
 
 #include <range/v3/algorithm/contains.hpp>
@@ -11,12 +12,16 @@
   }
 
 namespace mir {
-BasicBlock::BasicBlock(Function *Parent_)
-    : ASTNode(ASTNodeKind::BasicBlock), Parent(Parent_) {}
+bool Instruction::isPhi() const { return instructions::Phi::classof(this); }
 
-llvm::ilist<Instruction> BasicBlock::*
-BasicBlock::getSublistAccess(Instruction *) {
-  return &BasicBlock::Instructions;
+bool Instruction::isTerminatingInstruction() const {
+  switch (getInstructionKind()) {
+  case InstructionKind::Unreachable:
+  case InstructionKind::Branch:
+  case InstructionKind::BranchTable:
+  case InstructionKind::Return: return true;
+  default: return false;
+  }
 }
 } // namespace mir
 

@@ -31,8 +31,10 @@ add_library(sablewasm
         src/bytecode/Validation.cc
         src/mir/ASTNode.cc
         src/mir/Module.cc
+        src/mir/BasicBlock.cc
         src/mir/Instruction.cc
         src/mir/MIRCodegen.cc
+        src/mir/passes/IsWellformedPass.cc
         src/parser/ExprBuilderDelegate.cc
         src/parser/customsections/Name.cc
         src/codegen-llvm-instance/LLVMCodegen.cc

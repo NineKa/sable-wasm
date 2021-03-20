@@ -3,6 +3,7 @@
 
 #include "../bytecode/Module.h"
 #include "ASTNode.h"
+#include "BasicBlock.h"
 #include "Instruction.h"
 
 #include <llvm/ADT/Twine.h>

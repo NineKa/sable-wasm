@@ -28,8 +28,8 @@ int main(int argc, char const *argv[]) {
 
   mio::basic_mmap_source<std::byte> Source(
       //"../test/polybench-c-4.2.1-beta/2mm.wasm");
-      // "../test/main.wasm");
-      "../test/viu.wasm");
+      "../test/main.wasm");
+  //"../test/viu.wasm");
   parser::ByteArrayReader Reader(Source);
   parser::ModuleBuilderDelegate Delegate;
   parser::Parser Parser(Reader, Delegate);
@@ -57,9 +57,9 @@ int main(int argc, char const *argv[]) {
   ModuleTranslationTask Task(Module, M, Name);
   Task.perform();
 
-  // std::ofstream OutFile("out.mir");
-  // std::ostream_iterator<char> It(OutFile);
-  // mir::dump(It, M);
+  std::ofstream OutFile("out.mir");
+  std::ostream_iterator<char> It(OutFile);
+  mir::dump(It, M);
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
@@ -82,5 +82,5 @@ int main(int argc, char const *argv[]) {
   LM.setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
   codegen::llvm_instance::EntityLayout ELayout(M, LM);
-  // LM.print(llvm::outs(), nullptr);
+  LM.print(llvm::outs(), nullptr);
 }

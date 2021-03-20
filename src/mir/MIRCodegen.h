@@ -3,6 +3,8 @@
 
 #include "../bytecode/Module.h"
 #include "../parser/customsections/Name.h"
+#include "BasicBlock.h"
+#include "Instruction.h"
 #include "Module.h"
 
 #include <range/v3/view/zip.hpp>

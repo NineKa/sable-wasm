@@ -1,6 +1,7 @@
 #ifndef SABLE_INCLUDE_GUARD_MIR_PRINTER
 #define SABLE_INCLUDE_GUARD_MIR_PRINTER
 
+#include "BasicBlock.h"
 #include "Instruction.h"
 #include "Module.h"
 

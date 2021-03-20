@@ -9,20 +9,22 @@
 
 namespace mir::passes {
 
-class IsWellformedPassAnalaysisResult {
+class IsWellformedPassResult {
 public:
   enum class ErrorKind {
-    NullOpearnd,
+    NullOperand,
     InvalidExport,
     InvalidImport,
-    UnavailableASTNode
+    InvalidType,
+    UnavailableOperand
   };
 
 private:
   std::span<std::pair<ASTNode *, ErrorKind> const> Sites;
 
 public:
-  IsWellformedPassAnalaysisResult(std::span<ASTNode *const> Sites);
+  explicit IsWellformedPassResult(
+      std::span<std::pair<ASTNode *, ErrorKind> const> Sites);
 
   using iterator = decltype(Sites)::iterator;
   iterator begin() const { return Sites.begin(); }
@@ -35,13 +37,16 @@ public:
 };
 
 class IsWellformedModulePass {
-  using ErrorKind = IsWellformedPassAnalaysisResult::ErrorKind;
+  using ErrorKind = IsWellformedPassResult::ErrorKind;
   std::vector<std::pair<ASTNode *, ErrorKind>> Sites;
   std::unordered_set<mir::ASTNode const *> AvailableNodes;
 
+  struct CheckInitializeExprVisitor;
+  void checkInitializeExpr(InitializerExpr *Expr);
+
 public:
-  void run(mir::Module &Module);
-  using AnalysisResult = IsWellformedPassAnalaysisResult;
+  PassResult run(mir::Module &Module);
+  using AnalysisResult = IsWellformedPassResult;
   AnalysisResult getResult() const;
 
   bool has(mir::Global const &Global) const;
@@ -52,19 +57,19 @@ public:
   bool has(mir::ElementSegment const &ElementSegment) const;
 };
 
-class IsWellformedFuntionPass {
+class IsWellformedFunctionPass {
   IsWellformedModulePass const &ModulePass;
 
 public:
-  IsWellformedFuntionPass(IsWellformedModulePass const &ModulePass_);
-  void run(mir::Function &Function);
+  IsWellformedFunctionPass(IsWellformedModulePass const &ModulePass_);
+  PassResult run(mir::Function &Function);
   bool isSkipped(mir::Function const &Function);
-  using AnalysisResult = IsWellformedPassAnalaysisResult;
+  using AnalysisResult = IsWellformedPassResult;
   AnalysisResult getResult() const;
 };
 
 static_assert(module_pass<IsWellformedModulePass>);
-static_assert(function_pass<IsWellformedFuntionPass>);
+static_assert(function_pass<IsWellformedFunctionPass>);
 } // namespace mir::passes
 
 #endif

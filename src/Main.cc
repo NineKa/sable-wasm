@@ -13,6 +13,7 @@
 
 #include "codegen-llvm-instance/LLVMCodege.h"
 #include "mir/ASTNode.h"
+#include "mir/passes/IsWellformedPass.h"
 
 #include <llvm/Support/Host.h>
 #include <llvm/Support/TargetRegistry.h>
@@ -56,6 +57,11 @@ int main(int argc, char const *argv[]) {
 
   ModuleTranslationTask Task(Module, M, Name);
   Task.perform();
+
+  mir::passes::IsWellformedModulePass Checker;
+  Checker.run(M);
+  auto Result = Checker.getResult();
+  assert(Result.isWellformed());
 
   std::ofstream OutFile("out.mir");
   std::ostream_iterator<char> It(OutFile);

@@ -167,9 +167,9 @@ public:
 };
 
 template <std::output_iterator<char> Iterator>
-Iterator dumpImportInfo(Iterator Out, detail::ImportableEntity const &Entity);
+Iterator dumpImportInfo(Iterator Out, ImportableEntity const &Entity);
 template <std::output_iterator<char> Iterator>
-Iterator dumpExportInfo(Iterator Out, detail::ExportableEntity const &Entity);
+Iterator dumpExportInfo(Iterator Out, ExportableEntity const &Entity);
 
 template <std::output_iterator<char> Iterator>
 Iterator dump(

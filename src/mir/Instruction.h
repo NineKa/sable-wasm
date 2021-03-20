@@ -716,7 +716,6 @@ public:
 } // namespace mir::instructions
 
 namespace mir {
-static_assert(instruction<instructions::Unreachable>);
 template <typename Derived, typename RetType = void, bool Const = true>
 class InstVisitorBase {
   Derived &derived() { return static_cast<Derived &>(*this); }

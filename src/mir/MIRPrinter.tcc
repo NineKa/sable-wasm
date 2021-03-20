@@ -373,7 +373,7 @@ MIRIteratorWriter<Iterator>::operator<<(indent_ const &Indent_) {
 }
 
 template <std::output_iterator<char> Iterator>
-Iterator dumpImportInfo(Iterator Out, detail::ImportableEntity const &Entity) {
+Iterator dumpImportInfo(Iterator Out, ImportableEntity const &Entity) {
   assert(Entity.isImported());
   MIRIteratorWriter Writer(Out);
   auto ModuleName = Entity.getImportModuleName();
@@ -384,7 +384,7 @@ Iterator dumpImportInfo(Iterator Out, detail::ImportableEntity const &Entity) {
 }
 
 template <std::output_iterator<char> Iterator>
-Iterator dumpExportInfo(Iterator Out, detail::ExportableEntity const &Entity) {
+Iterator dumpExportInfo(Iterator Out, ExportableEntity const &Entity) {
   assert(Entity.isExported());
   MIRIteratorWriter Writer(Out);
   auto EntityName = Entity.getExportName();

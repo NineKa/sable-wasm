@@ -4,7 +4,6 @@
 #include <range/v3/algorithm/replace.hpp>
 
 namespace mir {
-namespace detail {
 bool ImportableEntity::isImported() const { return Import != nullptr; }
 
 std::string_view ImportableEntity::getImportModuleName() const {
@@ -38,7 +37,6 @@ void ExportableEntity::setExport(std::string EntityName) {
   Export = std::make_unique<ExportDescriptor>(std::move(EntityName));
 }
 
-} // namespace detail
 /////////////////////////////// DataSegment ////////////////////////////////////
 DataSegment::DataSegment(
     Module *Parent_, std::unique_ptr<InitializerExpr> Offset_,

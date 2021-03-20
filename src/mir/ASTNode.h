@@ -163,6 +163,27 @@ public:
   static bool classof(ASTNode const *Node);
 };
 } // namespace initializer
+
+template <typename Derived, typename RetType, bool Const = true>
+class InitExprVisitorBase {
+  Derived &derived() { return static_cast<Derived &>(*this); }
+  template <typename T> using Ptr = std::conditional_t<Const, T const *, T *>;
+  template <initializer_expr T> RetType castAndCall(Ptr<InitializerExpr> Expr) {
+    return derived()(dyn_cast<T>(Expr));
+  }
+
+public:
+  RetType visit(Ptr<InitializerExpr> Expr) {
+    using InitExprKind = InitializerExprKind;
+    using namespace initializer;
+    switch (Expr->getInitializerExprKind()) {
+    case InitExprKind::Constant: return castAndCall<Constant>(Expr);
+    case InitializerExprKind::GlobalGet: return castAndCall<GlobalGet>(Expr);
+    default: utility::unreachable();
+    }
+  }
+};
+
 } // namespace mir
 
 #endif

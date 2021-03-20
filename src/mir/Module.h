@@ -12,7 +12,6 @@
 
 namespace mir {
 
-namespace detail {
 using ImportDescriptor = std::pair<std::string, std::string>;
 using ExportDescriptor = std::string;
 class ImportableEntity {
@@ -35,7 +34,6 @@ public:
   std::string_view getExportName() const;
   void setExport(std::string EntityName);
 };
-} // namespace detail
 
 class DataSegment :
     public ASTNode,
@@ -98,8 +96,8 @@ public:
 
 class Function :
     public ASTNode,
-    public detail::ImportableEntity,
-    public detail::ExportableEntity,
+    public ImportableEntity,
+    public ExportableEntity,
     public llvm::ilist_node_with_parent<Function, Module> {
   Module *Parent;
   bytecode::FunctionType Type;
@@ -111,6 +109,7 @@ public:
 
   Module *getParent() const { return Parent; }
   bytecode::FunctionType const &getType() const { return Type; }
+  bool hasBody() { return !BasicBlocks.empty() || !Locals.empty(); }
 
   BasicBlock const *getEntryBasicBlock() const;
   BasicBlock *getEntryBasicBlock();
@@ -184,8 +183,8 @@ public:
 
 class Global :
     public ASTNode,
-    public detail::ImportableEntity,
-    public detail::ExportableEntity,
+    public ImportableEntity,
+    public ExportableEntity,
     public llvm::ilist_node_with_parent<Global, Module> {
   Module *Parent;
   bytecode::GlobalType Type;
@@ -195,6 +194,7 @@ public:
   Global(Module *Parent_, bytecode::GlobalType Type_);
   Module *getParent() const { return Parent; }
   bytecode::GlobalType const &getType() const { return Type; }
+  bool hasInitializer() const { return Initializer != nullptr; }
   InitializerExpr *getInitializer() const { return Initializer.get(); }
   void setInitializer(std::unique_ptr<InitializerExpr> Initializer_) {
     Initializer = std::move(Initializer_);
@@ -207,8 +207,8 @@ public:
 
 class Memory :
     public ASTNode,
-    public detail::ImportableEntity,
-    public detail::ExportableEntity,
+    public ImportableEntity,
+    public ExportableEntity,
     public llvm::ilist_node_with_parent<Memory, Module> {
   Module *Parent;
   bytecode::MemoryType Type;
@@ -237,6 +237,7 @@ public:
 
   void addInitializer(DataSegment *DataSegment_);
   void setInitializers(std::span<DataSegment *const> DataSegments_);
+  bool hasInitializer() const { return !Initializers.empty(); }
 
   void detach(ASTNode const *) noexcept override;
   static bool classof(ASTNode const *Node) {
@@ -246,8 +247,8 @@ public:
 
 class Table :
     public ASTNode,
-    public detail::ImportableEntity,
-    public detail::ExportableEntity,
+    public ImportableEntity,
+    public ExportableEntity,
     public llvm::ilist_node_with_parent<Table, Module> {
   Module *Parent;
   bytecode::TableType Type;
@@ -276,6 +277,7 @@ public:
 
   void addInitializer(ElementSegment *ElementSegment_);
   void setInitializers(std::span<ElementSegment *const> ElementSegments_);
+  bool hasInitializer() const { return !Initializers.empty(); }
 
   void detach(ASTNode const *) noexcept override;
   static bool classof(ASTNode const *Node) {

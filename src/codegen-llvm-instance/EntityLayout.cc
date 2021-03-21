@@ -84,36 +84,42 @@ void EntityLayout::setupInstanceType() {
   InstanceTy->setBody(InstanceFields);
 }
 
-// TODO: in the future, we need a better strategy handling constant offset
-//       initializer expression. Currently, due to WebAssembly validation,
-//       Constant expression, must be a constant or a GlobalGet instruction.
-llvm::Value *EntityLayout::translateInitExpr(
-    llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-    mir::InitializerExpr const &Expr) {
-  using VKind = bytecode::ValueTypeKind;
-  switch (Expr.getInitializerExprKind()) {
-  case mir::InitializerExprKind::Constant: {
-    auto *CastedPtr =
-        mir::dyn_cast<mir::initializer::Constant>(std::addressof(Expr));
-
-    switch (CastedPtr->getValueType().getKind()) {
-    case VKind::I32: return getI32Constant(CastedPtr->asI32());
-    case VKind::I64: return getI64Constant(CastedPtr->asI64());
-    case VKind::F32: return getF32Constant(CastedPtr->asF32());
-    case VKind::F64: return getF64Constant(CastedPtr->asF64());
+namespace {
+namespace detail {
+struct InitExprTranslationVisitor :
+    mir::InitExprVisitorBase<InitExprTranslationVisitor, llvm::Value *> {
+  llvm::IRBuilder<> &Builder;
+  llvm::Value *InstancePtr;
+  EntityLayout &ELayout;
+  InitExprTranslationVisitor(
+      EntityLayout &ELayout_, llvm::IRBuilder<> &Builder_,
+      llvm::Value *InstancePtr_)
+      : Builder(Builder_), InstancePtr(InstancePtr_), ELayout(ELayout_) {}
+  llvm::Value *operator()(mir::initializer::Constant const *InitExpr) {
+    using VKind = bytecode::ValueTypeKind;
+    switch (InitExpr->getValueType().getKind()) {
+    case VKind::I32: return ELayout.getI32Constant(InitExpr->asI32());
+    case VKind::I64: return ELayout.getI64Constant(InitExpr->asI64());
+    case VKind::F32: return ELayout.getF32Constant(InitExpr->asF32());
+    case VKind::F64: return ELayout.getF64Constant(InitExpr->asF64());
     default: utility::unreachable();
     }
   }
-  case mir::InitializerExprKind::GlobalGet: {
-    auto *CastedPtr =
-        mir::dyn_cast<mir::initializer::GlobalGet>(std::addressof(Expr));
-    auto *TargetGlobal = CastedPtr->getGlobalValue();
-    auto *GlobalPtr = get(Builder, InstancePtr, *TargetGlobal);
+  llvm::Value *operator()(mir::initializer::GlobalGet const *InitExpr) {
+    auto *TargetGlobal = InitExpr->getGlobalValue();
+    auto *GlobalPtr = ELayout.get(Builder, InstancePtr, *TargetGlobal);
     auto *GlobalValue = Builder.CreateLoad(GlobalPtr);
     return GlobalValue;
   }
-  default: utility::unreachable();
-  }
+};
+} // namespace detail
+} // namespace
+
+llvm::Value *EntityLayout::translateInitExpr(
+    llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+    mir::InitializerExpr const &Expr) {
+  detail::InitExprTranslationVisitor Visitor(*this, Builder, InstancePtr);
+  return Visitor.visit(std::addressof(Expr));
 }
 
 void EntityLayout::setupDataSegments() {

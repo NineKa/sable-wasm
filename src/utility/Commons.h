@@ -1,6 +1,7 @@
 #ifndef SABLE_INCLUDE_GUARD_UTILITY_COMMONS
 #define SABLE_INCLUDE_GUARD_UTILITY_COMMONS
 
+#include <chrono>
 #include <cstddef>
 
 #if !defined(__has_builtin)
@@ -35,5 +36,12 @@ template <typename... ArgTypes> void ignore(ArgTypes &&.../* IGNORED */) {}
 
 template <typename... Ts> struct Overload : Ts... { using Ts::operator()...; };
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
+
+template <typename T> auto measure(T &&Fn) {
+  auto Start = std::chrono::high_resolution_clock::now();
+  Fn();
+  auto Stop = std::chrono::high_resolution_clock::now();
+  return Stop - Start;
+}
 } // namespace utility
 #endif

@@ -29,8 +29,8 @@ int main(int argc, char const *argv[]) {
 
   mio::basic_mmap_source<std::byte> Source(
       //"../test/polybench-c-4.2.1-beta/2mm.wasm");
-      "../test/main.wasm");
-  //"../test/viu.wasm");
+      //"../test/main.wasm");
+      "../test/viu.wasm");
   parser::ByteArrayReader Reader(Source);
   parser::ModuleBuilderDelegate Delegate;
   parser::Parser Parser(Reader, Delegate);
@@ -58,14 +58,19 @@ int main(int argc, char const *argv[]) {
   ModuleTranslationTask Task(Module, M, Name);
   Task.perform();
 
-  mir::passes::IsWellformedModulePass Checker;
-  Checker.run(M);
-  auto Result = Checker.getResult();
-  assert(Result.isWellformed());
+  auto CheckFn = [&]() {
+    mir::passes::SimpleModulePassDriver<mir::passes::IsWellformedModulePass>
+        Checker;
+    if (!Checker(M).isWellformed()) utility::unreachable();
+  };
+  auto Time = utility::measure(CheckFn);
+  fmt::print(
+      "Time: {} microseconds\n",
+      std::chrono::duration_cast<std::chrono::microseconds>(Time).count());
 
-  std::ofstream OutFile("out.mir");
-  std::ostream_iterator<char> It(OutFile);
-  mir::dump(It, M);
+  // std::ofstream OutFile("out.mir");
+  // std::ostream_iterator<char> It(OutFile);
+  // mir::dump(It, M);
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
@@ -88,5 +93,5 @@ int main(int argc, char const *argv[]) {
   LM.setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
   codegen::llvm_instance::EntityLayout ELayout(M, LM);
-  LM.print(llvm::outs(), nullptr);
+  // LM.print(llvm::outs(), nullptr);
 }

@@ -35,6 +35,7 @@ add_library(sablewasm
         src/mir/Instruction.cc
         src/mir/MIRCodegen.cc
         src/mir/passes/IsWellformedPass.cc
+        src/mir/passes/ReachingDef.cc
         src/parser/ExprBuilderDelegate.cc
         src/parser/customsections/Name.cc
         src/codegen-llvm-instance/LLVMCodegen.cc

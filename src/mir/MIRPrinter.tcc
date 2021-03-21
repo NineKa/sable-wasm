@@ -639,35 +639,37 @@ Iterator dump(
   return Visitor.visit(std::addressof(Instruction_));
 }
 
-template <std::output_iterator<char> Iterator>
-Iterator dump(
-    Iterator Out, InitializerExpr const &ConstantExpr_,
-    EntityNameWriter const &ENameWriter) {
-  MIRIteratorWriter Writer(Out, ENameWriter);
-  // TODO: in the future, we need a better strategy handling constant offset
-  //       initializer expression. Currently, due to WebAssembly validation,
-  //       Constant expression, must be a constant or a GlobalGet instruction.
-  switch (ConstantExpr_.getInitializerExprKind()) {
-  case InitializerExprKind::Constant: {
-    auto *CastedPtr =
-        dyn_cast<initializer::Constant>(std::addressof(ConstantExpr_));
+namespace detail {
+template <typename Iterator>
+struct InitializerExprPrintVisitor :
+    InitExprVisitorBase<InitializerExprPrintVisitor<Iterator>, Iterator> {
+  MIRIteratorWriter<Iterator> Writer;
+  InitializerExprPrintVisitor(Iterator Out, EntityNameWriter const &ENameWriter)
+      : Writer(Out, ENameWriter) {}
+  Iterator operator()(initializer::Constant const *InitExpr) {
     using VKind = bytecode::ValueTypeKind;
-    switch (CastedPtr->getValueType().getKind()) {
-    case VKind::I32: return (Writer << "i32 " << CastedPtr->asI32()).iterator();
-    case VKind::I64: return (Writer << "i64 " << CastedPtr->asI64()).iterator();
-    case VKind::F32: return (Writer << "f32 " << CastedPtr->asF32()).iterator();
-    case VKind::F64: return (Writer << "f64 " << CastedPtr->asF64()).iterator();
+    switch (InitExpr->getValueType().getKind()) {
+    case VKind::I32: return (Writer << "i32 " << InitExpr->asI32()).iterator();
+    case VKind::I64: return (Writer << "i64 " << InitExpr->asI64()).iterator();
+    case VKind::F32: return (Writer << "f32 " << InitExpr->asF32()).iterator();
+    case VKind::F64: return (Writer << "f64 " << InitExpr->asF64()).iterator();
     default: utility::unreachable();
     }
-  }
-  case InitializerExprKind::GlobalGet: {
-    auto *CastedPtr =
-        dyn_cast<initializer::GlobalGet>(std::addressof(ConstantExpr_));
-    Writer << CastedPtr->getGlobalValue();
     return Writer.iterator();
   }
-  default: utility::unreachable();
+  Iterator operator()(initializer::GlobalGet const *InitExpr) {
+    Writer << InitExpr->getGlobalValue();
+    return Writer.iterator();
   }
+};
+} // namespace detail
+
+template <std::output_iterator<char> Iterator>
+Iterator dump(
+    Iterator Out, InitializerExpr const &InitializerExpr_,
+    EntityNameWriter const &ENameWriter) {
+  detail::InitializerExprPrintVisitor Visitor(Out, ENameWriter);
+  return Visitor.visit(std::addressof(InitializerExpr_));
 }
 
 template <std::output_iterator<char> Iterator>

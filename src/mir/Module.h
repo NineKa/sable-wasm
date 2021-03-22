@@ -109,7 +109,7 @@ public:
 
   Module *getParent() const { return Parent; }
   bytecode::FunctionType const &getType() const { return Type; }
-  bool hasBody() { return !BasicBlocks.empty() || !Locals.empty(); }
+  bool hasBody() const { return !BasicBlocks.empty() || !Locals.empty(); }
 
   BasicBlock const *getEntryBasicBlock() const;
   BasicBlock *getEntryBasicBlock();

@@ -14,7 +14,7 @@ DominatorPassResult::DominatorPassResult(
     std::shared_ptr<DominatorMap> Dominator_)
     : Dominator(std::move(Dominator_)) {}
 
-std::span<mir::BasicBlock *const>
+std::span<mir::BasicBlock const *const>
 DominatorPassResult::get(BasicBlock const &BB) const {
   auto SearchIter = Dominator->find(std::addressof(BB));
   assert(SearchIter != Dominator->end());
@@ -27,7 +27,7 @@ bool DominatorPassResult::dominate(
   return ranges::binary_search(Dom, std::addressof(V));
 }
 
-void DominatorPass::prepare(mir::Function &Function_) {
+void DominatorPass::prepare(mir::Function const &Function_) {
   using BasicBlockSet = DominatorPassResult::BasicBlockSet;
   using DominatorMap = DominatorPassResult::DominatorMap;
   assert(Function_.hasBody());
@@ -36,11 +36,11 @@ void DominatorPass::prepare(mir::Function &Function_) {
   N = std::make_unique<BasicBlockSet>();
   N->reserve(Function->getNumBasicBlock());
 
-  for (auto &BasicBlock : Function->getBasicBlocks())
+  for (auto const &BasicBlock : Function->getBasicBlocks())
     N->push_back(std::addressof(BasicBlock));
   ranges::sort(*N);
 
-  for (auto &BasicBlock : Function->getBasicBlocks()) {
+  for (auto const &BasicBlock : Function->getBasicBlocks()) {
     auto *BasicBlockPtr = std::addressof(BasicBlock);
     if (BasicBlockPtr == Function->getEntryBasicBlock()) {
       Dominator->emplace(BasicBlockPtr, BasicBlockSet{BasicBlockPtr});
@@ -52,10 +52,9 @@ void DominatorPass::prepare(mir::Function &Function_) {
 
 PassStatus DominatorPass::run() {
   bool Changed = false;
-  for (auto &BasicBlock : Function->getBasicBlocks()) {
+  for (auto const &BasicBlock : Function->getBasicBlocks()) {
     auto *BasicBlockPtr = std::addressof(BasicBlock);
     auto Predecessors = BasicBlock.getInwardFlow();
-
     auto CurDom =
         (Predecessors.empty()) ? DominatorPassResult::BasicBlockSet{} : *N;
     for (auto const *Predecessor : Predecessors) {

@@ -18,36 +18,41 @@ public:
   IsWellformedCallback &operator=(IsWellformedCallback const &) = default;
   IsWellformedCallback &operator=(IsWellformedCallback &&) noexcept = default;
   virtual ~IsWellformedCallback() noexcept = default;
-  virtual void hasNullOperand(ASTNode *Node) = 0;
-  virtual void hasInvalidType(ASTNode *Node) = 0;
-  virtual void hasInvalidImport(ImportableEntity *Node) = 0;
-  virtual void hasInvalidExport(ExportableEntity *Node) = 0;
-  virtual void referUnavailable(ASTNode *Node) = 0;
-  virtual void referNonDominating(Instruction *Node, Instruction *Operand) = 0;
-  virtual void hasInvalidOperator(Instruction *Node) = 0;
+
+  virtual void hasNullOperand(ASTNode const *Node) = 0;
+  virtual void hasInvalidType(ASTNode const *Node) = 0;
+  virtual void hasInvalidImport(ImportableEntity const *Node) = 0;
+  virtual void hasInvalidExport(ExportableEntity const *Node) = 0;
+  virtual void referUnavailable(ASTNode const *Node) = 0;
+  virtual void
+  referNonDominating(Instruction const *Node, Instruction const *Operand) = 0;
+  virtual void hasInvalidOperator(Instruction const *Node) = 0;
   virtual void referNonDominatingPhi(
-      Instruction *Node, Instruction *Value, BasicBlock *Path) = 0;
-  virtual void hasPhiAfterMerge(instructions::Phi *PhiNode) = 0;
-  virtual void appearAfterTerminatingInst(Instruction *Node) = 0;
-  virtual void missingTerminatingInst(BasicBlock *Node) = 0;
+      Instruction const *Node, Instruction const *Value,
+      BasicBlock const *Path) = 0;
+  virtual void hasPhiAfterMerge(instructions::Phi const *PhiNode) = 0;
+  virtual void appearAfterTerminatingInst(Instruction const *Node) = 0;
+  virtual void missingTerminatingInst(BasicBlock const *Node) = 0;
 };
 
 class IsWellformedCallbackTrivial : public IsWellformedCallback {
   bool IsWellformed = true;
 
 public:
-  void hasNullOperand(ASTNode *Node) override;
-  void hasInvalidType(ASTNode *Node) override;
-  void hasInvalidImport(ImportableEntity *Node) override;
-  void hasInvalidExport(ExportableEntity *Node) override;
-  void referUnavailable(ASTNode *Node) override;
-  void referNonDominating(Instruction *Node, Instruction *Operand) override;
-  void hasInvalidOperator(Instruction *Node) override;
+  void hasNullOperand(ASTNode const *Node) override;
+  void hasInvalidType(ASTNode const *Node) override;
+  void hasInvalidImport(ImportableEntity const *Node) override;
+  void hasInvalidExport(ExportableEntity const *Node) override;
+  void referUnavailable(ASTNode const *Node) override;
+  void referNonDominating(
+      Instruction const *Node, Instruction const *Operand) override;
+  void hasInvalidOperator(Instruction const *Node) override;
   void referNonDominatingPhi(
-      Instruction *Node, Instruction *Value, BasicBlock *Path) override;
-  void hasPhiAfterMerge(instructions::Phi *PhiNode) override;
-  void appearAfterTerminatingInst(Instruction *Node) override;
-  void missingTerminatingInst(BasicBlock *Node) override;
+      Instruction const *Node, Instruction const *Value,
+      BasicBlock const *Path) override;
+  void hasPhiAfterMerge(instructions::Phi const *PhiNode) override;
+  void appearAfterTerminatingInst(Instruction const *Node) override;
+  void missingTerminatingInst(BasicBlock const *Node) override;
   bool isWellformed() const { return IsWellformed; }
   operator bool() const { return IsWellformed; }
 };
@@ -57,7 +62,7 @@ class IsWellformedModulePass {
   friend class IsWellformedFunctionPass;
   std::shared_ptr<IsWellformedCallback> Callback;
   std::unique_ptr<std::vector<mir::ASTNode const *>> AvailableNodes;
-  mir::Module *Module = nullptr;
+  mir::Module const *Module = nullptr;
 
   struct CheckInitializeExprVisitor;
   void checkInitializeExpr(InitializerExpr *Expr);
@@ -67,7 +72,7 @@ public:
       std::shared_ptr<IsWellformedCallback> Callback_ =
           std::make_shared<IsWellformedCallbackTrivial>());
 
-  void prepare(mir::Module &Module_);
+  void prepare(mir::Module const &Module_);
   PassStatus run();
   void finalize();
   using AnalysisResult = IsWellformedCallback const &;
@@ -80,15 +85,15 @@ public:
   bool has(mir::DataSegment const &DataSegment) const;
   bool has(mir::ElementSegment const &ElementSegment) const;
 
-  static bool isConstantPass() { return true; }
-  static bool isSingleRunPass() { return true; }
+  static constexpr bool isConstantPass() { return true; }
+  static constexpr bool isSingleRunPass() { return true; }
 };
 
 class IsWellformedFunctionPass {
   IsWellformedModulePass const *ModulePass;
   std::shared_ptr<IsWellformedCallback> Callback;
 
-  mir::Function *Function = nullptr;
+  mir::Function const *Function = nullptr;
   std::unique_ptr<DominatorPassResult> Dominator;
   std::unique_ptr<std::vector<mir::BasicBlock const *>> AvailableBB;
   std::unique_ptr<std::vector<mir::Local const *>> AvailableLocal;
@@ -97,7 +102,7 @@ class IsWellformedFunctionPass {
 
 public:
   explicit IsWellformedFunctionPass(IsWellformedModulePass const &ModulePass_);
-  void prepare(mir::Function &Function_);
+  void prepare(mir::Function const &Function_);
   PassStatus run();
   void finalize();
   bool isSkipped(mir::Function const &) { return false; }
@@ -107,12 +112,16 @@ public:
   bool has(mir::BasicBlock const &BasicBlock) const;
   bool has(mir::Local const &Local) const;
 
-  static bool isConstantPass() { return true; }
-  static bool isSingleRunPass() { return true; }
+  static bool constexpr isConstantPass() { return true; }
+  static bool constexpr isSingleRunPass() { return true; }
 };
 
 static_assert(module_pass<IsWellformedModulePass>);
 static_assert(function_pass<IsWellformedFunctionPass>);
 } // namespace mir::passes
+
+namespace mir {
+bool validate(mir::Module const &Module);
+} // namespace mir
 
 #endif

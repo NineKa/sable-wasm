@@ -11,30 +11,39 @@ enum class PassStatus { Converged, InProgress };
 
 // clang-format off
 template <typename T> concept function_pass = requires(T Pass) {
-  { Pass.prepare(std::declval<mir::Function &>()) };
+  { T::isConstantPass()  } -> std::convertible_to<bool>;
+  { T::isSingleRunPass() } -> std::convertible_to<bool>;
+  { Pass.prepare(std::declval<std::conditional_t<
+      T::isConstantPass(), 
+      mir::Function const &, 
+      mir::Function &>>()) };
   { Pass.run() } -> std::convertible_to<PassStatus>;
   { Pass.finalize() };
-  { Pass.isSkipped(std::declval<mir::Function &>()) } 
+  { Pass.isSkipped(std::declval<mir::Function const &>()) } 
   -> std::convertible_to<bool>;
   typename T::AnalysisResult;
   { Pass.getResult() } ->std::convertible_to<typename T::AnalysisResult>;
-  { T::isConstantPass()  } -> std::convertible_to<bool>;
-  { T::isSingleRunPass() } -> std::convertible_to<bool>;
+
 };
 
 template<typename T> concept module_pass = requires(T Pass) {
-  { Pass.prepare(std::declval<mir::Module &>()) };
+  { T::isConstantPass()  } -> std::convertible_to<bool>;
+  { T::isSingleRunPass() } -> std::convertible_to<bool>;
+  { Pass.prepare(std::declval<std::conditional_t<
+      T::isConstantPass(), 
+      mir::Module const &, 
+      mir::Module &>>()) };
   { Pass.run() } -> std::convertible_to<PassStatus>;
   { Pass.finalize() };
   typename T::AnalysisResult;
   { Pass.getResult() } -> std::convertible_to<typename T::AnalysisResult>;
-  { T::isConstantPass()  } -> std::convertible_to<bool>;
-  { T::isSingleRunPass() } -> std::convertible_to<bool>;
 };
 // clang-format on
 
 template <module_pass T> struct SimpleModulePassDriver {
   T Pass;
+  using ArgType = std::conditional_t<
+      T::isConstantPass(), mir::Module const &, mir::Module &>;
 
 public:
   using AnalysisResult = typename T::AnalysisResult;
@@ -44,7 +53,7 @@ public:
   explicit SimpleModulePassDriver(ArgTypes &&...Args)
       : Pass(std::forward<ArgTypes>(Args)...) {}
 
-  typename T::AnalysisResult operator()(mir::Module &Module) {
+  typename T::AnalysisResult operator()(ArgType Module) {
     Pass.prepare(Module);
     while (Pass.run() != PassStatus::Converged) {}
     Pass.finalize();
@@ -54,6 +63,8 @@ public:
 
 template <function_pass T> struct SimpleFunctionPassDriver {
   T Pass;
+  using ArgType = std::conditional_t<
+      T::isConstantPass(), mir::Function const &, mir::Function &>;
 
 public:
   using AnalysisResult = typename T::AnalysisResult;
@@ -63,7 +74,7 @@ public:
   explicit SimpleFunctionPassDriver(ArgTypes &&...Args)
       : Pass(std::forward<ArgTypes>(Args)...) {}
 
-  typename T::AnalysisResult operator()(mir::Function &Function) {
+  typename T::AnalysisResult operator()(ArgType Function) {
     Pass.prepare(Function);
     while (Pass.run() != PassStatus::Converged) {}
     Pass.finalize();

@@ -13,7 +13,7 @@ namespace mir::passes {
 
 class DominatorPassResult {
 public:
-  using BasicBlockSet = std::vector<mir::BasicBlock *>;
+  using BasicBlockSet = std::vector<mir::BasicBlock const *>;
   using DominatorMap =
       std::unordered_map<mir::BasicBlock const *, BasicBlockSet>;
 
@@ -22,25 +22,25 @@ private:
 
 public:
   explicit DominatorPassResult(std::shared_ptr<DominatorMap> Dominator_);
-  std::span<mir::BasicBlock *const> get(mir::BasicBlock const &BB) const;
+  std::span<mir::BasicBlock const *const> get(mir::BasicBlock const &BB) const;
   bool dominate(mir::BasicBlock const &V, mir::BasicBlock const &U) const;
 };
 
 class DominatorPass {
   std::shared_ptr<DominatorPassResult::DominatorMap> Dominator;
   std::unique_ptr<DominatorPassResult::BasicBlockSet> N;
-  mir::Function *Function;
+  mir::Function const *Function;
 
 public:
-  void prepare(mir::Function &Function_);
+  void prepare(mir::Function const &Function_);
   PassStatus run();
   void finalize();
 
   using AnalysisResult = DominatorPassResult;
   AnalysisResult getResult() const;
 
-  static bool isConstantPass() { return true; }
-  static bool isSingleRunPass() { return false; }
+  static constexpr bool isConstantPass() { return true; }
+  static constexpr bool isSingleRunPass() { return false; }
   bool isSkipped(mir::Function const &) { return false; }
 };
 

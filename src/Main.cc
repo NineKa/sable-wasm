@@ -79,12 +79,7 @@ int main(int argc, char const *argv[]) {
       duration_cast<milliseconds>(TranslationTime).count());
 
   auto MIRValidationTime = utility::measure([&]() {
-    mir::passes::SimpleModulePassDriver<mir::passes::IsWellformedModulePass>
-        Checker;
-    auto &Result =
-        static_cast<mir::passes::IsWellformedCallbackTrivial const &>(
-            Checker(M));
-    if (!Result.isWellformed()) utility::unreachable();
+    if (!mir::validate(M)) utility::unreachable();
   });
   fmt::print(
       "MIR Validation Time: {} milliseconds\n",

@@ -37,6 +37,7 @@ void BasicBlock::splice(
 }
 
 void BasicBlock::splice(iterator Pos, pointer InstPtr) {
+  InstPtr->Parent = this;
   auto &BasicBlock = *InstPtr->getParent();
   Instructions.splice(Pos, BasicBlock.Instructions, InstPtr);
 }

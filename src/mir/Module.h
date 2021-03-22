@@ -113,6 +113,7 @@ public:
 
   BasicBlock const *getEntryBasicBlock() const;
   BasicBlock *getEntryBasicBlock();
+  std::size_t getNumBasicBlock() const { return BasicBlocks.size(); }
 
   using bb_iterator = decltype(BasicBlocks)::iterator;
   using bb_const_iterator = decltype(BasicBlocks)::const_iterator;

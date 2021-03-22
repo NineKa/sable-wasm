@@ -1,5 +1,6 @@
-#include "IsWellformedPass.h"
+#include "IsWellformed.h"
 #include "../../bytecode/Validation.h"
+#include "Dominator.h"
 
 #include <iterator>
 #include <memory>
@@ -194,17 +195,16 @@ IsWellformedFunctionPass::IsWellformedFunctionPass(
 
 void IsWellformedFunctionPass::prepare(mir::Function &Function_) {
   Function = std::addressof(Function_);
-  SimpleFunctionPassDriver<ReachingDefPass> Driver;
-  using T = decltype(Driver)::AnalysisResult;
-  ReachingDef = std::make_unique<T>(Driver(*Function));
   Sites = std::make_shared<SiteVector>();
+  SimpleFunctionPassDriver<DominatorPass> Driver;
+  Dominator = std::make_unique<DominatorPassResult>(Driver(Function_));
 }
 
 PassStatus IsWellformedFunctionPass::run() { return PassStatus::Converged; }
 
 void IsWellformedFunctionPass::finalize() {
   Function = nullptr;
-  ReachingDef = nullptr;
+  Dominator = nullptr;
 }
 
 IsWellformedFunctionPass::AnalysisResult

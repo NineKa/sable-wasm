@@ -1,8 +1,8 @@
 #ifndef SABLE_INCLUDE_GUARD_MIR_PASSES_IS_WELLFORMED_PASS
 #define SABLE_INCLUDE_GUARD_MIR_PASSES_IS_WELLFORMED_PASS
 
+#include "Dominator.h"
 #include "Pass.h"
-#include "ReachingDef.h"
 
 #include <memory>
 #include <span>
@@ -70,10 +70,11 @@ public:
 class IsWellformedFunctionPass {
   IsWellformedModulePass const *ModulePass;
   mir::Function *Function = nullptr;
-  std::unique_ptr<ReachingDefPassResult> ReachingDef = nullptr;
+
   using ErrorKind = IsWellformedPassResult::ErrorKind;
   using SiteVector = std::vector<std::pair<ASTNode *, ErrorKind>>;
   std::shared_ptr<SiteVector> Sites;
+  std::unique_ptr<DominatorPassResult> Dominator;
 
   void addSite(ASTNode *Ptr, ErrorKind Reason);
 

@@ -13,7 +13,7 @@
 
 #include "codegen-llvm-instance/LLVMCodege.h"
 #include "mir/ASTNode.h"
-#include "mir/passes/IsWellformedPass.h"
+#include "mir/passes/IsWellformed.h"
 
 #include <llvm/Support/Host.h>
 #include <llvm/Support/TargetRegistry.h>
@@ -65,8 +65,8 @@ int main(int argc, char const *argv[]) {
   };
   auto Time = utility::measure(CheckFn);
   fmt::print(
-      "Time: {} microseconds\n",
-      std::chrono::duration_cast<std::chrono::microseconds>(Time).count());
+      "Time: {} milliseconds\n",
+      std::chrono::duration_cast<std::chrono::milliseconds>(Time).count());
 
   // std::ofstream OutFile("out.mir");
   // std::ostream_iterator<char> It(OutFile);

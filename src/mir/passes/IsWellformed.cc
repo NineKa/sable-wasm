@@ -5,32 +5,61 @@
 #include <iterator>
 #include <memory>
 
+#include <range/v3/algorithm/binary_search.hpp>
 #include <range/v3/algorithm/copy.hpp>
 #include <range/v3/algorithm/find_if.hpp>
+#include <range/v3/algorithm/sort.hpp>
 
 namespace mir::passes {
+
 // clang-format off
-bool IsWellformedModulePass::has(mir::Global const &Global) const 
-{ return AvailableNodes->contains(std::addressof(Global)); }
-bool IsWellformedModulePass::has(mir::Memory const &Memory) const 
-{ return AvailableNodes->contains(std::addressof(Memory)); }
-bool IsWellformedModulePass::has(mir::Table const &Table) const 
-{ return AvailableNodes->contains(std::addressof(Table)); }
-bool IsWellformedModulePass::has(mir::Function const &Function) const 
-{ return AvailableNodes->contains(std::addressof(Function)); }
-bool IsWellformedModulePass::has(mir::DataSegment const &Data) const
-{ return AvailableNodes->contains(std::addressof(Data)); }
-bool IsWellformedModulePass::has(mir::ElementSegment const &Element) const
-{ return AvailableNodes->contains(std::addressof(Element)); }
+void IsWellformedCallbackTrivial::hasNullOperand(ASTNode *) 
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::hasInvalidType(ASTNode *) 
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::hasInvalidImport(ImportableEntity *) 
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::hasInvalidExport(ExportableEntity *) 
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::referUnavailable(ASTNode *) 
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::referNonDominating
+(Instruction *, Instruction *) 
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::hasInvalidOperator(Instruction *)
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::referNonDominatingPhi
+(Instruction *, Instruction *, BasicBlock *)
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::hasPhiAfterMerge(instructions::Phi *)
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::appearAfterTerminatingInst(Instruction *)
+{ IsWellformed = false; }
+void IsWellformedCallbackTrivial::missingTerminatingInst(BasicBlock *)
+{ IsWellformed = false; }
 // clang-format on
 
-IsWellformedPassResult::IsWellformedPassResult(
-    std::shared_ptr<SiteVector> Sites_)
-    : Sites(std::move(Sites_)) {}
+IsWellformedModulePass::IsWellformedModulePass(
+    std::shared_ptr<IsWellformedCallback> Callback_)
+    : Callback(std::move(Callback_)) {}
+
+// clang-format off
+bool IsWellformedModulePass::has(mir::Global const &Global) const 
+{ return ranges::binary_search(*AvailableNodes, std::addressof(Global)); }
+bool IsWellformedModulePass::has(mir::Memory const &Memory) const 
+{ return ranges::binary_search(*AvailableNodes, std::addressof(Memory)); }
+bool IsWellformedModulePass::has(mir::Table const &Table) const 
+{ return ranges::binary_search(*AvailableNodes, std::addressof(Table)); }
+bool IsWellformedModulePass::has(mir::Function const &Function) const 
+{ return ranges::binary_search(*AvailableNodes, std::addressof(Function)); }
+bool IsWellformedModulePass::has(mir::DataSegment const &Data) const
+{ return ranges::binary_search(*AvailableNodes, std::addressof(Data)); }
+bool IsWellformedModulePass::has(mir::ElementSegment const &Element) const
+{ return ranges::binary_search(*AvailableNodes, std::addressof(Element)); }
+// clang-format on
 
 struct IsWellformedModulePass::CheckInitializeExprVisitor :
     InitExprVisitorBase<CheckInitializeExprVisitor, void, false> {
-  using ErrorKind = IsWellformedPassResult::ErrorKind;
   IsWellformedModulePass &ModulePass;
 
 public:
@@ -39,9 +68,9 @@ public:
   void operator()(initializer::Constant *) { return; }
   void operator()(initializer::GlobalGet *InitInst) {
     auto const *Target = InitInst->getGlobalValue();
-    if (Target == nullptr) ModulePass.addSite(InitInst, ErrorKind::NullOperand);
-    if ((Target != nullptr) && !ModulePass.has(*Target))
-      ModulePass.addSite(InitInst, ErrorKind::UnavailableOperand);
+    if (!Target) ModulePass.Callback->hasNullOperand(InitInst);
+    if (Target && !ModulePass.has(*Target))
+      ModulePass.Callback->referUnavailable(InitInst);
   }
 };
 
@@ -50,37 +79,29 @@ void IsWellformedModulePass::checkInitializeExpr(InitializerExpr *Expr) {
   Visitor.visit(Expr);
 }
 
-void IsWellformedModulePass::addSite(ASTNode *Ptr, ErrorKind Reason) {
-  auto SearchIter =
-      ranges::find_if(*Sites, [=](std::pair<ASTNode *, ErrorKind> SitePair) {
-        return std::get<0>(SitePair) == Ptr;
-      });
-  if (SearchIter == Sites->end()) Sites->emplace_back(Ptr, Reason);
-}
-
 namespace {
 namespace detail {
 template <typename T>
-class AddrEmplaceIterator :
+class AddrBackInserter :
     public std::iterator<std::output_iterator_tag, typename T::value_type> {
   T *Container;
 
 public:
   using container_type = T;
-  AddrEmplaceIterator() = default;
-  AddrEmplaceIterator(AddrEmplaceIterator const &) = default;
-  AddrEmplaceIterator(AddrEmplaceIterator &&) noexcept = default;
-  AddrEmplaceIterator &operator=(AddrEmplaceIterator const &) = default;
-  AddrEmplaceIterator &operator=(AddrEmplaceIterator &&) noexcept = default;
-  ~AddrEmplaceIterator() noexcept = default;
-  explicit AddrEmplaceIterator(T &Container_)
+  AddrBackInserter() = default;
+  AddrBackInserter(AddrBackInserter const &) = default;
+  AddrBackInserter(AddrBackInserter &&) noexcept = default;
+  AddrBackInserter &operator=(AddrBackInserter const &) = default;
+  AddrBackInserter &operator=(AddrBackInserter &&) noexcept = default;
+  ~AddrBackInserter() noexcept = default;
+  explicit AddrBackInserter(T &Container_)
       : Container(std::addressof(Container_)) {}
 
-  AddrEmplaceIterator &operator*() { return *this; }
-  AddrEmplaceIterator &operator++() { return *this; }
-  AddrEmplaceIterator &operator++(int) { return *this; }
-  template <typename U> AddrEmplaceIterator &operator=(U &&Arg) {
-    Container->emplace(std::addressof(Arg));
+  AddrBackInserter &operator*() { return *this; }
+  AddrBackInserter &operator++() { return *this; }
+  AddrBackInserter &operator++(int) { return *this; }
+  template <typename U> AddrBackInserter &operator=(U &&Arg) {
+    Container->push_back(std::addressof(Arg));
     return *this;
   }
 };
@@ -88,70 +109,70 @@ public:
 } // namespace
 void IsWellformedModulePass::prepare(mir::Module &Module_) {
   Module = std::addressof(Module_);
-  Sites = std::make_shared<SiteVector>();
-  AvailableNodes = std::make_unique<std::unordered_set<mir::ASTNode const *>>();
-  detail::AddrEmplaceIterator Iterator(*AvailableNodes);
+  AvailableNodes = std::make_unique<std::vector<mir::ASTNode const *>>();
+  detail::AddrBackInserter Iterator(*AvailableNodes);
   ranges::copy(Module->getMemories(), Iterator);
   ranges::copy(Module->getTables(), Iterator);
   ranges::copy(Module->getGlobals(), Iterator);
   ranges::copy(Module->getFunctions(), Iterator);
   ranges::copy(Module->getData(), Iterator);
   ranges::copy(Module->getElements(), Iterator);
+  ranges::sort(*AvailableNodes);
 }
 
 PassStatus IsWellformedModulePass::run() {
   for (auto &Memory : Module->getMemories()) {
     auto *MemoryPtr = std::addressof(Memory);
     for (auto const *Initializer : Memory.getInitializers()) {
-      if (Initializer == nullptr) addSite(MemoryPtr, ErrorKind::NullOperand);
-      if ((Initializer != nullptr) && !has(*Initializer))
-        addSite(MemoryPtr, ErrorKind::UnavailableOperand);
+      if (!Initializer) Callback->hasNullOperand(MemoryPtr);
+      if (Initializer && !has(*Initializer))
+        Callback->referUnavailable(MemoryPtr);
       if (!bytecode::validation::validate(Memory.getType()))
-        addSite(MemoryPtr, ErrorKind::InvalidType);
+        Callback->hasInvalidType(MemoryPtr);
     }
   }
 
   for (auto &Table : Module->getTables()) {
     auto *TablePtr = std::addressof(Table);
     for (auto const *Initializer : Table.getInitializers()) {
-      if (Initializer == nullptr) addSite(TablePtr, ErrorKind::NullOperand);
-      if ((Initializer != nullptr) && !has(*Initializer))
-        addSite(TablePtr, ErrorKind::UnavailableOperand);
+      if (!Initializer) Callback->hasNullOperand(TablePtr);
+      if (Initializer && !has(*Initializer))
+        Callback->referUnavailable(TablePtr);
       if (!bytecode::validation::validate(Table.getType()))
-        addSite(TablePtr, ErrorKind::InvalidType);
+        Callback->hasInvalidType(TablePtr);
     }
   }
 
   for (auto &Global : Module->getGlobals()) {
     auto *GlobalPtr = std::addressof(Global);
     if (Global.isImported() && Global.hasInitializer())
-      addSite(GlobalPtr, ErrorKind::InvalidImport);
+      Callback->hasInvalidImport(GlobalPtr);
     if (Global.isExported() &&
         !(Global.isImported() || Global.hasInitializer()))
-      addSite(GlobalPtr, ErrorKind::InvalidExport);
+      Callback->hasInvalidExport(GlobalPtr);
     if (Global.hasInitializer()) checkInitializeExpr(Global.getInitializer());
     if (!bytecode::validation::validate(Global.getType()))
-      addSite(GlobalPtr, ErrorKind::InvalidType);
+      Callback->hasInvalidType(GlobalPtr);
   }
 
   for (auto &Function : Module->getFunctions()) {
     auto *FunctionPtr = std::addressof(Function);
     if (Function.isImported() && Function.hasBody())
-      addSite(FunctionPtr, ErrorKind::InvalidImport);
+      Callback->hasInvalidImport(FunctionPtr);
     if (Function.isExported() && !(Function.isImported() || Function.hasBody()))
-      addSite(FunctionPtr, ErrorKind::InvalidExport);
+      Callback->hasInvalidExport(FunctionPtr);
     if (!bytecode::validation::validate(Function.getType()))
-      addSite(FunctionPtr, ErrorKind::InvalidType);
+      Callback->hasInvalidType(FunctionPtr);
     if (!Function.isImported()) {
       SimpleFunctionPassDriver<IsWellformedFunctionPass> Driver(*this);
-      ranges::copy(Driver(Function), std::back_inserter(*Sites));
+      Driver(Function);
     }
   }
 
   for (auto &Data : Module->getData()) {
     auto *DataPtr = std::addressof(Data);
-    if (DataPtr->getOffset() == nullptr) {
-      addSite(DataPtr, ErrorKind::NullOperand);
+    if (!DataPtr->getOffset()) {
+      Callback->hasNullOperand(DataPtr);
     } else {
       checkInitializeExpr(Data.getOffset());
     }
@@ -159,15 +180,15 @@ PassStatus IsWellformedModulePass::run() {
 
   for (auto &Element : Module->getElements()) {
     auto *ElementPtr = std::addressof(Element);
-    if (ElementPtr->getOffset() == nullptr) {
-      addSite(ElementPtr, ErrorKind::NullOperand);
+    if (!ElementPtr->getOffset()) {
+      Callback->hasNullOperand(ElementPtr);
     } else {
       checkInitializeExpr(Element.getOffset());
     }
     for (auto const *FunctionPtr : Element.getContent()) {
-      if (FunctionPtr == nullptr) addSite(ElementPtr, ErrorKind::NullOperand);
-      if ((FunctionPtr != nullptr) && !has(*FunctionPtr))
-        addSite(ElementPtr, ErrorKind::UnavailableOperand);
+      if (!FunctionPtr) Callback->hasNullOperand(ElementPtr);
+      if (FunctionPtr && !has(*FunctionPtr))
+        Callback->referUnavailable(ElementPtr);
     }
   }
 
@@ -178,38 +199,446 @@ void IsWellformedModulePass::finalize() { AvailableNodes = nullptr; }
 
 IsWellformedModulePass::AnalysisResult
 IsWellformedModulePass::getResult() const {
-  return IsWellformedPassResult(Sites);
-}
-
-void IsWellformedFunctionPass::addSite(ASTNode *Ptr, ErrorKind Reason) {
-  auto SearchIter =
-      ranges::find_if(*Sites, [=](std::pair<ASTNode *, ErrorKind> SitePair) {
-        return std::get<0>(SitePair) == Ptr;
-      });
-  if (SearchIter == Sites->end()) Sites->emplace_back(Ptr, Reason);
+  return *Callback;
 }
 
 IsWellformedFunctionPass::IsWellformedFunctionPass(
     IsWellformedModulePass const &ModulePass_)
-    : ModulePass(std::addressof(ModulePass_)) {}
+    : ModulePass(std::addressof(ModulePass_)), Callback(ModulePass_.Callback) {}
 
 void IsWellformedFunctionPass::prepare(mir::Function &Function_) {
   Function = std::addressof(Function_);
-  Sites = std::make_shared<SiteVector>();
   SimpleFunctionPassDriver<DominatorPass> Driver;
   Dominator = std::make_unique<DominatorPassResult>(Driver(Function_));
+  AvailableBB = std::make_unique<std::vector<mir::BasicBlock const *>>();
+  AvailableBB->reserve(Function->getNumBasicBlock());
+  for (auto const &BasicBlock : Function->getBasicBlocks())
+    AvailableBB->push_back(std::addressof(BasicBlock));
+  ranges::sort(*AvailableBB);
+  AvailableLocal = std::make_unique<std::vector<mir::Local const *>>();
+  AvailableLocal->reserve(Function->getNumLocal());
+  for (auto const &Local : Function->getLocals())
+    AvailableLocal->push_back(std::addressof(Local));
+  ranges::sort(*AvailableLocal);
 }
 
-PassStatus IsWellformedFunctionPass::run() { return PassStatus::Converged; }
+struct IsWellformedFunctionPass::CheckInstVisitor :
+    mir::InstVisitorBase<CheckInstVisitor, void, false> {
+  IsWellformedFunctionPass &FunctionPass;
+
+  bool isAvailableInst(
+      mir::Instruction const *Inst, mir::Instruction const *Operand) {
+    if (Inst->getParent() == Operand->getParent()) {
+      auto const *Parent = Inst->getParent();
+      auto SearchIter = ranges::find_if(
+          Parent->begin(), Inst->getIterator(),
+          [=](mir::Instruction const &Operand_) {
+            return std::addressof(Operand_) == Operand;
+          });
+      if (SearchIter == Inst->getIterator()) return false;
+    } else {
+      auto const &OperandBB = *Operand->getParent();
+      auto const &InstBB = *Inst->getParent();
+      if (!FunctionPass.Dominator->dominate(OperandBB, InstBB)) return false;
+    }
+    return true;
+  }
+
+  bool
+  isAvailablePhi(mir::Instruction const *Value, mir::BasicBlock const *Path) {
+    auto const *ValueBB = Value->getParent();
+    return FunctionPass.Dominator->dominate(*ValueBB, *Path);
+  }
+
+  IsWellformedCallback &callback() { return *FunctionPass.Callback; }
+  // clang-format off
+  bool has(mir::Global const &Global) const 
+  { return FunctionPass.ModulePass->has(Global); }
+  bool has(mir::Memory const &Memory) const 
+  { return FunctionPass.ModulePass->has(Memory); }
+  bool has(mir::Table const &Table) const 
+  { return FunctionPass.ModulePass->has(Table); }
+  bool has(mir::Function const &Function) const 
+  { return FunctionPass.ModulePass->has(Function); }
+  bool has(mir::DataSegment const &DataSegment) const 
+  { return FunctionPass.ModulePass->has(DataSegment); }
+  bool has(mir::ElementSegment const &ElementSegment) const 
+  { return FunctionPass.ModulePass->has(ElementSegment); }
+  bool has(mir::BasicBlock const &BasicBlock) const
+  { return FunctionPass.has(BasicBlock); }
+  bool has(mir::Local const &Local) const
+  { return FunctionPass.has(Local); }
+  // clang-format on
+
+public:
+  CheckInstVisitor(IsWellformedFunctionPass &FunctionPass_)
+      : FunctionPass(FunctionPass_) {}
+
+  void operator()(mir::instructions::Unreachable *) { return; }
+
+  void operator()(mir::instructions::Branch *Inst) {
+    if (!Inst->getTarget()) callback().hasNullOperand(Inst);
+
+    if (Inst->getCondition() && !Inst->getFalseTarget())
+      callback().hasNullOperand(Inst);
+    if (Inst->getFalseTarget() && !Inst->getCondition())
+      callback().hasNullOperand(Inst);
+
+    if (Inst->getCondition() && !isAvailableInst(Inst, Inst->getCondition()))
+      callback().referNonDominating(Inst, Inst->getCondition());
+    if (Inst->getFalseTarget() && !has(*Inst->getFalseTarget()))
+      callback().referUnavailable(Inst);
+    if (Inst->getTarget() && !has(*Inst->getTarget()))
+      callback().referUnavailable(Inst);
+  }
+
+  void operator()(mir::instructions::BranchTable *Inst) {
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+    if (!Inst->getDefaultTarget()) callback().hasNullOperand(Inst);
+    if (Inst->getDefaultTarget() && !has(*Inst->getDefaultTarget()))
+      callback().referUnavailable(Inst);
+    for (auto const *Target : Inst->getTargets()) {
+      if (!Target) callback().hasNullOperand(Inst);
+      if (Target && !has(*Target)) callback().referUnavailable(Inst);
+    }
+  }
+
+  void operator()(mir::instructions::Return *Inst) {
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+  }
+
+  void operator()(mir::instructions::Call *Inst) {
+    if (!Inst->getTarget()) callback().hasNullOperand(Inst);
+    if (Inst->getTarget() && !has(*Inst->getTarget()))
+      callback().referUnavailable(Inst);
+    for (auto *Argument : Inst->getArguments()) {
+      if (!Argument) callback().hasNullOperand(Inst);
+      if (Argument && !isAvailableInst(Inst, Argument))
+        callback().referNonDominating(Inst, Argument);
+    }
+  }
+
+  void operator()(mir::instructions::CallIndirect *Inst) {
+    if (!Inst->getIndirectTable()) callback().hasNullOperand(Inst);
+    if (Inst->getIndirectTable() && !has(*Inst->getIndirectTable()))
+      callback().referUnavailable(Inst);
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+    if (!bytecode::validation::validate(Inst->getExpectType()))
+      callback().hasInvalidType(Inst);
+    for (auto *Argument : Inst->getArguments()) {
+      if (!Argument) callback().hasNullOperand(Inst);
+      if (Argument && !isAvailableInst(Inst, Argument))
+        callback().referNonDominating(Inst, Argument);
+    }
+  }
+
+  void operator()(mir::instructions::Select *Inst) {
+    if (!Inst->getCondition()) callback().hasNullOperand(Inst);
+    if (Inst->getCondition() && !isAvailableInst(Inst, Inst->getCondition()))
+      callback().referNonDominating(Inst, Inst->getCondition());
+    if (!Inst->getTrue()) callback().hasNullOperand(Inst);
+    if (Inst->getTrue() && !isAvailableInst(Inst, Inst->getTrue()))
+      callback().referNonDominating(Inst, Inst->getTrue());
+    if (!Inst->getFalse()) callback().hasNullOperand(Inst);
+    if (Inst->getFalse() && !isAvailableInst(Inst, Inst->getFalse()))
+      callback().referNonDominating(Inst, Inst->getFalse());
+  }
+
+  void operator()(mir::instructions::LocalGet *Inst) {
+    if (!Inst->getTarget()) callback().hasNullOperand(Inst);
+    if (Inst->getTarget() && !has(*Inst->getTarget()))
+      callback().referUnavailable(Inst);
+  }
+
+  void operator()(mir::instructions::LocalSet *Inst) {
+    if (!Inst->getTarget()) callback().hasNullOperand(Inst);
+    if (Inst->getTarget() && !has(*Inst->getTarget()))
+      callback().referUnavailable(Inst);
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+  }
+
+  void operator()(mir::instructions::GlobalGet *Inst) {
+    if (!Inst->getTarget()) callback().hasNullOperand(Inst);
+    if (Inst->getTarget() && !has(*Inst->getTarget()))
+      callback().referUnavailable(Inst);
+  }
+
+  void operator()(mir::instructions::GlobalSet *Inst) {
+    if (!Inst->getTarget()) callback().hasNullOperand(Inst);
+    if (Inst->getTarget() && !has(*Inst->getTarget()))
+      callback().referUnavailable(Inst);
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+  }
+
+  void operator()(mir::instructions::Constant *) { return; }
+
+  bool validate(mir::instructions::IntUnaryOperator const &Operator) {
+    using UnaryOperator = mir::instructions::IntUnaryOperator;
+    switch (Operator) {
+    case UnaryOperator::Eqz:
+    case UnaryOperator::Clz:
+    case UnaryOperator::Ctz:
+    case UnaryOperator::Popcnt: return true;
+    default: return false;
+    }
+  }
+
+  void operator()(mir::instructions::IntUnaryOp *Inst) {
+    if (!validate(Inst->getOperator())) callback().hasInvalidOperator(Inst);
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+  }
+
+  bool validate(mir::instructions::IntBinaryOperator const &Operator) {
+    using BinaryOperator = mir::instructions::IntBinaryOperator;
+    switch (Operator) {
+    case BinaryOperator::Eq:
+    case BinaryOperator::Ne:
+    case BinaryOperator::LtS:
+    case BinaryOperator::LtU:
+    case BinaryOperator::GtS:
+    case BinaryOperator::GtU:
+    case BinaryOperator::LeS:
+    case BinaryOperator::LeU:
+    case BinaryOperator::GeS:
+    case BinaryOperator::GeU:
+    case BinaryOperator::Add:
+    case BinaryOperator::Sub:
+    case BinaryOperator::Mul:
+    case BinaryOperator::DivS:
+    case BinaryOperator::DivU:
+    case BinaryOperator::RemS:
+    case BinaryOperator::RemU:
+    case BinaryOperator::And:
+    case BinaryOperator::Or:
+    case BinaryOperator::Xor:
+    case BinaryOperator::Shl:
+    case BinaryOperator::ShrS:
+    case BinaryOperator::ShrU:
+    case BinaryOperator::Rotl:
+    case BinaryOperator::Rotr: return true;
+    default: return false;
+    }
+  }
+
+  void operator()(mir::instructions::IntBinaryOp *Inst) {
+    if (!validate(Inst->getOperator())) callback().hasInvalidOperator(Inst);
+    if (!Inst->getLHS()) callback().hasNullOperand(Inst);
+    if (!Inst->getRHS()) callback().hasNullOperand(Inst);
+    if (Inst->getLHS() && !isAvailableInst(Inst, Inst->getLHS()))
+      callback().referNonDominating(Inst, Inst->getLHS());
+    if (Inst->getRHS() && !isAvailableInst(Inst, Inst->getRHS()))
+      callback().referNonDominating(Inst, Inst->getRHS());
+  }
+
+  bool validate(mir::instructions::FPUnaryOperator const &Operator) {
+    using UnaryOperator = mir::instructions::FPUnaryOperator;
+    switch (Operator) {
+    case UnaryOperator::Abs:
+    case UnaryOperator::Neg:
+    case UnaryOperator::Ceil:
+    case UnaryOperator::Floor:
+    case UnaryOperator::Trunc:
+    case UnaryOperator::Nearest:
+    case UnaryOperator::Sqrt: return true;
+    default: return false;
+    }
+  }
+
+  void operator()(mir::instructions::FPUnaryOp *Inst) {
+    if (!validate(Inst->getOperator())) callback().hasInvalidOperator(Inst);
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+  }
+
+  bool validate(mir::instructions::FPBinaryOperator const &Operator) {
+    using BinaryOperator = mir::instructions::FPBinaryOperator;
+    switch (Operator) {
+    case BinaryOperator::Eq:
+    case BinaryOperator::Ne:
+    case BinaryOperator::Lt:
+    case BinaryOperator::Gt:
+    case BinaryOperator::Le:
+    case BinaryOperator::Ge:
+    case BinaryOperator::Add:
+    case BinaryOperator::Sub:
+    case BinaryOperator::Mul:
+    case BinaryOperator::Div:
+    case BinaryOperator::Min:
+    case BinaryOperator::Max:
+    case BinaryOperator::CopySign: return true;
+    default: return false;
+    }
+  }
+
+  void operator()(mir::instructions::FPBinaryOp *Inst) {
+    if (!validate(Inst->getOperator())) callback().hasInvalidOperator(Inst);
+    if (!Inst->getLHS()) callback().hasNullOperand(Inst);
+    if (!Inst->getRHS()) callback().hasNullOperand(Inst);
+    if (Inst->getLHS() && !isAvailableInst(Inst, Inst->getLHS()))
+      callback().referNonDominating(Inst, Inst->getLHS());
+    if (Inst->getRHS() && !isAvailableInst(Inst, Inst->getRHS()))
+      callback().referNonDominating(Inst, Inst->getRHS());
+  }
+
+  void operator()(mir::instructions::Load *Inst) {
+    if (!Inst->getLinearMemory()) callback().hasNullOperand(Inst);
+    if (Inst->getLinearMemory() && !has(*Inst->getLinearMemory()))
+      callback().referUnavailable(Inst);
+    if (!Inst->getAddress()) callback().hasNullOperand(Inst);
+    if (Inst->getAddress() && !isAvailableInst(Inst, Inst->getAddress()))
+      callback().referNonDominating(Inst, Inst->getAddress());
+    if (!bytecode::validation::validate(Inst->getType()))
+      callback().hasInvalidType(Inst);
+  }
+
+  void operator()(mir::instructions::Store *Inst) {
+    if (!Inst->getLinearMemory()) callback().hasNullOperand(Inst);
+    if (Inst->getLinearMemory() && !has(*Inst->getLinearMemory()))
+      callback().referUnavailable(Inst);
+    if (!Inst->getAddress()) callback().hasNullOperand(Inst);
+    if (Inst->getAddress() && !isAvailableInst(Inst, Inst->getAddress()))
+      callback().referNonDominating(Inst, Inst->getAddress());
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+  }
+
+  void operator()(mir::instructions::MemoryGuard *Inst) {
+    if (!Inst->getLinearMemory()) callback().hasNullOperand(Inst);
+    if (Inst->getLinearMemory() && !has(*Inst->getLinearMemory()))
+      callback().referUnavailable(Inst);
+    if (!Inst->getAddress()) callback().hasNullOperand(Inst);
+    if (Inst->getAddress() && !isAvailableInst(Inst, Inst->getAddress()))
+      callback().referNonDominating(Inst, Inst->getAddress());
+  }
+
+  void operator()(mir::instructions::MemoryGrow *Inst) {
+    if (!Inst->getLinearMemory()) callback().hasNullOperand(Inst);
+    if (Inst->getLinearMemory() && !has(*Inst->getLinearMemory()))
+      callback().referUnavailable(Inst);
+    if (!Inst->getSize()) callback().hasNullOperand(Inst);
+    if (Inst->getSize() && !isAvailableInst(Inst, Inst->getSize()))
+      callback().referNonDominating(Inst, Inst->getSize());
+  }
+
+  void operator()(mir::instructions::MemorySize *Inst) {
+    if (!Inst->getLinearMemory()) callback().hasNullOperand(Inst);
+    if (Inst->getLinearMemory() && !has(*Inst->getLinearMemory()))
+      callback().referUnavailable(Inst);
+  }
+
+  bool validate(mir::instructions::CastMode const &Mode) {
+    using CastMode = mir::instructions::CastMode;
+    switch (Mode) {
+    case CastMode::Conversion:
+    case CastMode::ConversionSigned:
+    case CastMode::ConversionUnsigned:
+    case CastMode::Reinterpret:
+    case CastMode::SatConversionSigned:
+    case CastMode::SatConversionUnsigned: return true;
+    default: return false;
+    }
+  }
+
+  void operator()(mir::instructions::Cast *Inst) {
+    if (!validate(Inst->getMode())) callback().hasInvalidOperator(Inst);
+    if (!bytecode::validation::validate(Inst->getType()))
+      callback().hasInvalidType(Inst);
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+  }
+
+  void operator()(mir::instructions::Extend *Inst) {
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+  }
+
+  void operator()(mir::instructions::Pack *Inst) {
+    for (auto *Argument : Inst->getArguments()) {
+      if (!Argument) callback().hasNullOperand(Inst);
+      if (Argument && !isAvailableInst(Inst, Argument))
+        callback().referNonDominating(Inst, Argument);
+    }
+  }
+
+  void operator()(mir::instructions::Unpack *Inst) {
+    if (!Inst->getOperand()) callback().hasNullOperand(Inst);
+    if (Inst->getOperand() && !isAvailableInst(Inst, Inst->getOperand()))
+      callback().referNonDominating(Inst, Inst->getOperand());
+  }
+
+  void operator()(mir::instructions::Phi *Inst) {
+    if (!bytecode::validation::validate(Inst->getType()))
+      callback().hasInvalidType(Inst);
+    for (auto &&[Value, Path] : Inst->getCandidates()) {
+      if (!Value) callback().hasNullOperand(Inst);
+      if (!Path) callback().hasNullOperand(Inst);
+      if (Value && Path && !isAvailablePhi(Value, Path))
+        callback().referNonDominatingPhi(Inst, Value, Path);
+    }
+  }
+};
+
+PassStatus IsWellformedFunctionPass::run() {
+  CheckInstVisitor Visitor(*this);
+  if (!bytecode::validation::validate(Function->getType()))
+    Callback->hasInvalidType(Function);
+
+  for (auto &Local : Function->getLocals()) {
+    auto *LocalPtr = std::addressof(Local);
+    if (!bytecode::validation::validate(LocalPtr->getType()))
+      Callback->hasInvalidType(LocalPtr);
+  }
+
+  for (auto &BasicBlock : Function->getBasicBlocks()) {
+    bool HasNonPhi = false;
+    bool HasTerminating = false;
+    for (auto &Instruction : BasicBlock) {
+      auto *InstPtr = std::addressof(Instruction);
+      if (HasNonPhi && InstPtr->isPhi())
+        Callback->hasPhiAfterMerge(dyn_cast<instructions::Phi>(InstPtr));
+      if (HasTerminating) Callback->appearAfterTerminatingInst(InstPtr);
+      if (InstPtr->isPhi()) HasNonPhi = true;
+      if (InstPtr->isTerminating()) HasTerminating = true;
+      Visitor.visit(InstPtr);
+    }
+    if (!HasTerminating)
+      Callback->missingTerminatingInst(std::addressof(BasicBlock));
+  }
+  return PassStatus::Converged;
+}
 
 void IsWellformedFunctionPass::finalize() {
   Function = nullptr;
   Dominator = nullptr;
+  AvailableBB = nullptr;
 }
 
 IsWellformedFunctionPass::AnalysisResult
 IsWellformedFunctionPass::getResult() const {
-  return IsWellformedPassResult(Sites);
+  return *Callback;
+}
+
+bool IsWellformedFunctionPass::has(mir::BasicBlock const &BasicBlock) const {
+  return ranges::binary_search(*AvailableBB, std::addressof(BasicBlock));
+}
+
+bool IsWellformedFunctionPass::has(mir::Local const &Local) const {
+  return ranges::binary_search(*AvailableLocal, std::addressof(Local));
 }
 
 } // namespace mir::passes

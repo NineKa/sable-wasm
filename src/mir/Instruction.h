@@ -53,19 +53,22 @@ enum class InstructionKind : std::uint8_t {
 class Instruction :
     public ASTNode,
     public llvm::ilist_node_with_parent<Instruction, BasicBlock> {
+  friend class BasicBlock;
+  friend class llvm::ilist_callback_traits<mir::Instruction>;
   InstructionKind Kind;
   BasicBlock *Parent = nullptr;
 
 protected:
-  explicit Instruction(InstructionKind Kind_, BasicBlock *Parent_)
-      : ASTNode(ASTNodeKind::Instruction), Kind(Kind_), Parent(Parent_) {}
+  explicit Instruction(InstructionKind Kind_)
+      : ASTNode(ASTNodeKind::Instruction), Kind(Kind_) {}
 
 public:
   BasicBlock *getParent() const { return Parent; }
   InstructionKind getInstructionKind() const { return Kind; }
 
   bool isPhi() const;
-  bool isTerminatingInstruction() const;
+  bool isBranching() const;
+  bool isTerminating() const;
 
   static bool classof(ASTNode const *Node) {
     return Node->getASTNodeKind() == ASTNodeKind::Instruction;
@@ -94,11 +97,25 @@ template <instruction T> T const *dyn_cast(Instruction const *Inst) {
 }
 } // namespace mir
 
+namespace llvm {
+template <> struct ilist_callback_traits<mir::Instruction> {
+  void addNodeToList(mir::Instruction *) {}
+  void removeNodeFromList(mir::Instruction *Ptr) { Ptr->Parent = nullptr; }
+  template <class Iterator>
+  void transferNodesFromList(
+      ilist_callback_traits &OldList, Iterator First, Iterator Last) {
+    utility::ignore(OldList);
+    utility::ignore(First);
+    utility::ignore(Last);
+  }
+};
+} // namespace llvm
+
 namespace mir::instructions {
 ///////////////////////////////// Unreachable //////////////////////////////////
 class Unreachable : public Instruction {
 public:
-  explicit Unreachable(BasicBlock *Parent_);
+  Unreachable();
   void detach(ASTNode const *) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
@@ -112,9 +129,9 @@ class Branch : public Instruction {
 
 public:
   Branch(
-      BasicBlock *Parent_, Instruction *Condition_, BasicBlock *TargetTrue_,
+      Instruction *Condition_, BasicBlock *TargetTrue_,
       BasicBlock *TargetFalse_);
-  Branch(BasicBlock *Parent_, BasicBlock *Target_);
+  explicit Branch(BasicBlock *Target_);
   Branch(Branch const &) = delete;
   Branch(Branch &&) noexcept = delete;
   Branch &operator=(Branch const &) = delete;
@@ -141,7 +158,7 @@ class BranchTable : public Instruction {
 
 public:
   BranchTable(
-      BasicBlock *Parent_, Instruction *Operand_, BasicBlock *DefaultTarget_,
+      Instruction *Operand_, BasicBlock *DefaultTarget_,
       std::span<BasicBlock *const> Targets_);
   BranchTable(BranchTable const &) = delete;
   BranchTable(BranchTable &&) noexcept = delete;
@@ -164,8 +181,8 @@ class Return : public Instruction {
   Instruction *Operand;
 
 public:
-  explicit Return(BasicBlock *Parent_);
-  Return(BasicBlock *Parent_, Instruction *Operand_);
+  Return();
+  explicit Return(Instruction *Operand_);
   Return(Return const &) = delete;
   Return(Return &&) noexcept = delete;
   Return &operator=(Return const &) = delete;
@@ -185,9 +202,7 @@ class Call : public Instruction {
   std::vector<Instruction *> Arguments;
 
 public:
-  Call(
-      BasicBlock *Parent_, Function *Target_,
-      std::span<Instruction *const> Arguments_);
+  Call(Function *Target_, std::span<Instruction *const> Arguments_);
   Call(Call const &) = delete;
   Call(Call &&) noexcept = delete;
   Call &operator=(Call const &) = delete;
@@ -211,7 +226,7 @@ class CallIndirect : public Instruction {
 
 public:
   CallIndirect(
-      BasicBlock *Parent_, Table *IndirectTable_, Instruction *Operand_,
+      Table *IndirectTable_, Instruction *Operand_,
       bytecode::FunctionType ExpectType_,
       std::span<Instruction *const> Arguments_);
   CallIndirect(CallIndirect const &) = delete;
@@ -239,9 +254,7 @@ class Select : public Instruction {
   Instruction *False;
 
 public:
-  Select(
-      BasicBlock *Parent_, Instruction *Condition_, Instruction *True_,
-      Instruction *False_);
+  Select(Instruction *Condition_, Instruction *True_, Instruction *False_);
   Select(Select const &) = delete;
   Select(Select &&) noexcept = delete;
   Select &operator=(Select const &) = delete;
@@ -263,7 +276,7 @@ class LocalGet : public Instruction {
   Local *Target;
 
 public:
-  LocalGet(BasicBlock *Parent_, Local *Target_);
+  explicit LocalGet(Local *Target_);
   LocalGet(LocalGet const &) = delete;
   LocalGet(LocalGet &&) noexcept = delete;
   LocalGet &operator=(LocalGet const &) = delete;
@@ -282,7 +295,7 @@ class LocalSet : public Instruction {
   Instruction *Operand;
 
 public:
-  LocalSet(BasicBlock *Parent_, Local *Target_, Instruction *Operand_);
+  LocalSet(Local *Target_, Instruction *Operand_);
   LocalSet(LocalSet const &) = delete;
   LocalSet(LocalSet &&) noexcept = delete;
   LocalSet &operator=(LocalSet const &) = delete;
@@ -302,7 +315,7 @@ class GlobalGet : public Instruction {
   Global *Target;
 
 public:
-  GlobalGet(BasicBlock *Parent_, Global *Target_);
+  explicit GlobalGet(Global *Target_);
   GlobalGet(GlobalGet const &) = delete;
   GlobalGet(GlobalGet &&) noexcept = delete;
   GlobalGet &operator=(GlobalGet const &) = delete;
@@ -321,7 +334,7 @@ class GlobalSet : public Instruction {
   Instruction *Operand;
 
 public:
-  GlobalSet(BasicBlock *Parent_, Global *Target_, Instruction *Operand_);
+  GlobalSet(Global *Target_, Instruction *Operand_);
   GlobalSet(GlobalSet const &) = delete;
   GlobalSet(GlobalSet &&) noexcept = delete;
   GlobalSet &operator=(GlobalSet const &) = delete;
@@ -341,10 +354,10 @@ class Constant : public Instruction {
   std::variant<std::int32_t, std::int64_t, float, double> Value;
 
 public:
-  Constant(BasicBlock *Parent_, std::int32_t Value_);
-  Constant(BasicBlock *Parent_, std::int64_t Value_);
-  Constant(BasicBlock *Parent_, float Value_);
-  Constant(BasicBlock *Parent_, double Value_);
+  explicit Constant(std::int32_t Value_);
+  explicit Constant(std::int64_t Value_);
+  explicit Constant(float Value_);
+  explicit Constant(double Value_);
   std::int32_t &asI32();
   std::int64_t &asI64();
   float &asF32();
@@ -366,8 +379,7 @@ class IntUnaryOp : public Instruction {
   Instruction *Operand;
 
 public:
-  IntUnaryOp(
-      BasicBlock *Parent_, IntUnaryOperator Operator_, Instruction *Operand_);
+  IntUnaryOp(IntUnaryOperator Operator_, Instruction *Operand_);
   IntUnaryOp(IntUnaryOp const &) = delete;
   IntUnaryOp(IntUnaryOp &&) noexcept = delete;
   IntUnaryOp &operator=(IntUnaryOp const &) = delete;
@@ -397,8 +409,7 @@ class IntBinaryOp : public Instruction {
 
 public:
   IntBinaryOp(
-      BasicBlock *Parent_, IntBinaryOperator Operator_, Instruction *LHS_,
-      Instruction *RHS_);
+      IntBinaryOperator Operator_, Instruction *LHS_, Instruction *RHS_);
   IntBinaryOp(IntBinaryOp const &) = delete;
   IntBinaryOp(IntBinaryOp &&) noexcept = delete;
   IntBinaryOp &operator=(IntBinaryOp const &) = delete;
@@ -425,8 +436,7 @@ class FPUnaryOp : public Instruction {
   Instruction *Operand;
 
 public:
-  FPUnaryOp(
-      BasicBlock *Parent_, FPUnaryOperator Operator_, Instruction *Operand_);
+  FPUnaryOp(FPUnaryOperator Operator_, Instruction *Operand_);
   FPUnaryOp(FPUnaryOp const &) = delete;
   FPUnaryOp(FPUnaryOp &&) = delete;
   FPUnaryOp &operator=(FPUnaryOp const &) = delete;
@@ -453,9 +463,7 @@ class FPBinaryOp : public Instruction {
   Instruction *RHS;
 
 public:
-  FPBinaryOp(
-      BasicBlock *Parent_, FPBinaryOperator Operator_, Instruction *LHS_,
-      Instruction *RHS_);
+  FPBinaryOp(FPBinaryOperator Operator_, Instruction *LHS_, Instruction *RHS_);
   FPBinaryOp(FPBinaryOp const &) = delete;
   FPBinaryOp(FPBinaryOp &&) noexcept = delete;
   FPBinaryOp &operator=(FPBinaryOp const &) = delete;
@@ -481,8 +489,8 @@ class Load : public Instruction {
 
 public:
   Load(
-      BasicBlock *Parent_, Memory *LinearMemory_, bytecode::ValueType Type_,
-      Instruction *Address_, unsigned LoadWidth_);
+      Memory *LinearMemory_, bytecode::ValueType Type_, Instruction *Address_,
+      unsigned LoadWidth_);
   Load(Load const &) = delete;
   Load(Load &&) noexcept = delete;
   Load &operator=(Load const &) = delete;
@@ -510,8 +518,8 @@ class Store : public Instruction {
 
 public:
   Store(
-      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
-      Instruction *Operand_, unsigned StoreWidth_);
+      Memory *LinearMemory_, Instruction *Address_, Instruction *Operand_,
+      unsigned StoreWidth_);
   Store(Store const &) = delete;
   Store(Store &&) noexcept = delete;
   Store &operator=(Store const &) = delete;
@@ -538,8 +546,7 @@ class MemoryGuard : public Instruction {
 
 public:
   MemoryGuard(
-      BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
-      std::uint32_t GuardSize_);
+      Memory *LinearMemory_, Instruction *Address_, std::uint32_t GuardSize_);
   MemoryGuard(MemoryGuard const &) = delete;
   MemoryGuard(MemoryGuard &&) noexcept = delete;
   MemoryGuard &operator=(MemoryGuard const &) = delete;
@@ -562,7 +569,7 @@ class MemoryGrow : public Instruction {
   Instruction *Size;
 
 public:
-  MemoryGrow(BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Size_);
+  MemoryGrow(Memory *LinearMemory_, Instruction *Size_);
   MemoryGrow(MemoryGrow const &) = delete;
   MemoryGrow(MemoryGrow &&) noexcept = delete;
   MemoryGrow &operator=(MemoryGrow const &) = delete;
@@ -582,7 +589,7 @@ class MemorySize : public Instruction {
   Memory *LinearMemory;
 
 public:
-  MemorySize(BasicBlock *Parent_, Memory *LinearMemory_);
+  explicit MemorySize(Memory *LinearMemory_);
   MemorySize(MemorySize const &) = delete;
   MemorySize(MemorySize &&) noexcept = delete;
   MemorySize &operator=(MemorySize const &) = delete;
@@ -611,9 +618,7 @@ class Cast : public Instruction {
   Instruction *Operand;
 
 public:
-  Cast(
-      BasicBlock *Parent_, CastMode Mode_, bytecode::ValueType Type_,
-      Instruction *Operand_);
+  Cast(CastMode Mode_, bytecode::ValueType Type_, Instruction *Operand_);
   Cast(Cast const &) = delete;
   Cast(Cast &&) noexcept = delete;
   Cast &operator=(Cast const &) = delete;
@@ -636,7 +641,7 @@ class Extend : public Instruction {
   unsigned FromWidth;
 
 public:
-  Extend(BasicBlock *Parent_, Instruction *Operand_, unsigned FromWidth_);
+  Extend(Instruction *Operand_, unsigned FromWidth_);
   Extend(Extend const &) = delete;
   Extend(Extend &&) noexcept = delete;
   Extend &operator=(Extend const &) = delete;
@@ -656,7 +661,7 @@ class Pack : public Instruction {
   std::vector<Instruction *> Arguments;
 
 public:
-  Pack(BasicBlock *Parent_, std::span<Instruction *const> Arguments_);
+  explicit Pack(std::span<Instruction *const> Arguments_);
   Pack(Pack const &) = delete;
   Pack(Pack &&) noexcept = delete;
   Pack &operator=(Pack const &) = delete;
@@ -675,7 +680,7 @@ class Unpack : public Instruction {
   Instruction *Operand;
 
 public:
-  Unpack(BasicBlock *Parent_, Instruction *Operand_, unsigned Index_);
+  Unpack(Instruction *Operand_, unsigned Index_);
   Unpack(Unpack const &) = delete;
   Unpack(Unpack &&) = delete;
   Unpack &operator=(Unpack const &) = delete;
@@ -696,7 +701,7 @@ class Phi : public Instruction {
   bytecode::ValueType Type;
 
 public:
-  Phi(BasicBlock *Parent_, bytecode::ValueType Type_);
+  explicit Phi(bytecode::ValueType Type_);
   Phi(Phi const &) = delete;
   Phi(Phi &&) noexcept = delete;
   Phi &operator=(Phi const &) = delete;

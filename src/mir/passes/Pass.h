@@ -3,6 +3,7 @@
 
 #include "../Module.h"
 
+#include <concepts>
 #include <type_traits>
 
 namespace mir::passes {

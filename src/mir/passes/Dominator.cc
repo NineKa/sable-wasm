@@ -1,5 +1,6 @@
 #include "Dominator.h"
 
+#include <range/v3/algorithm/binary_search.hpp>
 #include <range/v3/algorithm/equal_range.hpp>
 #include <range/v3/algorithm/find.hpp>
 #include <range/v3/algorithm/set_algorithm.hpp>
@@ -23,7 +24,7 @@ DominatorPassResult::get(BasicBlock const &BB) const {
 bool DominatorPassResult::dominate(
     mir::BasicBlock const &V, mir::BasicBlock const &U) const {
   auto Dom = get(U);
-  return ranges::find(Dom, std::addressof(V)) != Dom.end();
+  return ranges::binary_search(Dom, std::addressof(V));
 }
 
 void DominatorPass::prepare(mir::Function &Function_) {

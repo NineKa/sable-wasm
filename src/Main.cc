@@ -28,23 +28,38 @@ int main(int argc, char const *argv[]) {
   (void)argv;
 
   mio::basic_mmap_source<std::byte> Source(
-      //"../test/polybench-c-4.2.1-beta/2mm.wasm");
-      //"../test/main.wasm");
-      "../test/viu.wasm");
+      //    "../test/polybench-c-4.2.1-beta/2mm.wasm");
+      "../test/2mm.wasm");
+  //"../test/main.wasm");
+  //"../test/viu.wasm");
+
+  using namespace std::chrono;
   parser::ByteArrayReader Reader(Source);
   parser::ModuleBuilderDelegate Delegate;
   parser::Parser Parser(Reader, Delegate);
   parser::customsections::Name Name;
-  Parser.registerCustomSection(Name);
-  Parser.parse();
+  auto ParseTime = utility::measure([&]() {
+    Parser.registerCustomSection(Name);
+    Parser.parse();
+  });
+  fmt::print(
+      "Bytecode Parsing: {} milliseconds\n",
+      duration_cast<milliseconds>(ParseTime).count());
+
   auto &Module = Delegate.getModule();
-  try {
-    if (auto Error = bytecode::validation::validate(Module)) Error->signal();
-  } catch (bytecode::validation::TypeError const &Error) {
-    fmt::print("{}\n", Error);
-  } catch (bytecode::validation::MalformedError const &Error) {
-    fmt::print("{}\n", Error);
-  }
+
+  auto ValidationTime = utility::measure([&]() {
+    try {
+      if (auto Error = bytecode::validation::validate(Module)) Error->signal();
+    } catch (bytecode::validation::TypeError const &Error) {
+      fmt::print("{}\n", Error);
+    } catch (bytecode::validation::MalformedError const &Error) {
+      fmt::print("{}\n", Error);
+    }
+  });
+  fmt::print(
+      "Bytecode Validation: {} milliseconds\n",
+      duration_cast<milliseconds>(ValidationTime).count());
 
   bytecode::ModuleView ModuleView(Module);
 
@@ -55,22 +70,29 @@ int main(int argc, char const *argv[]) {
 
   mir::Module M;
 
-  ModuleTranslationTask Task(Module, M, Name);
-  Task.perform();
+  auto TranslationTime = utility::measure([&]() {
+    ModuleTranslationTask Task(Module, M, Name);
+    Task.perform();
+  });
+  fmt::print(
+      "MIR Translation: {} milliseconds\n",
+      duration_cast<milliseconds>(TranslationTime).count());
 
-  auto CheckFn = [&]() {
+  auto MIRValidationTime = utility::measure([&]() {
     mir::passes::SimpleModulePassDriver<mir::passes::IsWellformedModulePass>
         Checker;
-    if (!Checker(M).isWellformed()) utility::unreachable();
-  };
-  auto Time = utility::measure(CheckFn);
+    auto &Result =
+        static_cast<mir::passes::IsWellformedCallbackTrivial const &>(
+            Checker(M));
+    if (!Result.isWellformed()) utility::unreachable();
+  });
   fmt::print(
-      "Time: {} milliseconds\n",
-      std::chrono::duration_cast<std::chrono::milliseconds>(Time).count());
+      "MIR Validation Time: {} milliseconds\n",
+      duration_cast<milliseconds>(MIRValidationTime).count());
 
-  // std::ofstream OutFile("out.mir");
-  // std::ostream_iterator<char> It(OutFile);
-  // mir::dump(It, M);
+  std::ofstream OutFile("out.mir");
+  std::ostream_iterator<char> It(OutFile);
+  mir::dump(It, M);
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
@@ -92,6 +114,12 @@ int main(int argc, char const *argv[]) {
   LM.setDataLayout(TargetMachine->createDataLayout());
   LM.setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
-  codegen::llvm_instance::EntityLayout ELayout(M, LM);
-  // LM.print(llvm::outs(), nullptr);
+  auto LLVMCodegenTime = utility::measure([&]() {
+    codegen::llvm_instance::EntityLayout ELayout(M, LM);
+    // LM.print(llvm::outs(), nullptr);
+  });
+  fmt::print(
+      "LLVM Codegen Time: {} milliseconds\n",
+      duration_cast<milliseconds>(LLVMCodegenTime).count());
+  return 0;
 }

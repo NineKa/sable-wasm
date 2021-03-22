@@ -14,7 +14,15 @@
 namespace mir {
 bool Instruction::isPhi() const { return instructions::Phi::classof(this); }
 
-bool Instruction::isTerminatingInstruction() const {
+bool Instruction::isBranching() const {
+  switch (getInstructionKind()) {
+  case InstructionKind::Branch:
+  case InstructionKind::BranchTable: return true;
+  default: return false;
+  }
+}
+
+bool Instruction::isTerminating() const {
   switch (getInstructionKind()) {
   case InstructionKind::Unreachable:
   case InstructionKind::Branch:
@@ -28,8 +36,7 @@ bool Instruction::isTerminatingInstruction() const {
 namespace mir::instructions {
 using IKind = InstructionKind;
 ///////////////////////////////// Unreachable //////////////////////////////////
-Unreachable::Unreachable(BasicBlock *Parent_)
-    : Instruction(IKind::Unreachable, Parent_) {}
+Unreachable::Unreachable() : Instruction(IKind::Unreachable) {}
 
 void Unreachable::detach(ASTNode const *) noexcept { utility::unreachable(); }
 
@@ -45,18 +52,15 @@ bool Unreachable::classof(ASTNode const *Node) {
 
 //////////////////////////////////// Branch ////////////////////////////////////
 Branch::Branch(
-    BasicBlock *Parent_, Instruction *Condition_, BasicBlock *Target_,
-    BasicBlock *FalseTarget_)
-    : Instruction(IKind::Branch, Parent_), Condition(), Target(),
-      FalseTarget() {
+    Instruction *Condition_, BasicBlock *Target_, BasicBlock *FalseTarget_)
+    : Instruction(IKind::Branch), Condition(), Target(), FalseTarget() {
   setCondition(Condition_);
   setTarget(Target_);
   setFalseTarget(FalseTarget_);
 }
 
-Branch::Branch(BasicBlock *Parent_, BasicBlock *Target_)
-    : Instruction(IKind::Branch, Parent_), Condition(), Target(),
-      FalseTarget() {
+Branch::Branch(BasicBlock *Target_)
+    : Instruction(IKind::Branch), Condition(), Target(), FalseTarget() {
   setTarget(Target_);
 }
 
@@ -109,10 +113,9 @@ bool Branch::classof(ASTNode const *Node) {
 
 ///////////////////////////////// BranchTable //////////////////////////////////
 BranchTable::BranchTable(
-    BasicBlock *Parent_, Instruction *Operand_, BasicBlock *DefaultTarget_,
+    Instruction *Operand_, BasicBlock *DefaultTarget_,
     std::span<BasicBlock *const> Targets_)
-    : Instruction(IKind::BranchTable, Parent_), Operand(), DefaultTarget(),
-      Targets() {
+    : Instruction(IKind::BranchTable), Operand(), DefaultTarget(), Targets() {
   setOperand(Operand_);
   setDefaultTarget(DefaultTarget_);
   setTargets(Targets_);
@@ -170,11 +173,9 @@ bool BranchTable::classof(ASTNode const *Node) {
 }
 
 /////////////////////////////////// Return /////////////////////////////////////
-Return::Return(BasicBlock *Parent_)
-    : Instruction(IKind::Return, Parent_), Operand() {}
+Return::Return() : Instruction(IKind::Return), Operand() {}
 
-Return::Return(BasicBlock *Parent_, Instruction *Operand_)
-    : Instruction(IKind::Return, Parent_), Operand() {
+Return::Return(Instruction *Operand_) : Instruction(IKind::Return), Operand() {
   setOperand(Operand_);
 }
 
@@ -207,10 +208,8 @@ bool Return::classof(ASTNode const *Node) {
 }
 
 //////////////////////////////////// Call //////////////////////////////////////
-Call::Call(
-    BasicBlock *Parent_, Function *Target_,
-    std::span<Instruction *const> Arguments_)
-    : Instruction(IKind::Call, Parent_), Target(), Arguments() {
+Call::Call(Function *Target_, std::span<Instruction *const> Arguments_)
+    : Instruction(IKind::Call), Target(), Arguments() {
   setTarget(Target_);
   setArguments(Arguments_);
 }
@@ -259,10 +258,10 @@ bool Call::classof(ASTNode const *Node) {
 
 /////////////////////////////// CallIndirect ///////////////////////////////////
 CallIndirect::CallIndirect(
-    BasicBlock *Parent_, Table *IndirectTable_, Instruction *Operand_,
+    Table *IndirectTable_, Instruction *Operand_,
     bytecode::FunctionType ExpectType_,
     std::span<Instruction *const> Arguments_)
-    : Instruction(IKind::CallIndirect, Parent_), IndirectTable(), Operand(),
+    : Instruction(IKind::CallIndirect), IndirectTable(), Operand(),
       ExpectType(std::move(ExpectType_)), Arguments() {
   setIndirectTable(IndirectTable_);
   setOperand(Operand_);
@@ -329,10 +328,8 @@ bool CallIndirect::classof(ASTNode const *Node) {
 }
 
 ////////////////////////////////// Select //////////////////////////////////////
-Select::Select(
-    BasicBlock *Parent_, Instruction *Condition_, Instruction *True_,
-    Instruction *False_)
-    : Instruction(IKind::Select, Parent_), Condition(), True(), False() {
+Select::Select(Instruction *Condition_, Instruction *True_, Instruction *False_)
+    : Instruction(IKind::Select), Condition(), True(), False() {
   setCondition(Condition_);
   setTrue(True_);
   setFalse(False_);
@@ -384,8 +381,7 @@ bool Select::classof(ASTNode const *Node) {
 }
 
 //////////////////////////////// LocalGet //////////////////////////////////////
-LocalGet::LocalGet(BasicBlock *Parent_, Local *Target_)
-    : Instruction(IKind::LocalGet, Parent_), Target() {
+LocalGet::LocalGet(Local *Target_) : Instruction(IKind::LocalGet), Target() {
   setTarget(Target_);
 }
 
@@ -417,8 +413,8 @@ bool LocalGet::classof(ASTNode const *Node) {
 }
 
 //////////////////////////////// LocalSet //////////////////////////////////////
-LocalSet::LocalSet(BasicBlock *Parent_, Local *Target_, Instruction *Operand_)
-    : Instruction(IKind::LocalSet, Parent_), Target(), Operand() {
+LocalSet::LocalSet(Local *Target_, Instruction *Operand_)
+    : Instruction(IKind::LocalSet), Target(), Operand() {
   setTarget(Target_);
   setOperand(Operand_);
 }
@@ -460,8 +456,8 @@ bool LocalSet::classof(ASTNode const *Node) {
 }
 
 //////////////////////////////// GlobalGet /////////////////////////////////////
-GlobalGet::GlobalGet(BasicBlock *Parent_, Global *Target_)
-    : Instruction(IKind::GlobalGet, Parent_), Target() {
+GlobalGet::GlobalGet(Global *Target_)
+    : Instruction(IKind::GlobalGet), Target() {
   setTarget(Target_);
 }
 
@@ -493,9 +489,8 @@ bool GlobalGet::classof(ASTNode const *Node) {
 }
 
 //////////////////////////////// GlobalSet /////////////////////////////////////
-GlobalSet::GlobalSet(
-    BasicBlock *Parent_, Global *Target_, Instruction *Operand_)
-    : Instruction(IKind::GlobalSet, Parent_), Target(), Operand() {
+GlobalSet::GlobalSet(Global *Target_, Instruction *Operand_)
+    : Instruction(IKind::GlobalSet), Target(), Operand() {
   setTarget(Target_);
   setOperand(Operand_);
 }
@@ -537,14 +532,14 @@ bool GlobalSet::classof(ASTNode const *Node) {
 }
 
 ///////////////////////////////// Constant /////////////////////////////////////
-Constant::Constant(BasicBlock *Parent_, std::int32_t Value_)
-    : Instruction(IKind::Constant, Parent_), Value(Value_) {}
-Constant::Constant(BasicBlock *Parent_, std::int64_t Value_)
-    : Instruction(IKind::Constant, Parent_), Value(Value_) {}
-Constant::Constant(BasicBlock *Parent_, float Value_)
-    : Instruction(IKind::Constant, Parent_), Value(Value_) {}
-Constant::Constant(BasicBlock *Parent_, double Value_)
-    : Instruction(IKind::Constant, Parent_), Value(Value_) {}
+Constant::Constant(std::int32_t Value_)
+    : Instruction(IKind::Constant), Value(Value_) {}
+Constant::Constant(std::int64_t Value_)
+    : Instruction(IKind::Constant), Value(Value_) {}
+Constant::Constant(float Value_)
+    : Instruction(IKind::Constant), Value(Value_) {}
+Constant::Constant(double Value_)
+    : Instruction(IKind::Constant), Value(Value_) {}
 
 std::int32_t &Constant::asI32() { return std::get<std::int32_t>(Value); }
 std::int64_t &Constant::asI64() { return std::get<std::int64_t>(Value); }
@@ -577,9 +572,8 @@ bool Constant::classof(ASTNode const *Node) {
 }
 
 /////////////////////////////// IntUnaryOp /////////////////////////////////////
-IntUnaryOp::IntUnaryOp(
-    BasicBlock *Parent_, IntUnaryOperator Operator_, Instruction *Operand_)
-    : Instruction(IKind::IntUnaryOp, Parent_), Operator(Operator_), Operand() {
+IntUnaryOp::IntUnaryOp(IntUnaryOperator Operator_, Instruction *Operand_)
+    : Instruction(IKind::IntUnaryOp), Operator(Operator_), Operand() {
   setOperand(Operand_);
 }
 
@@ -617,10 +611,8 @@ bool IntUnaryOp::classof(ASTNode const *Node) {
 
 /////////////////////////////// IntBinaryOp ////////////////////////////////////
 IntBinaryOp::IntBinaryOp(
-    BasicBlock *Parent_, IntBinaryOperator Operator_, Instruction *LHS_,
-    Instruction *RHS_)
-    : Instruction(IKind::IntBinaryOp, Parent_), Operator(Operator_), LHS(),
-      RHS() {
+    IntBinaryOperator Operator_, Instruction *LHS_, Instruction *RHS_)
+    : Instruction(IKind::IntBinaryOp), Operator(Operator_), LHS(), RHS() {
   setLHS(LHS_);
   setRHS(RHS_);
 }
@@ -667,9 +659,8 @@ bool IntBinaryOp::classof(const ASTNode *Node) {
 }
 
 //////////////////////////////// FPUnaryOp /////////////////////////////////////
-FPUnaryOp::FPUnaryOp(
-    BasicBlock *Parent_, FPUnaryOperator Operator_, Instruction *Operand_)
-    : Instruction(IKind::FPUnaryOp, Parent_), Operator(Operator_), Operand() {
+FPUnaryOp::FPUnaryOp(FPUnaryOperator Operator_, Instruction *Operand_)
+    : Instruction(IKind::FPUnaryOp), Operator(Operator_), Operand() {
   setOperand(Operand_);
 }
 
@@ -704,10 +695,8 @@ bool FPUnaryOp::classof(ASTNode const *Node) {
 
 /////////////////////////////// FPBinaryOp /////////////////////////////////////
 FPBinaryOp::FPBinaryOp(
-    BasicBlock *Parent_, FPBinaryOperator Operator_, Instruction *LHS_,
-    Instruction *RHS_)
-    : Instruction(IKind::FPBinaryOp, Parent_), Operator(Operator_), LHS(),
-      RHS() {
+    FPBinaryOperator Operator_, Instruction *LHS_, Instruction *RHS_)
+    : Instruction(IKind::FPBinaryOp), Operator(Operator_), LHS(), RHS() {
   setLHS(LHS_);
   setRHS(RHS_);
 }
@@ -755,9 +744,9 @@ bool FPBinaryOp::classof(ASTNode const *Node) {
 
 ////////////////////////////////// Load ////////////////////////////////////////
 Load::Load(
-    BasicBlock *Parent_, Memory *LinearMemory_, bytecode::ValueType Type_,
-    Instruction *Address_, unsigned int LoadWidth_)
-    : Instruction(IKind::Load, Parent_), LinearMemory(), Type(Type_), Address(),
+    Memory *LinearMemory_, bytecode::ValueType Type_, Instruction *Address_,
+    unsigned int LoadWidth_)
+    : Instruction(IKind::Load), LinearMemory(), Type(Type_), Address(),
       LoadWidth(LoadWidth_) {
   setLinearMemory(LinearMemory_);
   setAddress(Address_);
@@ -805,9 +794,9 @@ bool Load::classof(ASTNode const *Node) {
 
 ///////////////////////////////// Store ////////////////////////////////////////
 Store::Store(
-    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
-    Instruction *Operand_, unsigned int StoreWidth_)
-    : Instruction(IKind::Store, Parent_), LinearMemory(), Address(), Operand(),
+    Memory *LinearMemory_, Instruction *Address_, Instruction *Operand_,
+    unsigned int StoreWidth_)
+    : Instruction(IKind::Store), LinearMemory(), Address(), Operand(),
       StoreWidth(StoreWidth_) {
   setLinearMemory(LinearMemory_);
   setAddress(Address_);
@@ -863,9 +852,8 @@ bool Store::classof(ASTNode const *Node) {
 
 ////////////////////////////// MemoryGuard /////////////////////////////////////
 MemoryGuard::MemoryGuard(
-    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Address_,
-    std::uint32_t GuardSize_)
-    : Instruction(IKind::MemoryGuard, Parent_), LinearMemory(), Address(),
+    Memory *LinearMemory_, Instruction *Address_, std::uint32_t GuardSize_)
+    : Instruction(IKind::MemoryGuard), LinearMemory(), Address(),
       GuardSize(GuardSize_) {
   setLinearMemory(LinearMemory_);
   setAddress(Address_);
@@ -913,10 +901,8 @@ bool MemoryGuard::classof(ASTNode const *Node) {
 }
 
 /////////////////////////////// MemoryGrow /////////////////////////////////////
-MemoryGrow::MemoryGrow(
-    BasicBlock *Parent_, Memory *LinearMemory_, Instruction *Size_)
-    : Instruction(InstructionKind::MemoryGrow, Parent_), LinearMemory(),
-      Size() {
+MemoryGrow::MemoryGrow(Memory *LinearMemory_, Instruction *Size_)
+    : Instruction(InstructionKind::MemoryGrow), LinearMemory(), Size() {
   setLinearMemory(LinearMemory_);
   setSize(Size_);
 }
@@ -958,8 +944,8 @@ bool MemoryGrow::classof(ASTNode const *Node) {
 }
 
 /////////////////////////////// MemorySize /////////////////////////////////////
-MemorySize::MemorySize(BasicBlock *Parent_, Memory *LinearMemory_)
-    : Instruction(InstructionKind::MemorySize, Parent_), LinearMemory() {
+MemorySize::MemorySize(Memory *LinearMemory_)
+    : Instruction(InstructionKind::MemorySize), LinearMemory() {
   setLinearMemory(LinearMemory_);
 }
 
@@ -991,10 +977,8 @@ bool MemorySize::classof(ASTNode const *Node) {
 }
 
 ////////////////////////////////// Cast ////////////////////////////////////////
-Cast::Cast(
-    BasicBlock *Parent_, CastMode Mode_, bytecode::ValueType Type_,
-    Instruction *Operand_)
-    : Instruction(IKind::Cast, Parent_), Mode(Mode_), Type(Type_), Operand() {
+Cast::Cast(CastMode Mode_, bytecode::ValueType Type_, Instruction *Operand_)
+    : Instruction(IKind::Cast), Mode(Mode_), Type(Type_), Operand() {
   setOperand(Operand_);
 }
 
@@ -1030,9 +1014,8 @@ bool Cast::classof(ASTNode const *Node) {
 }
 
 ///////////////////////////////// Extend ///////////////////////////////////////
-Extend::Extend(
-    BasicBlock *Parent_, Instruction *Operand_, unsigned int FromWidth_)
-    : Instruction(IKind::Extend, Parent_), Operand(), FromWidth(FromWidth_) {
+Extend::Extend(Instruction *Operand_, unsigned int FromWidth_)
+    : Instruction(IKind::Extend), Operand(), FromWidth(FromWidth_) {
   setOperand(Operand_);
 }
 
@@ -1066,8 +1049,8 @@ bool Extend::classof(ASTNode const *Node) {
 }
 
 ////////////////////////////////// Pack ////////////////////////////////////////
-Pack::Pack(BasicBlock *Parent_, std::span<Instruction *const> Arguments_)
-    : Instruction(IKind::Pack, Parent_) {
+Pack::Pack(std::span<Instruction *const> Arguments_)
+    : Instruction(IKind::Pack) {
   setArguments(Arguments_);
 }
 
@@ -1105,8 +1088,8 @@ bool Pack::classof(ASTNode const *Node) {
 }
 
 ///////////////////////////////// Unpack ///////////////////////////////////////
-Unpack::Unpack(BasicBlock *Parent_, Instruction *Operand_, unsigned int Index_)
-    : Instruction(IKind::Unpack, Parent_), Index(Index_), Operand() {
+Unpack::Unpack(Instruction *Operand_, unsigned int Index_)
+    : Instruction(IKind::Unpack), Index(Index_), Operand() {
   setOperand(Operand_);
 }
 
@@ -1140,8 +1123,7 @@ bool Unpack::classof(ASTNode const *Node) {
 }
 
 /////////////////////////////////// Phi ////////////////////////////////////////
-Phi::Phi(BasicBlock *Parent_, bytecode::ValueType Type_)
-    : Instruction(IKind::Phi, Parent_), Type(Type_) {}
+Phi::Phi(bytecode::ValueType Type_) : Instruction(IKind::Phi), Type(Type_) {}
 
 Phi::~Phi() noexcept {
   for (auto const &[Value, Path] : Candidates) {

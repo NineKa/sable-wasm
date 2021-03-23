@@ -5,6 +5,8 @@
 #include "Module.h"
 #include "Type.h"
 
+#include <range/v3/view/subrange.hpp>
+
 #include <variant>
 #include <vector>
 
@@ -73,8 +75,19 @@ public:
         Actual(ranges::to<decltype(Actual)>(Actual_)) {}
 
   void signal() override { throw *this; }
-  auto getExpectingTypes() const { return ranges::views::all(Expecting); }
-  auto getActualTypes() const { return ranges::views::all(Actual); }
+
+  auto getExpectingTypes() const {
+    auto Begin = Expecting.begin();
+    auto End = Expecting.end();
+    return ranges::make_subrange(Begin, End);
+  }
+
+  auto getActualTypes() const {
+    auto Begin = Actual.begin();
+    auto End = Actual.end();
+    return ranges::make_subrange(Begin, End);
+  }
+
   bool getEpsilon() const { return Epsilon; }
 };
 
@@ -101,7 +114,7 @@ public:
   X(INVALID_START_FUNC_TYPE   , "start function has mismatched type"        )  \
   X(MORE_THAN_ONE_TABLE       , "at most one table is allowed"              )  \
   X(MORE_THAN_ONE_MEMORY      , "at most one memory is allowed"             )  \
-  X(NON_UNIQUE_EXPORT_NAME    , "export name is not unqiue"                 )  \
+  X(NON_UNIQUE_EXPORT_NAME    , "export name is not unique"                 )  \
   X(ILLEGAL_IF_BLOCK_TYPE_TAG , "if without else cannot have type signature")
 // clang-format on
 

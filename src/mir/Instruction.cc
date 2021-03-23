@@ -1,5 +1,6 @@
 #include "Instruction.h"
 #include "BasicBlock.h"
+#include "Function.h"
 #include "Module.h"
 
 #include <range/v3/algorithm/contains.hpp>

@@ -43,8 +43,8 @@ private:
   mir::Module const &Source;
   llvm::Module &Target;
   llvm::DenseMap<mir::ASTNode const *, std::size_t> OffsetMap;
-  llvm::DenseMap<mir::DataSegment const *, llvm::Constant *> DataMap;
-  llvm::DenseMap<mir::ElementSegment const *, ElementEntry> ElementMap;
+  llvm::DenseMap<mir::Data const *, llvm::Constant *> DataMap;
+  llvm::DenseMap<mir::Element const *, ElementEntry> ElementMap;
   llvm::DenseMap<mir::Function const *, FunctionEntry> FunctionMap;
 
   llvm::StructType *declareOpaqueTy(std::string_view Name);
@@ -95,10 +95,9 @@ public:
 
   std::size_t getOffset(mir::ASTNode const &Node) const;
 
-  llvm::Constant *operator[](mir::DataSegment const &DataSegment) const;
+  llvm::Constant *operator[](mir::Data const &DataSegment) const;
   FunctionEntry const &operator[](mir::Function const &Function) const;
-  ElementEntry const &
-  operator[](mir::ElementSegment const &ElementSegment) const;
+  ElementEntry const &operator[](mir::Element const &ElementSegment) const;
 
   llvm::Function *getBuiltin(std::string_view Name);
 

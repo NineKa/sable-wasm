@@ -5,8 +5,7 @@
 #include "../Parser.h"
 #include "../Reader.h"
 
-#include <range/v3/core.hpp>
-#include <range/v3/view/all.hpp>
+#include <range/v3/view/subrange.hpp>
 
 #include <map>
 #include <optional>
@@ -14,6 +13,7 @@
 
 namespace parser::customsections {
 class Name : public parser::CustomSection {
+public:
   struct FunctionNameEntry {
     bytecode::FuncIDX FuncIndex;
     std::string Name;
@@ -48,8 +48,17 @@ public:
   std::optional<std::string_view>
   getLocalName(bytecode::FuncIDX Func, bytecode::LocalIDX Local) const;
 
-  auto getFunctionNames() const { return ranges::views::all(FunctionNames); }
-  auto getLocalNames() const { return ranges::views::all(LocalNames); }
+  auto getFunctionNames() const {
+    auto Begin = FunctionNames.begin();
+    auto End = FunctionNames.end();
+    return ranges::make_subrange(Begin, End);
+  }
+
+  auto getLocalNames() const {
+    auto Begin = LocalNames.begin();
+    auto End = LocalNames.end();
+    return ranges::make_subrange(Begin, End);
+  }
 };
 
 } // namespace parser::customsections

@@ -1,3 +1,4 @@
+#include "../mir/Function.h"
 #include "LLVMCodege.h"
 
 #include <llvm/IR/Constants.h>
@@ -54,28 +55,28 @@ void EntityLayout::setupInstanceType() {
 
   auto *MemoryOpaqueTy = declareOpaqueTy("__sable_memory_t");
   auto *MemoryOpaquePtrTy = llvm::PointerType::getUnqual(MemoryOpaqueTy);
-  for (auto const &Memory : Source.getMemories()) {
+  for (auto const &Memory : Source.getMemories().asView()) {
     OffsetMap.insert(std::make_pair(std::addressof(Memory), OffsetMap.size()));
     InstanceFields.push_back(MemoryOpaquePtrTy);
   }
 
   auto *TableOpaqueTy = declareOpaqueTy("__sable_table_t");
   auto *TableOpaquePtrTy = llvm::PointerType::getUnqual(TableOpaqueTy);
-  for (auto const &Table : Source.getTables()) {
+  for (auto const &Table : Source.getTables().asView()) {
     OffsetMap.insert(std::make_pair(std::addressof(Table), OffsetMap.size()));
     InstanceFields.push_back(TableOpaquePtrTy);
   }
 
   auto *GlobalOpaqueTy = declareOpaqueTy("__sable_global_t");
   auto *GlobalOpaquePtrTy = llvm::PointerType::getUnqual(GlobalOpaqueTy);
-  for (auto const &Global : Source.getGlobals()) {
+  for (auto const &Global : Source.getGlobals().asView()) {
     OffsetMap.insert(std::make_pair(std::addressof(Global), OffsetMap.size()));
     InstanceFields.push_back(GlobalOpaquePtrTy);
   }
 
   auto *FunctionOpaqueTy = declareOpaqueTy("__sable_function_t");
   auto *FunctionOpaquePtrTy = llvm::PointerType::getUnqual(FunctionOpaqueTy);
-  for (auto const &Function : Source.getFunctions()) {
+  for (auto const &Function : Source.getFunctions().asView()) {
     auto *FunctionAddress = std::addressof(Function);
     OffsetMap.insert(std::make_pair(FunctionAddress, OffsetMap.size()));
     InstanceFields.push_back(FunctionOpaquePtrTy);
@@ -124,7 +125,7 @@ llvm::Value *EntityLayout::translateInitExpr(
 
 void EntityLayout::setupDataSegments() {
   auto &Context = Target.getContext();
-  for (auto const &DataSegment : Source.getData()) {
+  for (auto const &DataSegment : Source.getData().asView()) {
     auto ByteView = DataSegment.getContent();
     llvm::StringRef CharView(
         reinterpret_cast<char const *>(ByteView.data()), // NOLINT
@@ -150,7 +151,7 @@ void EntityLayout::setupDataSegments() {
 
 void EntityLayout::setupElementSegments() {
   auto *ErasedTy = getFunctionPtrTy();
-  for (mir::ElementSegment const &ElementSegment : Source.getElements()) {
+  for (auto const &ElementSegment : Source.getElements().asView()) {
     // clang-format off
     auto Pointers = ElementSegment.getContent()
       | ranges::views::transform([&](mir::Function const *Function) {
@@ -262,7 +263,7 @@ void EntityLayout::setupMemoryMetadata() {
   std::vector<llvm::Constant *> Imports;
   std::vector<llvm::Constant *> Exports;
 
-  for (auto const &Memory : Source.getMemories()) {
+  for (auto const &Memory : Source.getMemories().asView()) {
     auto Min = Memory.getType().getMin();
     auto Max = Memory.getType().hasMax()
                    ? Memory.getType().getMax()
@@ -272,7 +273,7 @@ void EntityLayout::setupMemoryMetadata() {
     Entities.push_back(EntityConstant);
   }
   for (auto const &[Index, Memory] :
-       ranges::views::enumerate(Source.getMemories())) {
+       ranges::views::enumerate(Source.getMemories().asView())) {
     if (!Memory.isImported()) continue;
     auto *ModuleName = getCStringPtr(Memory.getImportModuleName());
     auto *EntityName = getCStringPtr(Memory.getImportEntityName());
@@ -281,7 +282,7 @@ void EntityLayout::setupMemoryMetadata() {
     Imports.push_back(ImportConstant);
   }
   for (auto const &[Index, Memory] :
-       ranges::views::enumerate(Source.getMemories())) {
+       ranges::views::enumerate(Source.getMemories().asView())) {
     if (!Memory.isExported()) continue;
     auto *EntityName = getCStringPtr(Memory.getExportName());
     auto *ExportConstant = llvm::ConstantStruct::get(
@@ -309,7 +310,7 @@ void EntityLayout::setupTableMetadata() {
   std::vector<llvm::Constant *> Imports;
   std::vector<llvm::Constant *> Exports;
 
-  for (auto const &Table : Source.getTables()) {
+  for (auto const &Table : Source.getTables().asView()) {
     auto Min = Table.getType().getMin();
     auto Max = Table.getType().hasMax()
                    ? Table.getType().getMin()
@@ -319,7 +320,7 @@ void EntityLayout::setupTableMetadata() {
     Entities.push_back(EntityConstant);
   }
   for (auto const &[Index, Table] :
-       ranges::views::enumerate(Source.getTables())) {
+       ranges::views::enumerate(Source.getTables().asView())) {
     if (!Table.isImported()) continue;
     auto *ModuleName = getCStringPtr(Table.getImportModuleName());
     auto *EntityName = getCStringPtr(Table.getImportEntityName());
@@ -328,7 +329,7 @@ void EntityLayout::setupTableMetadata() {
     Imports.push_back(ImportConstant);
   }
   for (auto const &[Index, Table] :
-       ranges::views::enumerate(Source.getTables())) {
+       ranges::views::enumerate(Source.getTables().asView())) {
     if (!Table.isExported()) continue;
     auto *EntityName = getCStringPtr(Table.getExportName());
     auto *ExportConstant = llvm::ConstantStruct::get(
@@ -355,7 +356,7 @@ void EntityLayout::setupGlobalMetadata() {
   std::vector<llvm::Constant *> Imports;
   std::vector<llvm::Constant *> Exports;
 
-  for (auto const &Global : Source.getGlobals()) {
+  for (auto const &Global : Source.getGlobals().asView()) {
     char TypeChar = getTypeChar(Global.getType().getType());
     switch (Global.getType().getMutability()) {
     case bytecode::MutabilityKind::Var:
@@ -369,7 +370,7 @@ void EntityLayout::setupGlobalMetadata() {
     EntitiesString.push_back(TypeChar);
   }
   for (auto const &[Index, Global] :
-       ranges::views::enumerate(Source.getGlobals())) {
+       ranges::views::enumerate(Source.getGlobals().asView())) {
     if (!Global.isImported()) continue;
     auto *ModuleName = getCStringPtr(Global.getImportModuleName());
     auto *EntityName = getCStringPtr(Global.getImportEntityName());
@@ -378,7 +379,7 @@ void EntityLayout::setupGlobalMetadata() {
     Imports.push_back(ImportConstant);
   }
   for (auto const &[Index, Global] :
-       ranges::views::enumerate(Source.getGlobals())) {
+       ranges::views::enumerate(Source.getGlobals().asView())) {
     if (!Global.isExported()) continue;
     auto *EntityName = getCStringPtr(Global.getExportName());
     auto *ExportConstant = llvm::ConstantStruct::get(
@@ -415,10 +416,10 @@ void EntityLayout::setupFunctionMetadata() {
   std::vector<llvm::Constant *> Imports;
   std::vector<llvm::Constant *> Exports;
 
-  for (auto const &Function : Source.getFunctions())
+  for (auto const &Function : Source.getFunctions().asView())
     Entities.push_back(this->operator[](Function).typeString());
   for (auto const &[Index, Function] :
-       ranges::views::enumerate(Source.getFunctions())) {
+       ranges::views::enumerate(Source.getFunctions().asView())) {
     if (!Function.isImported()) continue;
     auto *ModuleName = getCStringPtr(Function.getImportModuleName());
     auto *EntityName = getCStringPtr(Function.getImportEntityName());
@@ -427,7 +428,7 @@ void EntityLayout::setupFunctionMetadata() {
     Imports.push_back(ImportConstant);
   }
   for (auto const &[Index, Function] :
-       ranges::views::enumerate(Source.getFunctions())) {
+       ranges::views::enumerate(Source.getFunctions().asView())) {
     if (!Function.isExported()) continue;
     auto *EntityName = getCStringPtr(Function.getExportName());
     auto *ExportConstant = llvm::ConstantStruct::get(
@@ -444,7 +445,7 @@ void EntityLayout::setupFunctionMetadata() {
 }
 
 void EntityLayout::setupFunctions() {
-  for (auto const &Function : Source.getFunctions()) {
+  for (auto const &Function : Source.getFunctions().asView()) {
     auto *TypeString = getCStringPtr(
         getTypeString(Function.getType()),
         Function.hasName() ? fmt::format("typestr.{}", Function.getName())
@@ -513,7 +514,7 @@ void EntityLayout::setupInitialization() {
   auto *FunctionMetadata = Builder.CreateStructGEP(InstancePtr, 3);
   Builder.CreateStore(getFunctionMetadata(), FunctionMetadata);
 
-  for (auto const &Memory : Source.getMemories()) {
+  for (auto const &Memory : Source.getMemories().asView()) {
     for (auto const *DataSegment : Memory.getInitializers()) {
       auto *Data = this->operator[](*DataSegment);
       auto *MemoryBase = get(Builder, InstancePtr, Memory);
@@ -540,8 +541,8 @@ void EntityLayout::setupInitialization() {
     }
   }
 
-  for (mir::Table const &Table : Source.getTables()) {
-    for (mir::ElementSegment const *ElementSegment : Table.getInitializers()) {
+  for (auto const &Table : Source.getTables().asView()) {
+    for (auto const *ElementSegment : Table.getInitializers()) {
       auto *Pointers = this->operator[](*ElementSegment).pointers();
       auto *TypeStrings = this->operator[](*ElementSegment).typeStrings();
       auto *TableBase = get(Builder, InstancePtr, Table);
@@ -560,7 +561,7 @@ void EntityLayout::setupInitialization() {
     }
   }
 
-  for (auto const &MGlobal : Source.getGlobals()) {
+  for (auto const &MGlobal : Source.getGlobals().asView()) {
     if (MGlobal.isImported()) continue;
     auto *GlobalPtr = get(Builder, InstancePtr, MGlobal);
     auto *Initializer =
@@ -568,7 +569,7 @@ void EntityLayout::setupInitialization() {
     Builder.CreateStore(Initializer, GlobalPtr);
   }
 
-  for (auto const &MFunction : Source.getFunctions()) {
+  for (auto const &MFunction : Source.getFunctions().asView()) {
     if (MFunction.isImported()) continue;
     auto Offset = getOffset(MFunction);
     llvm::Value *FunctionFieldPtr =
@@ -676,10 +677,10 @@ EntityLayout::convertType(bytecode::FunctionType const &Type) {
   if (Type.isMultiValueResult()) {
     // clang-format off
     auto ResultTypes = Type.getResultTypes()
-                       | ranges::views::transform([&](bytecode::ValueType const &ValueType) {
-      return convertType(ValueType);
-    })
-                       | ranges::to<std::vector<llvm::Type *>>();
+      | ranges::views::transform([&](bytecode::ValueType const &ValueType) {
+          return convertType(ValueType);
+        })
+      | ranges::to<std::vector<llvm::Type *>>();
     // clang-format on
     auto *ResultType = llvm::StructType::get(Context, ResultTypes);
     return llvm::FunctionType::get(ResultType, ParamTypes, false);
@@ -693,8 +694,7 @@ std::size_t EntityLayout::getOffset(mir::ASTNode const &Node) const {
   return std::get<1>(*SearchIter) + 4;
 }
 
-llvm::Constant *
-EntityLayout::operator[](mir::DataSegment const &DataSegment) const {
+llvm::Constant *EntityLayout::operator[](mir::Data const &DataSegment) const {
   auto SearchIter = DataMap.find(std::addressof(DataSegment));
   assert(SearchIter != DataMap.end());
   return std::get<1>(*SearchIter);
@@ -708,7 +708,7 @@ EntityLayout::operator[](mir::Function const &Function) const {
 }
 
 EntityLayout::ElementEntry const &
-EntityLayout::operator[](mir::ElementSegment const &ElementSegment) const {
+EntityLayout::operator[](mir::Element const &ElementSegment) const {
   auto SearchIter = ElementMap.find(std::addressof(ElementSegment));
   assert(SearchIter != ElementMap.end());
   return std::get<1>(*SearchIter);

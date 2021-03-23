@@ -5,9 +5,8 @@
 #include "Type.h"
 
 #include <range/v3/core.hpp>
-#include <range/v3/view/all.hpp>
 #include <range/v3/view/concat.hpp>
-#include <range/v3/view/const.hpp>
+#include <range/v3/view/subrange.hpp>
 #include <range/v3/view/transform.hpp>
 
 #include <memory>
@@ -124,6 +123,7 @@ class Function : public Entity<FunctionType> {
 
 public:
   FuncIDX getIndex() const { return Index; }
+
   ValueType operator[](LocalIDX const &Index_) const {
     auto Parameters = getType()->getParamTypes();
     auto CastedIndex = static_cast<std::size_t>(Index_);
@@ -133,6 +133,7 @@ public:
       return Entity->Locals[CastedIndex];
     utility::unreachable();
   }
+
   std::optional<ValueType> get(LocalIDX const &Index_) const {
     auto Parameters = getType()->getParamTypes();
     auto CastedIndex = static_cast<std::size_t>(Index_);
@@ -142,13 +143,17 @@ public:
       return Entity->Locals[CastedIndex];
     return std::nullopt;
   }
+
   auto getLocalsWithoutArgs() const {
-    return ranges::views::all(Entity->Locals);
+    return ranges::make_subrange(Entity->Locals.begin(), Entity->Locals.end());
   }
+
   auto getLocals() const {
-    return ranges::views::concat(
-        getType()->getParamTypes(), getLocalsWithoutArgs());
+    auto ArgsRange = getType()->getParamTypes();
+    auto LocalsRange = getLocalsWithoutArgs();
+    return ranges::views::concat(ArgsRange, LocalsRange);
   }
+
   bytecode::Expression const *getBody() const {
     return std::addressof(Entity->Body);
   }
@@ -196,10 +201,30 @@ public:
     };
     return Storage->M->Types | ranges::views::transform(TransformFn);
   }
-  auto tables() const { return ranges::views::const_(Storage->Tables); }
-  auto memories() const { return ranges::views::const_(Storage->Memories); }
-  auto globals() const { return ranges::views::const_(Storage->Globals); }
-  auto functions() const { return ranges::views::const_(Storage->Functions); }
+
+  auto tables() const {
+    auto Begin = Storage->Tables.begin();
+    auto End = Storage->Tables.end();
+    return ranges::make_subrange(Begin, End);
+  }
+
+  auto memories() const {
+    auto Begin = Storage->Memories.begin();
+    auto End = Storage->Memories.end();
+    return ranges::make_subrange(Begin, End);
+  }
+
+  auto globals() const {
+    auto Begin = Storage->Globals.begin();
+    auto End = Storage->Globals.end();
+    return ranges::make_subrange(Begin, End);
+  }
+
+  auto functions() const {
+    auto Begin = Storage->Functions.begin();
+    auto End = Storage->Functions.end();
+    return ranges::make_subrange(Begin, End);
+  }
 
   FunctionType const *operator[](TypeIDX const &Index) const;
   views::Table const &operator[](TableIDX const &Index) const;
@@ -213,12 +238,10 @@ public:
   std::optional<views::Global> get(GlobalIDX const &Index) const;
   std::optional<views::Function> get(FuncIDX const &Index) const;
 
-  size_t getNumImportedTables() const { return Storage->NumImportedTables; }
-  size_t getNumImportedMemories() const { return Storage->NumImportedMemories; }
-  size_t getNumImportedGlobals() const { return Storage->NumImportedGlobals; }
-  size_t getNumImportedFunctions() const {
-    return Storage->NumImportedFunctions;
-  }
+  size_t getNumImportedTables() const;
+  size_t getNumImportedMemories() const;
+  size_t getNumImportedGlobals() const;
+  size_t getNumImportedFunctions() const;
 };
 
 } // namespace bytecode

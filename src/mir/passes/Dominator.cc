@@ -1,5 +1,8 @@
 #include "Dominator.h"
 
+#include "../Function.h"
+#include "../Module.h"
+
 #include <range/v3/algorithm/binary_search.hpp>
 #include <range/v3/algorithm/equal_range.hpp>
 #include <range/v3/algorithm/find.hpp>
@@ -34,7 +37,7 @@ void DominatorPass::prepare(mir::Function const &Function_) {
   Function = std::addressof(Function_);
   Dominator = std::make_shared<DominatorMap>();
   N = std::make_unique<BasicBlockSet>();
-  N->reserve(Function->getNumBasicBlock());
+  N->reserve(Function->getBasicBlocks().size());
 
   for (auto const &BasicBlock : Function->getBasicBlocks())
     N->push_back(std::addressof(BasicBlock));
@@ -42,7 +45,7 @@ void DominatorPass::prepare(mir::Function const &Function_) {
 
   for (auto const &BasicBlock : Function->getBasicBlocks()) {
     auto *BasicBlockPtr = std::addressof(BasicBlock);
-    if (BasicBlockPtr == Function->getEntryBasicBlock()) {
+    if (BasicBlockPtr->isEntryBlock()) {
       Dominator->emplace(BasicBlockPtr, BasicBlockSet{BasicBlockPtr});
     } else {
       Dominator->emplace(BasicBlockPtr, *N);

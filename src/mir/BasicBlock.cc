@@ -1,7 +1,11 @@
 #include "BasicBlock.h"
+#include "Function.h"
 #include "Instruction.h"
+#include "Module.h"
 
 namespace mir {
+BasicBlock::BasicBlock() : ASTNode(ASTNodeKind::BasicBlock), Parent(nullptr) {}
+
 BasicBlock::reference BasicBlock::front() { return Instructions.front(); }
 BasicBlock::const_reference BasicBlock::front() const {
   return Instructions.front();
@@ -12,15 +16,14 @@ BasicBlock::const_reference BasicBlock::back() const {
   return Instructions.back();
 }
 
-BasicBlock::BasicBlock(Function *Parent_)
-    : ASTNode(ASTNodeKind::BasicBlock), Parent(Parent_) {}
-
 BasicBlock::iterator BasicBlock::insert(iterator Pos, pointer InstPtr) {
+  assert(InstPtr->Parent == nullptr);
   InstPtr->Parent = this;
   return Instructions.insert(Pos, InstPtr);
 }
 
 BasicBlock::iterator BasicBlock::insertAfter(iterator Pos, pointer InstPtr) {
+  assert(InstPtr->Parent == nullptr);
   InstPtr->Parent = this;
   return Instructions.insertAfter(Pos, InstPtr);
 }
@@ -43,12 +46,19 @@ void BasicBlock::splice(iterator Pos, pointer InstPtr) {
 }
 
 BasicBlock::pointer BasicBlock::remove(pointer InstPtr) {
-  return Instructions.remove(InstPtr);
+  assert(InstPtr->Parent == this);
+  auto *Result = Instructions.remove(InstPtr);
+  InstPtr->Parent = nullptr;
+  return Result;
 }
 
-void BasicBlock::erase(pointer Inst) { Instructions.erase(Inst); }
+void BasicBlock::erase(pointer Inst) {
+  assert(Inst->Parent == this);
+  Instructions.erase(Inst);
+}
 
 void BasicBlock::push_back(pointer Inst) {
+  assert(Inst->Parent == nullptr);
   Inst->Parent = this;
   Instructions.push_back(Inst);
 }
@@ -68,24 +78,24 @@ BasicBlock::const_iterator BasicBlock::end() const
 { return Instructions.end(); }
 BasicBlock::const_iterator BasicBlock::cend() const 
 { return Instructions.end(); }
-BasicBlock::reverse_iterator BasicBlock::rbegin() 
-{ return Instructions.rbegin(); }
-BasicBlock::const_reverse_iterator BasicBlock::rbegin() const 
-{ return Instructions.rbegin(); }
-BasicBlock::const_reverse_iterator BasicBlock::crbegin() const 
-{ return Instructions.rbegin(); }
-BasicBlock::reverse_iterator BasicBlock::rend() 
-{ return Instructions.rend(); }
-BasicBlock::const_reverse_iterator BasicBlock::rend() const 
-{ return Instructions.rend(); }
-BasicBlock::const_reverse_iterator BasicBlock::crend() const 
-{ return Instructions.rend(); }
 // clang-format on
 
 bool BasicBlock::empty() const { return Instructions.empty(); }
 BasicBlock::size_type BasicBlock::size() const { return Instructions.size(); }
-BasicBlock::size_type BasicBlock::max_size() const {
-  return Instructions.max_size();
+
+bool BasicBlock::isEntryBlock() const {
+  auto const *ParentFunction = getParent();
+  return std::addressof(ParentFunction->getEntryBasicBlock()) == this;
+}
+
+bool BasicBlock::hasNoInwardFlow() const {
+  bool HasNoInwardFlow = true;
+  for (auto const *ASTNode : this->getUsedSites()) {
+    if (!is_a<Instruction>(ASTNode)) continue;
+    auto *CastedPtr = dyn_cast<Instruction>(ASTNode);
+    if (CastedPtr->isBranching()) HasNoInwardFlow = false;
+  }
+  return HasNoInwardFlow;
 }
 
 std::vector<BasicBlock *> BasicBlock::getInwardFlow() const {
@@ -99,7 +109,6 @@ std::vector<BasicBlock *> BasicBlock::getInwardFlow() const {
 }
 
 namespace {
-namespace detail {
 struct OutwardFlowVisitor :
     mir::InstVisitorBase<OutwardFlowVisitor, std::vector<BasicBlock *>> {
   using ResultType = std::vector<BasicBlock *>;
@@ -123,21 +132,20 @@ struct OutwardFlowVisitor :
     utility::unreachable();
   }
 };
-} // namespace detail
 } // namespace
 
 std::vector<BasicBlock *> BasicBlock::getOutwardFlow() const {
-  detail::OutwardFlowVisitor Visitor;
+  OutwardFlowVisitor Visitor;
   return Visitor(std::addressof(back()));
 }
 
+// clang-format off
+Function *BasicBlock::getParent() const { return Parent; }
 llvm::ilist<Instruction> BasicBlock::*
-BasicBlock::getSublistAccess(Instruction *) {
-  return &BasicBlock::Instructions;
-}
-
+BasicBlock::getSublistAccess(Instruction *) 
+{ return &BasicBlock::Instructions; }
 void BasicBlock::detach(ASTNode const *) noexcept { utility::unreachable(); }
-bool BasicBlock::classof(ASTNode const *Node) {
-  return Node->getASTNodeKind() == ASTNodeKind::BasicBlock;
-}
+bool BasicBlock::classof(ASTNode const *Node) 
+{ return Node->getASTNodeKind() == ASTNodeKind::BasicBlock; }
+// clang-format on
 } // namespace mir

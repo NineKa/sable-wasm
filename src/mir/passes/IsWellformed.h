@@ -82,8 +82,8 @@ public:
   bool has(mir::Memory const &Memory) const;
   bool has(mir::Table const &Table) const;
   bool has(mir::Function const &Function) const;
-  bool has(mir::DataSegment const &DataSegment) const;
-  bool has(mir::ElementSegment const &ElementSegment) const;
+  bool has(mir::Data const &DataSegment) const;
+  bool has(mir::Element const &ElementSegment) const;
 
   static constexpr bool isConstantPass() { return true; }
   static constexpr bool isSingleRunPass() { return true; }

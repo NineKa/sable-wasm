@@ -103,7 +103,7 @@ namespace detail {
 template <typename T>
 concept inst_with_no_immediate = instruction<T> &&
 inst_trait<T>::hasNoImmediate();
-template <inst_with_no_immediate T> static T NoImmInstSingleton;
+template <inst_with_no_immediate T> static T NoImmInstSingleton; // NOLINT
 } // namespace detail
 
 class InstructionPtr {
@@ -130,8 +130,7 @@ public:
   }
 
   operator Instruction *() const { return asPointer(); }
-  Instruction &operator*() { return *asPointer(); }
-  Instruction *operator->() { return asPointer(); }
+  Instruction *operator->() const { return asPointer(); }
 
   Instruction *asPointer() const {
     auto UnmaskedPtr = InstPtr & ~(std::intptr_t(0x01));

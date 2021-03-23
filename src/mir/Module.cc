@@ -1,85 +1,51 @@
 #include "Module.h"
+#include "Function.h"
 
 #include <range/v3/algorithm/contains.hpp>
 #include <range/v3/algorithm/replace.hpp>
 
 namespace mir {
-bool ImportableEntity::isImported() const { return Import != nullptr; }
-
-std::string_view ImportableEntity::getImportModuleName() const {
-  return std::get<0>(*Import);
-}
-
-std::string_view ImportableEntity::getImportEntityName() const {
-  return std::get<1>(*Import);
-}
-
-void ImportableEntity::setImport(
-    std::string ModuleName, std::string EntityName) {
-  if (ModuleName.empty() && EntityName.empty()) {
-    Import = nullptr;
-    return;
-  }
-  assert(!ModuleName.empty() && !EntityName.empty());
-  Import = std::make_unique<ImportDescriptor>(
-      std::move(ModuleName), std::move(EntityName));
-}
-
-bool ExportableEntity::isExported() const { return Export != nullptr; }
-
-std::string_view ExportableEntity::getExportName() const { return *Export; }
-
-void ExportableEntity::setExport(std::string EntityName) {
-  if (EntityName.empty()) {
-    Export = nullptr;
-    return;
-  }
-  Export = std::make_unique<ExportDescriptor>(std::move(EntityName));
-}
 
 /////////////////////////////// DataSegment ////////////////////////////////////
-DataSegment::DataSegment(
-    Module *Parent_, std::unique_ptr<InitializerExpr> Offset_,
-    std::span<std::byte const> Content_)
-    : ASTNode(ASTNodeKind::DataSegment), Parent(Parent_),
-      Content(Content_.begin(), Content_.end()), Offset(std::move(Offset_)) {}
+Data::Data(std::unique_ptr<InitializerExpr> Offset_)
+    : ASTNode(ASTNodeKind::DataSegment), Parent(nullptr), Content(),
+      Offset(std::move(Offset_)) {}
 
-InitializerExpr *DataSegment::getOffset() const { return Offset.get(); }
-void DataSegment::setOffset(std::unique_ptr<InitializerExpr> Offset_) {
-  Offset = std::move(Offset_);
+// clang-format off
+InitializerExpr *Data::getOffset() const { return Offset.get(); }
+void Data::setOffset(std::unique_ptr<InitializerExpr> Offset_)
+{ Offset = std::move(Offset_); }
+std::size_t Data::getSize() const { return Content.size(); }
+
+std::span<const std::byte> Data::getContent() const { return Content; }
+void Data::setContent(std::span<const std::byte> Content_)
+{ Content = std::vector<std::byte>(Content_.begin(), Content_.end()); }
+// clang-format on
+
+Module *Data::getParent() const { return Parent; }
+void Data::detach(ASTNode const *) noexcept { utility::unreachable(); }
+bool Data::classof(ASTNode const *Node) {
+  return Node->getASTNodeKind() == ASTNodeKind::DataSegment;
 }
 
-std::size_t DataSegment::getSize() const { return Content.size(); }
-std::span<const std::byte> DataSegment::getContent() const { return Content; }
-void DataSegment::setContent(std::span<const std::byte> Content_) {
-  Content = std::vector<std::byte>(Content_.begin(), Content_.end());
-}
-
-void DataSegment::detach(ASTNode const *) noexcept { utility::unreachable(); }
 /////////////////////////// ElementSegment /////////////////////////////////////
-ElementSegment::ElementSegment(
-    Module *Parent_, std::unique_ptr<InitializerExpr> Offset_,
-    std::span<Function *const> Content_)
-    : ASTNode(ASTNodeKind::ElementSegment), Parent(Parent_),
-      Offset(std::move(Offset_)) {
-  setContent(Content_);
-}
+Element::Element(std::unique_ptr<InitializerExpr> Offset_)
+    : ASTNode(ASTNodeKind::ElementSegment), Parent(nullptr),
+      Offset(std::move(Offset_)) {}
 
-ElementSegment::~ElementSegment() noexcept {
+Element::~Element() noexcept {
   for (auto *Function : Content)
     if (Function != nullptr) Function->remove_use(this);
 }
 
-InitializerExpr *ElementSegment::getOffset() const { return Offset.get(); }
-void ElementSegment::setOffset(std::unique_ptr<InitializerExpr> Offset_) {
+InitializerExpr *Element::getOffset() const { return Offset.get(); }
+void Element::setOffset(std::unique_ptr<InitializerExpr> Offset_) {
   Offset = std::move(Offset_);
 }
 
-std::span<Function *const> ElementSegment::getContent() const {
-  return Content;
-}
+std::span<Function *const> Element::getContent() const { return Content; }
 
-void ElementSegment::setContent(std::span<Function *const> Content_) {
+void Element::setContent(std::span<Function *const> Content_) {
   for (auto *Function : Content)
     if (Function != nullptr) Function->remove_use(this);
   for (auto *Function : Content_)
@@ -87,9 +53,11 @@ void ElementSegment::setContent(std::span<Function *const> Content_) {
   Content = ranges::to<decltype(Content)>(Content_);
 }
 
-std::size_t ElementSegment::getSize() const { return Content.size(); }
+std::size_t Element::getSize() const { return Content.size(); }
 
-void ElementSegment::detach(ASTNode const *Node) noexcept {
+Module *Element::getParent() const { return Parent; }
+
+void Element::detach(ASTNode const *Node) noexcept {
   if (ranges::contains(Content, Node)) {
     ranges::replace(Content, Node, nullptr);
     return;
@@ -97,83 +65,64 @@ void ElementSegment::detach(ASTNode const *Node) noexcept {
   utility::unreachable();
 }
 
-///////////////////////////////// Function /////////////////////////////////////
-Function::Function(Module *Parent_, bytecode::FunctionType Type_)
-    : ASTNode(ASTNodeKind::Function), Parent(Parent_), Type(std::move(Type_)) {}
-
-BasicBlock *Function::BuildBasicBlock(BasicBlock *Before) {
-  auto *AllocatedBB = new BasicBlock(this);
-  if (Before == nullptr) {
-    BasicBlocks.push_back(AllocatedBB);
-  } else {
-    BasicBlocks.insert(Before->getIterator(), AllocatedBB);
-  }
-  return AllocatedBB;
+bool Element::classof(ASTNode const *Node) {
+  return Node->getASTNodeKind() == ASTNodeKind::ElementSegment;
 }
 
-BasicBlock const *Function::getEntryBasicBlock() const {
-  if (BasicBlocks.empty()) return nullptr;
-  return std::addressof(BasicBlocks.front());
+/////////////////////////////////// Global /////////////////////////////////////
+
+Global::Global(bytecode::GlobalType Type_)
+    : ASTNode(ASTNodeKind::Global), Parent(nullptr), Type(Type_),
+      Initializer(nullptr) {}
+
+bytecode::GlobalType const &Global::getType() const { return Type; }
+bool Global::hasInitializer() const { return Initializer != nullptr; }
+InitializerExpr *Global::getInitializer() const { return Initializer.get(); }
+void Global::setInitializer(std::unique_ptr<InitializerExpr> Initializer_) {
+  Initializer = std::move(Initializer_);
 }
 
-BasicBlock *Function::getEntryBasicBlock() {
-  if (BasicBlocks.empty()) return nullptr;
-  return std::addressof(BasicBlocks.front());
+Module *Global::getParent() const { return Parent; }
+void Global::detach(ASTNode const *) noexcept { utility::unreachable(); }
+bool Global::classof(ASTNode const *Node) {
+  return Node->getASTNodeKind() == ASTNodeKind::Global;
 }
-
-void Function::erase(BasicBlock *BasicBlock_) {
-  BasicBlocks.erase(BasicBlock_);
-}
-
-void Function::erase(Local *Local_) {
-  assert(!Local_->isParameter());
-  Locals.erase(Local_);
-}
-
-Local *Function::BuildLocal(bytecode::ValueType Type_, Local *Before) {
-  auto *AllocatedLocal = new Local(this, Type_);
-  if (Before == nullptr) {
-    Locals.push_back(AllocatedLocal);
-  } else {
-    Locals.insert(Before->getIterator(), AllocatedLocal);
-  }
-  return AllocatedLocal;
-}
-
-////////////////////////////////// Local ///////////////////////////////////////
-Local::Local(IsParameterTag, Function *Parent_, bytecode::ValueType Type_)
-    : ASTNode(ASTNodeKind::Local), Parent(Parent_), Type(Type_),
-      IsParameter(true) {}
-
-Local::Local(Function *Parent_, bytecode::ValueType Type_)
-    : ASTNode(ASTNodeKind::Local), Parent(Parent_), Type(Type_),
-      IsParameter(false) {}
-
-////////////////////////////////// Global //////////////////////////////////////
-Global::Global(Module *Parent_, bytecode::GlobalType Type_)
-    : ASTNode(ASTNodeKind::Global), Parent(Parent_), Type(Type_) {}
 
 /////////////////////////////////// Memory /////////////////////////////////////
-Memory::Memory(Module *Parent_, bytecode::MemoryType Type_)
-    : ASTNode(ASTNodeKind::Memory), Parent(Parent_), Type(Type_) {}
+Memory::Memory(bytecode::MemoryType Type_)
+    : ASTNode(ASTNodeKind::Memory), Parent(nullptr), Type(Type_) {}
 
 Memory::~Memory() noexcept {
   for (auto *Initializer : Initializers)
     if (Initializer != nullptr) Initializer->remove_use(this);
 }
 
-void Memory::addInitializer(DataSegment *DataSegment_) {
+bytecode::MemoryType const &Memory::getType() const { return Type; }
+
+Memory::initializer_iterator Memory::initializer_begin() const {
+  return Initializers.begin();
+}
+
+Memory::initializer_iterator Memory::initializer_end() const {
+  return Initializers.end();
+}
+
+void Memory::addInitializer(Data *DataSegment_) {
   if (DataSegment_ != nullptr) DataSegment_->add_use(this);
   Initializers.push_back(DataSegment_);
 }
 
-void Memory::setInitializers(std::span<DataSegment *const> DataSegments_) {
+void Memory::setInitializers(std::span<Data *const> DataSegments_) {
   for (auto *DataSegment : Initializers)
     if (DataSegment != nullptr) DataSegment->remove_use(this);
   for (auto *DataSegment : DataSegments_)
     if (DataSegment != nullptr) DataSegment->add_use(this);
   Initializers = ranges::to<decltype(Initializers)>(DataSegments_);
 }
+
+bool Memory::hasInitializer() const { return !Initializers.empty(); }
+
+Module *Memory::getParent() const { return Parent; }
 
 void Memory::detach(ASTNode const *Node) noexcept {
   if (ranges::contains(Initializers, Node)) {
@@ -183,27 +132,45 @@ void Memory::detach(ASTNode const *Node) noexcept {
   utility::unreachable();
 }
 
+bool Memory::classof(ASTNode const *Node) {
+  return Node->getASTNodeKind() == ASTNodeKind::Memory;
+}
+
 /////////////////////////////////// Table //////////////////////////////////////
-Table::Table(Module *Parent_, bytecode::TableType Type_)
-    : ASTNode(ASTNodeKind::Table), Parent(Parent_), Type(Type_) {}
+Table::Table(bytecode::TableType Type_)
+    : ASTNode(ASTNodeKind::Table), Parent(nullptr), Type(Type_) {}
 
 Table::~Table() noexcept {
   for (auto *Initializer : Initializers)
     if (Initializer != nullptr) Initializer->remove_use(this);
 }
 
-void Table::addInitializer(ElementSegment *ElementSegment_) {
+bytecode::TableType const &Table::getType() const { return Type; }
+
+Table::initializer_iterator Table::initializer_begin() const {
+  return Initializers.begin();
+}
+
+Table::initializer_iterator Table::initializer_end() const {
+  return Initializers.end();
+}
+
+void Table::addInitializer(Element *ElementSegment_) {
   if (ElementSegment_ != nullptr) ElementSegment_->add_use(this);
   Initializers.push_back(ElementSegment_);
 }
 
-void Table::setInitializers(std::span<ElementSegment *const> ElementSegments_) {
+void Table::setInitializers(std::span<Element *const> ElementSegments_) {
   for (auto *ElementSegment : Initializers)
     if (ElementSegment != nullptr) ElementSegment->remove_use(this);
   for (auto *ElementSegment : ElementSegments_)
     if (ElementSegment != nullptr) ElementSegment->add_use(this);
   Initializers = ranges::to<decltype(Initializers)>(ElementSegments_);
 }
+
+bool Table::hasInitializer() const { return !Initializers.empty(); }
+
+Module *Table::getParent() const { return Parent; }
 
 void Table::detach(ASTNode const *Node) noexcept {
   if (ranges::contains(Initializers, Node)) {
@@ -213,49 +180,94 @@ void Table::detach(ASTNode const *Node) noexcept {
   utility::unreachable();
 }
 
+bool Table::classof(ASTNode const *Node) {
+  return Node->getASTNodeKind() == ASTNodeKind::Table;
+}
+
 /////////////////////////////////// Module /////////////////////////////////////
 Module::Module() : ASTNode(ASTNodeKind::Module) {}
 
 Function *Module::BuildFunction(bytecode::FunctionType Type_) {
-  auto *AllocatedFunction = new Function(this, std::move(Type_));
-  Functions.push_back(AllocatedFunction);
+  auto *AllocatedFunction = new Function(std::move(Type_));
+  getFunctions().push_back(AllocatedFunction);
   return AllocatedFunction;
 }
 
 Global *Module::BuildGlobal(bytecode::GlobalType Type_) {
-  auto *AllocatedGlobal = new Global(this, Type_);
-  Globals.push_back(AllocatedGlobal);
+  auto *AllocatedGlobal = new Global(Type_);
+  getGlobals().push_back(AllocatedGlobal);
   return AllocatedGlobal;
 }
 
 Memory *Module::BuildMemory(bytecode::MemoryType Type_) {
-  auto *AllocatedMemory = new Memory(this, Type_);
-  Memories.push_back(AllocatedMemory);
+  auto *AllocatedMemory = new Memory(Type_);
+  getMemories().push_back(AllocatedMemory);
   return AllocatedMemory;
 }
 
 Table *Module::BuildTable(bytecode::TableType Type_) {
-  auto *AllocatedTable = new Table(this, Type_);
-  Tables.push_back(AllocatedTable);
+  auto *AllocatedTable = new Table(Type_);
+  getTables().push_back(AllocatedTable);
   return AllocatedTable;
 }
 
-DataSegment *Module::BuildDataSegment(
-    std::unique_ptr<InitializerExpr> Offset_,
-    std::span<std::byte const> Content_) {
-  auto *AllocatedDataSegment =
-      new DataSegment(this, std::move(Offset_), Content_);
-  DataSegments.push_back(AllocatedDataSegment);
+Data *Module::BuildDataSegment(std::unique_ptr<InitializerExpr> Offset_) {
+  auto *AllocatedDataSegment = new Data(std::move(Offset_));
+  getData().push_back(AllocatedDataSegment);
   return AllocatedDataSegment;
 }
 
-ElementSegment *Module::BuildElementSegment(
-    std::unique_ptr<InitializerExpr> Offset_,
-    std::span<Function *const> Content_) {
-  auto *AllocatedElementSegment =
-      new ElementSegment(this, std::move(Offset_), Content_);
-  ElementSegments.push_back(AllocatedElementSegment);
+Element *Module::BuildElementSegment(std::unique_ptr<InitializerExpr> Offset_) {
+  auto *AllocatedElementSegment = new Element(std::move(Offset_));
+  getElements().push_back(AllocatedElementSegment);
   return AllocatedElementSegment;
+}
+
+// clang-format off
+detail::IListAccessWrapper<Module, Function> Module::getFunctions()
+{ return detail::IListAccessWrapper(this, Functions); }
+detail::IListAccessWrapper<Module, Global> Module::getGlobals()
+{ return detail::IListAccessWrapper(this, Globals); }
+detail::IListAccessWrapper<Module, Memory> Module::getMemories()
+{ return detail::IListAccessWrapper(this, Memories); }
+detail::IListAccessWrapper<Module, Table> Module::getTables()
+{ return detail::IListAccessWrapper(this, Tables); }
+detail::IListAccessWrapper<Module, Data> Module::getData()
+{ return detail::IListAccessWrapper(this, DataSegments); }
+detail::IListAccessWrapper<Module, Element> Module::getElements()
+{ return detail::IListAccessWrapper(this, ElementSegments); }
+
+detail::IListConstAccessWrapper<Module, Function> Module::getFunctions() const
+{ return detail::IListConstAccessWrapper(this, Functions); }
+detail::IListConstAccessWrapper<Module, Global> Module::getGlobals() const
+{ return detail::IListConstAccessWrapper(this, Globals); }
+detail::IListConstAccessWrapper<Module, Memory> Module::getMemories() const
+{ return detail::IListConstAccessWrapper(this, Memories); }
+detail::IListConstAccessWrapper<Module, Table> Module::getTables() const
+{ return detail::IListConstAccessWrapper(this, Tables); }
+detail::IListConstAccessWrapper<Module, Data> Module::getData() const
+{ return detail::IListConstAccessWrapper(this, DataSegments); }
+detail::IListConstAccessWrapper<Module, Element> Module::getElements() const
+{ return detail::IListConstAccessWrapper(this, ElementSegments); }
+
+llvm::ilist<Function> Module::*Module::getSublistAccess(Function *)
+{ return &Module::Functions; }
+llvm::ilist<Global> Module::*Module::getSublistAccess(Global *)
+{ return &Module::Globals; }
+llvm::ilist<Memory> Module::*Module::getSublistAccess(Memory *)
+{ return &Module::Memories; }
+llvm::ilist<Table> Module::*Module::getSublistAccess(Table *)
+{ return &Module::Tables; }
+llvm::ilist<Data> Module::*Module::getSublistAccess(Data *)
+{ return &Module::DataSegments; }
+llvm::ilist<Element> Module::*Module::getSublistAccess(Element *)
+{ return &Module::ElementSegments; }
+// clang-format on
+
+void Module::detach(ASTNode const *) noexcept { utility::unreachable(); }
+
+bool Module::classof(ASTNode const *Node) {
+  return Node->getASTNodeKind() == ASTNodeKind::Module;
 }
 
 } // namespace mir

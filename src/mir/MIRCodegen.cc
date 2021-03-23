@@ -89,8 +89,8 @@ EntityLayout::EntityLayout(bytecode::Module const &BModule, Module &MModule)
   for (auto const &BDataSegment : BModuleView.module().Data) {
     auto Offset = solveInitializerExpr(BDataSegment.Offset);
     auto *Target = this->operator[](BDataSegment.Memory);
-    auto *MDataSegment =
-        MModule.BuildDataSegment(std::move(Offset), BDataSegment.Initializer);
+    auto *MDataSegment = MModule.BuildDataSegment(std::move(Offset));
+    MDataSegment->setContent(BDataSegment.Initializer);
     Target->addInitializer(MDataSegment);
   }
   for (auto const &BElementSegment : BModuleView.module().Elements) {
@@ -104,8 +104,8 @@ EntityLayout::EntityLayout(bytecode::Module const &BModule, Module &MModule)
           })
         | ranges::to<std::vector<Function *>>();
     // clang-format on
-    auto *MElementSegment =
-        MModule.BuildElementSegment(std::move(Offset), Content);
+    auto *MElementSegment = MModule.BuildElementSegment(std::move(Offset));
+    MElementSegment->setContent(Content);
     Target->addInitializer(MElementSegment);
   }
 }
@@ -191,7 +191,9 @@ public:
         TargetFunction(TargetFunction_) {
     if constexpr (ranges::sized_range<decltype(SourceFunction.getLocals())>)
       Locals.reserve(ranges::size(SourceFunction.getLocals()));
-    for (auto const &LocalType : SourceFunction.getLocals()) {
+    for (auto &Local : TargetFunction.getLocals())
+      Locals.push_back(std::addressof(Local));
+    for (auto const &LocalType : SourceFunction.getLocalsWithoutArgs()) {
       auto *Local = TargetFunction.BuildLocal(LocalType);
       Locals.push_back(Local);
     }
@@ -262,7 +264,8 @@ class FunctionTranslationTask::TranslationVisitor :
   std::vector<Instruction *> Values;
 
   BasicBlock *createBasicBlock() {
-    return Context.target().BuildBasicBlock(InsertBefore);
+    if (InsertBefore == nullptr) return Context.target().BuildBasicBlock();
+    return Context.target().BuildBasicBlockAt(InsertBefore);
   }
 
   bytecode::FunctionType
@@ -953,7 +956,7 @@ void ModuleTranslationTask::perform() {
     for (auto const &LocalNameEntry : Names->getLocalNames()) {
       auto *MFunction = (*LayOut)[LocalNameEntry.FuncIndex];
       auto &MLocal = *std::next(
-          MFunction->local_begin(),
+          MFunction->getLocals().begin(),
           static_cast<std::size_t>(LocalNameEntry.LocalIndex));
       MLocal.setName(LocalNameEntry.Name);
     }

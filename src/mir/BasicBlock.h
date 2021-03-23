@@ -16,11 +16,13 @@ class Function;
 class BasicBlock :
     public ASTNode,
     public llvm::ilist_node_with_parent<BasicBlock, Function> {
+  friend class detail::IListAccessWrapper<Function, BasicBlock>;
+  friend class detail::IListConstAccessWrapper<Function, BasicBlock>;
   Function *Parent;
   llvm::ilist<Instruction> Instructions;
 
 public:
-  explicit BasicBlock(Function *Parent_);
+  BasicBlock();
 
   template <std::derived_from<Instruction> T, typename... ArgTypes>
   T *BuildInst(ArgTypes &&...Args) {
@@ -30,9 +32,9 @@ public:
   }
 
   template <std::derived_from<Instruction> T, typename... ArgTypes>
-  T *BuildInstAt(Instruction *Before, ArgTypes &&...Args) {
+  T *BuildInstAt(Instruction *Pos, ArgTypes &&...Args) {
     auto *Inst = new T(std::forward<ArgTypes>(Args)...);
-    insert(Before->getIterator(), Inst);
+    insert(Pos->getIterator(), Inst);
     return Inst;
   }
 
@@ -45,8 +47,6 @@ public:
   using const_pointer = decltype(Instructions)::const_pointer;
   using iterator = decltype(Instructions)::iterator;
   using const_iterator = decltype(Instructions)::const_iterator;
-  using reverse_iterator = decltype(Instructions)::reverse_iterator;
-  using const_reverse_iterator = decltype(Instructions)::const_reverse_iterator;
 
   reference front();
   const_reference front() const;
@@ -72,22 +72,15 @@ public:
   const_iterator end() const;
   const_iterator cend() const;
 
-  reverse_iterator rbegin();
-  const_reverse_iterator rbegin() const;
-  const_reverse_iterator crbegin() const;
-
-  reverse_iterator rend();
-  const_reverse_iterator rend() const;
-  const_reverse_iterator crend() const;
-
   bool empty() const;
   size_type size() const;
-  size_type max_size() const;
 
+  bool isEntryBlock() const;
+  bool hasNoInwardFlow() const;
   std::vector<BasicBlock *> getInwardFlow() const;
   std::vector<BasicBlock *> getOutwardFlow() const;
 
-  Function *getParent() const { return Parent; }
+  Function *getParent() const;
   static llvm::ilist<Instruction> BasicBlock::*getSublistAccess(Instruction *);
   void detach(ASTNode const *) noexcept override;
   static bool classof(ASTNode const *Node);

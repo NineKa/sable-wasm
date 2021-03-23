@@ -1,79 +1,55 @@
 #include "ASTNode.h"
 
-#include "Module.h"
-
-namespace mir::initializer {
-Constant::Constant(std::int32_t Value)
-    : InitializerExpr(InitializerExprKind::Constant), Storage(Value) {}
-Constant::Constant(std::int64_t Value)
-    : InitializerExpr(InitializerExprKind::Constant), Storage(Value) {}
-Constant::Constant(float Value)
-    : InitializerExpr(InitializerExprKind::Constant), Storage(Value) {}
-Constant::Constant(double Value)
-    : InitializerExpr(InitializerExprKind::Constant), Storage(Value) {}
-
-std::int32_t &Constant::asI32() { return std::get<std::int32_t>(Storage); }
-std::int64_t &Constant::asI64() { return std::get<std::int64_t>(Storage); }
-float &Constant::asF32() { return std::get<float>(Storage); }
-double &Constant::asF64() { return std::get<double>(Storage); }
-std::int32_t Constant::asI32() const { return std::get<std::int32_t>(Storage); }
-std::int64_t Constant::asI64() const { return std::get<std::int64_t>(Storage); }
-float Constant::asF32() const { return std::get<float>(Storage); }
-double Constant::asF64() const { return std::get<double>(Storage); }
-
-bytecode::ValueType Constant::getValueType() const {
-  using namespace bytecode::valuetypes;
-  if (std::holds_alternative<std::int32_t>(Storage)) return I32;
-  if (std::holds_alternative<std::int64_t>(Storage)) return I64;
-  if (std::holds_alternative<float>(Storage)) return F32;
-  if (std::holds_alternative<double>(Storage)) return F64;
-  utility::unreachable();
+namespace mir {
+ASTNode::ASTNode(ASTNodeKind Kind_) : Kind(Kind_), Name() {}
+ASTNode::~ASTNode() noexcept {
+  for (auto *U : Uses) U->detach(this);
 }
 
-void Constant::detach(ASTNode const *) noexcept { utility::unreachable(); }
+std::string_view ASTNode::getName() const { return Name; }
+void ASTNode::setName(std::string Name_) { Name = std::move(Name_); }
+bool ASTNode::hasName() const { return !Name.empty(); }
 
-bool Constant::classof(InitializerExpr const *ConstExpr) {
-  return ConstExpr->getInitializerExprKind() == InitializerExprKind::Constant;
+ASTNodeKind ASTNode::getASTNodeKind() const { return Kind; }
+
+using Iterator = ASTNode::use_site_iterator;
+Iterator ASTNode::use_site_begin() const { return Uses.begin(); }
+Iterator ASTNode::use_site_end() const { return Uses.end(); }
+
+void ASTNode::add_use(ASTNode *Referrer) { Uses.push_front(Referrer); }
+void ASTNode::remove_use(ASTNode *Referrer) { std::erase(Uses, Referrer); }
+
+bool ImportableEntity::isImported() const { return Import != nullptr; }
+
+std::string_view ImportableEntity::getImportModuleName() const {
+  return std::get<0>(*Import);
 }
 
-bool Constant::classof(ASTNode const *Node) {
-  if (InitializerExpr::classof(Node))
-    return Constant::classof(dyn_cast<InitializerExpr>(Node));
-  return false;
+std::string_view ImportableEntity::getImportEntityName() const {
+  return std::get<1>(*Import);
 }
 
-GlobalGet::GlobalGet(Global *GlobalValue_)
-    : InitializerExpr(InitializerExprKind::GlobalGet), GlobalValue() {
-  setGlobalValue(GlobalValue_);
-}
-
-GlobalGet::~GlobalGet() noexcept {
-  if (GlobalValue != nullptr) GlobalValue->remove_use(this);
-}
-
-Global *GlobalGet::getGlobalValue() const { return GlobalValue; }
-
-void GlobalGet::setGlobalValue(Global *GlobalValue_) {
-  if (GlobalValue != nullptr) GlobalValue->remove_use(this);
-  if (GlobalValue_ != nullptr) GlobalValue_->add_use(this);
-  GlobalValue = GlobalValue_;
-}
-
-void GlobalGet::detach(ASTNode const *Node) noexcept {
-  if (GlobalValue == Node) {
-    GlobalValue = nullptr;
+void ImportableEntity::setImport(
+    std::string ModuleName, std::string EntityName) {
+  if (ModuleName.empty() && EntityName.empty()) {
+    Import = nullptr;
     return;
   }
-  utility::unreachable();
+  assert(!ModuleName.empty() && !EntityName.empty());
+  Import = std::make_unique<ImportDescriptor>(
+      std::move(ModuleName), std::move(EntityName));
 }
 
-bool GlobalGet::classof(InitializerExpr const *ConstExpr) {
-  return ConstExpr->getInitializerExprKind() == InitializerExprKind::GlobalGet;
+bool ExportableEntity::isExported() const { return Export != nullptr; }
+
+std::string_view ExportableEntity::getExportName() const { return *Export; }
+
+void ExportableEntity::setExport(std::string EntityName) {
+  if (EntityName.empty()) {
+    Export = nullptr;
+    return;
+  }
+  Export = std::make_unique<ExportDescriptor>(std::move(EntityName));
 }
 
-bool GlobalGet::classof(ASTNode const *Node) {
-  if (InitializerExpr::classof(Node))
-    return GlobalGet::classof(dyn_cast<InitializerExpr>(Node));
-  return false;
-}
-} // namespace mir::initializer
+} // namespace mir

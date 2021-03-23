@@ -29,10 +29,10 @@ Iterator EntityNameWriter::write(
 }
 
 inline EntityNameWriter::EntityNameWriter(Module const &Module_) {
-  prepareEntities(Module_.getMemories());
-  prepareEntities(Module_.getTables());
-  prepareEntities(Module_.getGlobals());
-  prepareEntities(Module_.getFunctions());
+  prepareEntities(Module_.getMemories().asView());
+  prepareEntities(Module_.getTables().asView());
+  prepareEntities(Module_.getGlobals().asView());
+  prepareEntities(Module_.getFunctions().asView());
 }
 
 template <std::output_iterator<char> Iterator>
@@ -148,6 +148,7 @@ inline LocalNameWriter::LocalNameWriter(Function const &Function_) {
 
 template <std::output_iterator<char> Iterator>
 Iterator LocalNameWriter::write(Iterator Out, Local const &Local_) const {
+  if (Local_.isParameter()) return write(Out, "(arg)%{}", Local_);
   return write(Out, "%{}", Local_);
 }
 
@@ -655,7 +656,6 @@ struct InitializerExprPrintVisitor :
     case VKind::F64: return (Writer << "f64 " << InitExpr->asF64()).iterator();
     default: utility::unreachable();
     }
-    return Writer.iterator();
   }
   Iterator operator()(initializer::GlobalGet const *InitExpr) {
     Writer << InitExpr->getGlobalValue();
@@ -738,7 +738,7 @@ Iterator dump(
   if (Function_.isImported()) Out = dumpImportInfo(Out, Function_);
   if (Function_.isExported()) Out = dumpExportInfo(Out, Function_);
 
-  if (!Function_.isImported()) {
+  if (Function_.isDefinition()) {
     LocalNameWriter LNameWriter(Function_);
     MIRIteratorWriter Writer(Out, ENameWriter, LNameWriter);
     Writer << "function " << Function_ << " : " << Function_.getType() << " {"
@@ -773,22 +773,22 @@ template <std::output_iterator<char> Iterator>
 Iterator dump(Iterator Out, Module const &Module_) {
   EntityNameWriter ENameWriter(Module_);
   MIRIteratorWriter<Iterator> Writer;
-  ranges::for_each(Module_.getMemories(), [&](Memory const &Memory_) {
-    Out = dump(Out, Memory_, ENameWriter);
+  for (auto const &Memory : Module_.getMemories().asView()) {
+    Out = dump(Out, Memory, ENameWriter);
     Out = (Writer.attach(Out) << Writer.linebreak()).iterator();
-  });
-  ranges::for_each(Module_.getTables(), [&](Table const &Table_) {
-    Out = dump(Out, Table_, ENameWriter);
+  }
+  for (auto const &Table : Module_.getTables().asView()) {
+    Out = dump(Out, Table, ENameWriter);
     Out = (Writer.attach(Out) << Writer.linebreak()).iterator();
-  });
-  ranges::for_each(Module_.getGlobals(), [&](Global const &Global_) {
-    Out = dump(Out, Global_, ENameWriter);
+  }
+  for (auto const &Global : Module_.getGlobals().asView()) {
+    Out = dump(Out, Global, ENameWriter);
     Out = (Writer.attach(Out) << Writer.linebreak()).iterator();
-  });
-  ranges::for_each(Module_.getFunctions(), [&](Function const &Function_) {
-    Out = dump(Out, Function_, ENameWriter);
+  }
+  for (auto const &Function : Module_.getFunctions().asView()) {
+    Out = dump(Out, Function, ENameWriter);
     Out = (Writer.attach(Out) << Writer.linebreak()).iterator();
-  });
+  }
   return Out;
 }
 } // namespace mir

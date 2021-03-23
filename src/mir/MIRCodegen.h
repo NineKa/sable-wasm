@@ -4,6 +4,7 @@
 #include "../bytecode/Module.h"
 #include "../parser/customsections/Name.h"
 #include "BasicBlock.h"
+#include "Function.h"
 #include "Instruction.h"
 #include "Module.h"
 
@@ -19,8 +20,8 @@ class EntityLayout {
   std::vector<Memory *> Memories;
   std::vector<Global *> Globals;
   std::vector<Table *> Tables;
-  std::vector<DataSegment *> DataSegments;
-  std::vector<ElementSegment *> ElementSegments;
+  std::vector<Data *> DataSegments;
+  std::vector<Element *> ElementSegments;
 
   std::unique_ptr<InitializerExpr>
   solveInitializerExpr(bytecode::Expression const &Expr);

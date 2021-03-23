@@ -6,6 +6,7 @@
 #include <fmt/format.h>
 #include <range/v3/core.hpp>
 #include <range/v3/range/conversion.hpp>
+#include <range/v3/view/subrange.hpp>
 
 #include <cassert>
 #include <initializer_list>
@@ -40,8 +41,6 @@ inline constexpr ValueType F64(ValueTypeKind::F64);
 class FunctionType {
   std::vector<ValueType> ParamTypes;
   std::vector<ValueType> ResultTypes;
-  using ParamTypeIterator = decltype(ParamTypes)::const_iterator;
-  using ResultTypeIterator = decltype(ResultTypes)::const_iterator;
 
 public:
   FunctionType(
@@ -52,13 +51,14 @@ public:
   template <ranges::input_range T, ranges::input_range U>
   FunctionType(T const &ParamTypes_, U const &ResultTypes_)
       : ParamTypes(ranges::to<std::vector<ValueType>>(ParamTypes_)),
-        ResultTypes(ranges::to<std::vector<ValueType>>(ResultTypes_)) {
-    static_assert(std::convertible_to<ranges::range_value_t<T>, ValueType>);
-    static_assert(std::convertible_to<ranges::range_value_t<U>, ValueType>);
-  }
+        ResultTypes(ranges::to<std::vector<ValueType>>(ResultTypes_)) {}
 
-  auto getParamTypes() const { return ranges::views::all(ParamTypes); }
-  auto getResultTypes() const { return ranges::views::all(ResultTypes); }
+  // clang-format off
+  auto getParamTypes() const 
+  { return ranges::make_subrange(ParamTypes.begin(), ParamTypes.end()); }
+  auto getResultTypes() const 
+  { return ranges::make_subrange(ResultTypes.begin(), ResultTypes.end()); }
+  // clang-format on
 
   bool isVoidResult() const { return ResultTypes.empty(); }
   bool isSingleValueResult() const { return ResultTypes.size() == 1; }

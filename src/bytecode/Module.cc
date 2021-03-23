@@ -108,6 +108,7 @@ FunctionType const *ModuleView::operator[](TypeIDX const &Index) const {
   assert(CastedIndex < ranges::size(Storage->M->Types));
   return std::addressof(Storage->M->Types[CastedIndex]);
 }
+
 // clang-format off
 views::Table const &ModuleView::operator[](TableIDX const &Index) const
 { return getByIndex(Storage->Tables, Index); }
@@ -146,4 +147,14 @@ std::optional<views::Function> ModuleView::get(FuncIDX const &Index) const
 { return getByIndexOptional(Storage->Functions, Index); }
 // clang-format on
 
+// clang-format off
+std::size_t ModuleView::getNumImportedTables() const 
+{ return Storage->NumImportedTables; }
+std::size_t ModuleView::getNumImportedMemories() const
+{ return Storage->NumImportedMemories; }
+std::size_t ModuleView::getNumImportedGlobals() const
+{ return Storage->NumImportedGlobals; }
+std::size_t ModuleView::getNumImportedFunctions() const
+{ return Storage->NumImportedFunctions; }
+// clang-format on
 } // namespace bytecode

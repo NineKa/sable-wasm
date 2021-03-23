@@ -97,20 +97,6 @@ template <instruction T> T const *dyn_cast(Instruction const *Inst) {
 }
 } // namespace mir
 
-namespace llvm {
-template <> struct ilist_callback_traits<mir::Instruction> {
-  void addNodeToList(mir::Instruction *) {}
-  void removeNodeFromList(mir::Instruction *Ptr) { Ptr->Parent = nullptr; }
-  template <class Iterator>
-  void transferNodesFromList(
-      ilist_callback_traits &OldList, Iterator First, Iterator Last) {
-    utility::ignore(OldList);
-    utility::ignore(First);
-    utility::ignore(Last);
-  }
-};
-} // namespace llvm
-
 namespace mir::instructions {
 ///////////////////////////////// Unreachable //////////////////////////////////
 class Unreachable : public Instruction {

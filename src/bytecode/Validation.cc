@@ -4,7 +4,6 @@
 #include <range/v3/algorithm/copy.hpp>
 #include <range/v3/algorithm/count_if.hpp>
 #include <range/v3/iterator.hpp>
-#include <range/v3/range/concepts.hpp>
 #include <range/v3/view/concat.hpp>
 #include <range/v3/view/enumerate.hpp>
 #include <range/v3/view/reverse.hpp>
@@ -52,7 +51,6 @@ bool validate(GlobalType const &Type) {
 }
 
 namespace {
-namespace detail {
 template <limit_like_type T>
 bool validateLimitLikeType(T const &Type, std::uint64_t K) {
   if (Type.getMin() > K) return false;
@@ -62,14 +60,13 @@ bool validateLimitLikeType(T const &Type, std::uint64_t K) {
   }
   return true;
 }
-} // namespace detail
 } // namespace
 
 bool validate(MemoryType const &Type) {
-  return detail::validateLimitLikeType(Type, std::uint64_t(1) << 32);
+  return validateLimitLikeType(Type, std::uint64_t(1) << 32);
 }
 bool validate(TableType const &Type) {
-  return detail::validateLimitLikeType(Type, std::uint64_t(1) << 16);
+  return validateLimitLikeType(Type, std::uint64_t(1) << 16);
 }
 
 ///////////////////////////////// OperandStack /////////////////////////////////

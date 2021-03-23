@@ -1,5 +1,6 @@
 #include "IsWellformed.h"
 #include "../../bytecode/Validation.h"
+#include "../Function.h"
 #include "Dominator.h"
 
 #include <iterator>
@@ -52,9 +53,9 @@ bool IsWellformedModulePass::has(mir::Table const &Table) const
 { return ranges::binary_search(*AvailableNodes, std::addressof(Table)); }
 bool IsWellformedModulePass::has(mir::Function const &Function) const 
 { return ranges::binary_search(*AvailableNodes, std::addressof(Function)); }
-bool IsWellformedModulePass::has(mir::DataSegment const &Data) const
+bool IsWellformedModulePass::has(mir::Data const &Data) const
 { return ranges::binary_search(*AvailableNodes, std::addressof(Data)); }
-bool IsWellformedModulePass::has(mir::ElementSegment const &Element) const
+bool IsWellformedModulePass::has(mir::Element const &Element) const
 { return ranges::binary_search(*AvailableNodes, std::addressof(Element)); }
 // clang-format on
 
@@ -111,17 +112,17 @@ void IsWellformedModulePass::prepare(mir::Module const &Module_) {
   Module = std::addressof(Module_);
   AvailableNodes = std::make_unique<std::vector<mir::ASTNode const *>>();
   detail::AddrBackInserter Iterator(*AvailableNodes);
-  ranges::copy(Module->getMemories(), Iterator);
-  ranges::copy(Module->getTables(), Iterator);
-  ranges::copy(Module->getGlobals(), Iterator);
-  ranges::copy(Module->getFunctions(), Iterator);
-  ranges::copy(Module->getData(), Iterator);
-  ranges::copy(Module->getElements(), Iterator);
+  ranges::copy(Module->getMemories().asView(), Iterator);
+  ranges::copy(Module->getTables().asView(), Iterator);
+  ranges::copy(Module->getGlobals().asView(), Iterator);
+  ranges::copy(Module->getFunctions().asView(), Iterator);
+  ranges::copy(Module->getData().asView(), Iterator);
+  ranges::copy(Module->getElements().asView(), Iterator);
   ranges::sort(*AvailableNodes);
 }
 
 PassStatus IsWellformedModulePass::run() {
-  for (auto const &Memory : Module->getMemories()) {
+  for (auto const &Memory : Module->getMemories().asView()) {
     auto const *MemoryPtr = std::addressof(Memory);
     for (auto const *Initializer : Memory.getInitializers()) {
       if (!Initializer) Callback->hasNullOperand(MemoryPtr);
@@ -132,7 +133,7 @@ PassStatus IsWellformedModulePass::run() {
     }
   }
 
-  for (auto const &Table : Module->getTables()) {
+  for (auto const &Table : Module->getTables().asView()) {
     auto const *TablePtr = std::addressof(Table);
     for (auto const *Initializer : Table.getInitializers()) {
       if (!Initializer) Callback->hasNullOperand(TablePtr);
@@ -143,7 +144,7 @@ PassStatus IsWellformedModulePass::run() {
     }
   }
 
-  for (auto const &Global : Module->getGlobals()) {
+  for (auto const &Global : Module->getGlobals().asView()) {
     auto const *GlobalPtr = std::addressof(Global);
     if (Global.isImported() && Global.hasInitializer())
       Callback->hasInvalidImport(GlobalPtr);
@@ -155,7 +156,7 @@ PassStatus IsWellformedModulePass::run() {
       Callback->hasInvalidType(GlobalPtr);
   }
 
-  for (auto const &Function : Module->getFunctions()) {
+  for (auto const &Function : Module->getFunctions().asView()) {
     auto const *FunctionPtr = std::addressof(Function);
     if (Function.isImported() && Function.hasBody())
       Callback->hasInvalidImport(FunctionPtr);
@@ -169,7 +170,7 @@ PassStatus IsWellformedModulePass::run() {
     }
   }
 
-  for (auto const &Data : Module->getData()) {
+  for (auto const &Data : Module->getData().asView()) {
     auto const *DataPtr = std::addressof(Data);
     if (!DataPtr->getOffset()) {
       Callback->hasNullOperand(DataPtr);
@@ -178,7 +179,7 @@ PassStatus IsWellformedModulePass::run() {
     }
   }
 
-  for (auto const &Element : Module->getElements()) {
+  for (auto const &Element : Module->getElements().asView()) {
     auto const *ElementPtr = std::addressof(Element);
     if (!ElementPtr->getOffset()) {
       Callback->hasNullOperand(ElementPtr);
@@ -211,13 +212,13 @@ void IsWellformedFunctionPass::prepare(mir::Function const &Function_) {
   SimpleFunctionPassDriver<DominatorPass> Driver;
   Dominator = std::make_unique<DominatorPassResult>(Driver(Function_));
   AvailableBB = std::make_unique<std::vector<mir::BasicBlock const *>>();
-  AvailableBB->reserve(Function->getNumBasicBlock());
-  for (auto const &BasicBlock : Function->getBasicBlocks())
+  AvailableBB->reserve(Function->getBasicBlocks().size());
+  for (auto const &BasicBlock : Function->getBasicBlocks().asView())
     AvailableBB->push_back(std::addressof(BasicBlock));
   ranges::sort(*AvailableBB);
   AvailableLocal = std::make_unique<std::vector<mir::Local const *>>();
-  AvailableLocal->reserve(Function->getNumLocal());
-  for (auto const &Local : Function->getLocals())
+  AvailableLocal->reserve(Function->getLocals().size());
+  for (auto const &Local : Function->getLocals().asView())
     AvailableLocal->push_back(std::addressof(Local));
   ranges::sort(*AvailableLocal);
 }
@@ -258,11 +259,11 @@ struct IsWellformedFunctionPass::CheckInstVisitor :
   { return FunctionPass.ModulePass->has(Memory); }
   bool has(mir::Table const &Table) const 
   { return FunctionPass.ModulePass->has(Table); }
-  bool has(mir::Function const &Function) const 
-  { return FunctionPass.ModulePass->has(Function); }
-  bool has(mir::DataSegment const &DataSegment) const 
+  bool has(mir::Function const &Function_) const
+  { return FunctionPass.ModulePass->has(Function_); }
+  bool has(mir::Data const &DataSegment) const
   { return FunctionPass.ModulePass->has(DataSegment); }
-  bool has(mir::ElementSegment const &ElementSegment) const 
+  bool has(mir::Element const &ElementSegment) const
   { return FunctionPass.ModulePass->has(ElementSegment); }
   bool has(mir::BasicBlock const &BasicBlock) const
   { return FunctionPass.has(BasicBlock); }

@@ -27,7 +27,7 @@ public:
   bytecode::ValueType const &getType() const;
   bool isParameter() const;
   Function *getParent() const;
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(ASTNode const *Node);
 };
 
@@ -65,7 +65,7 @@ public:
   Module *getParent() const;
   static llvm::ilist<BasicBlock> Function::*getSublistAccess(BasicBlock *);
   static llvm::ilist<Local> Function::*getSublistAccess(Local *);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(ASTNode const *Node);
 };
 } // namespace mir

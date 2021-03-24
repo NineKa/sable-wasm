@@ -3,7 +3,7 @@
 namespace mir {
 ASTNode::ASTNode(ASTNodeKind Kind_) : Kind(Kind_), Name() {}
 ASTNode::~ASTNode() noexcept {
-  for (auto *U : Uses) U->detach(this);
+  while (!Uses.empty()) Uses.front()->replace(this, nullptr);
 }
 
 std::string_view ASTNode::getName() const { return Name; }

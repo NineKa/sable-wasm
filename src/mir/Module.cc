@@ -23,7 +23,11 @@ void Data::setContent(std::span<const std::byte> Content_)
 // clang-format on
 
 Module *Data::getParent() const { return Parent; }
-void Data::detach(ASTNode const *) noexcept { utility::unreachable(); }
+
+void Data::replace(ASTNode const *, ASTNode *) noexcept {
+  utility::unreachable();
+}
+
 bool Data::classof(ASTNode const *Node) {
   return Node->getASTNodeKind() == ASTNodeKind::DataSegment;
 }
@@ -53,15 +57,25 @@ void Element::setContent(std::span<Function *const> Content_) {
   Content = ranges::to<decltype(Content)>(Content_);
 }
 
+Function *Element::getEntry(std::size_t Index) const {
+  assert(Index < getSize());
+  return Content[Index];
+}
+
+void Element::setEntry(std::size_t Index, Function *Function_) {
+  assert(Index < getSize());
+  if (getEntry(Index) != nullptr) getEntry(Index)->remove_use(this);
+  if (Function_ != nullptr) Function_->add_use(this);
+  Content[Index] = Function_;
+}
+
 std::size_t Element::getSize() const { return Content.size(); }
 
 Module *Element::getParent() const { return Parent; }
 
-void Element::detach(ASTNode const *Node) noexcept {
-  if (ranges::contains(Content, Node)) {
-    ranges::replace(Content, Node, nullptr);
-    return;
-  }
+void Element::replace(ASTNode const *Old, ASTNode *New) noexcept {
+  for (std::size_t I = 0; I < getSize(); ++I)
+    if (getEntry(I) == Old) setEntry(I, dyn_cast<Function>(New));
   utility::unreachable();
 }
 
@@ -83,7 +97,11 @@ void Global::setInitializer(std::unique_ptr<InitializerExpr> Initializer_) {
 }
 
 Module *Global::getParent() const { return Parent; }
-void Global::detach(ASTNode const *) noexcept { utility::unreachable(); }
+
+void Global::replace(ASTNode const *, ASTNode *) noexcept {
+  utility::unreachable();
+}
+
 bool Global::classof(ASTNode const *Node) {
   return Node->getASTNodeKind() == ASTNodeKind::Global;
 }
@@ -122,14 +140,25 @@ void Memory::setInitializers(std::span<Data *const> DataSegments_) {
 
 bool Memory::hasInitializer() const { return !Initializers.empty(); }
 
+std::size_t Memory::getNumInitializers() const { return Initializers.size(); }
+
+Data *Memory::getInitializer(std::size_t Index) const {
+  assert(Index < getNumInitializers());
+  return Initializers[Index];
+}
+
+void Memory::setInitializer(std::size_t Index, Data *DataSegment_) {
+  assert(Index < getNumInitializers());
+  if (getInitializer(Index) != nullptr) getInitializer(Index)->remove_use(this);
+  if (DataSegment_ != nullptr) DataSegment_->add_use(this);
+  Initializers[Index] = DataSegment_;
+}
+
 Module *Memory::getParent() const { return Parent; }
 
-void Memory::detach(ASTNode const *Node) noexcept {
-  if (ranges::contains(Initializers, Node)) {
-    ranges::replace(Initializers, Node, nullptr);
-    return;
-  }
-  utility::unreachable();
+void Memory::replace(ASTNode const *Old, ASTNode *New) noexcept {
+  for (std::size_t I = 0; I < getNumInitializers(); ++I)
+    if (getInitializer(I) == Old) setInitializer(I, dyn_cast<Data>(New));
 }
 
 bool Memory::classof(ASTNode const *Node) {
@@ -170,14 +199,25 @@ void Table::setInitializers(std::span<Element *const> ElementSegments_) {
 
 bool Table::hasInitializer() const { return !Initializers.empty(); }
 
+std::size_t Table::getNumInitializers() const { return Initializers.size(); }
+
+Element *Table::getInitializer(std::size_t Index) const {
+  assert(Index < getNumInitializers());
+  return Initializers[Index];
+}
+
+void Table::setInitializer(std::size_t Index, Element *ElementSegment_) {
+  assert(Index < getNumInitializers());
+  if (getInitializer(Index) != nullptr) getInitializer(Index)->remove_use(this);
+  if (ElementSegment_ != nullptr) ElementSegment_->add_use(this);
+  Initializers[Index] = ElementSegment_;
+}
+
 Module *Table::getParent() const { return Parent; }
 
-void Table::detach(ASTNode const *Node) noexcept {
-  if (ranges::contains(Initializers, Node)) {
-    ranges::replace(Initializers, Node, nullptr);
-    return;
-  }
-  utility::unreachable();
+void Table::replace(ASTNode const *Old, ASTNode *New) noexcept {
+  for (std::size_t I = 0; I < getNumInitializers(); ++I)
+    if (getInitializer(I) == Old) setInitializer(I, dyn_cast<Element>(New));
 }
 
 bool Table::classof(ASTNode const *Node) {
@@ -264,7 +304,9 @@ llvm::ilist<Element> Module::*Module::getSublistAccess(Element *)
 { return &Module::ElementSegments; }
 // clang-format on
 
-void Module::detach(ASTNode const *) noexcept { utility::unreachable(); }
+void Module::replace(ASTNode const *, ASTNode *) noexcept {
+  utility::unreachable();
+}
 
 bool Module::classof(ASTNode const *Node) {
   return Node->getASTNodeKind() == ASTNodeKind::Module;

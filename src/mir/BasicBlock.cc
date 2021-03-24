@@ -144,7 +144,8 @@ Function *BasicBlock::getParent() const { return Parent; }
 llvm::ilist<Instruction> BasicBlock::*
 BasicBlock::getSublistAccess(Instruction *) 
 { return &BasicBlock::Instructions; }
-void BasicBlock::detach(ASTNode const *) noexcept { utility::unreachable(); }
+void BasicBlock::replace(ASTNode const *, ASTNode *) noexcept 
+{ utility::unreachable(); }
 bool BasicBlock::classof(ASTNode const *Node) 
 { return Node->getASTNodeKind() == ASTNodeKind::BasicBlock; }
 // clang-format on

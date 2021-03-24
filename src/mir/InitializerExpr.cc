@@ -41,7 +41,9 @@ bytecode::ValueType Constant::getValueType() const {
   utility::unreachable();
 }
 
-void Constant::detach(ASTNode const *) noexcept { utility::unreachable(); }
+void Constant::replace(ASTNode const *, ASTNode *) noexcept {
+  utility::unreachable();
+}
 
 bool Constant::classof(InitializerExpr const *ConstExpr) {
   return ConstExpr->getInitializerExprKind() == InitializerExprKind::Constant;
@@ -70,11 +72,8 @@ void GlobalGet::setGlobalValue(Global *GlobalValue_) {
   GlobalValue = GlobalValue_;
 }
 
-void GlobalGet::detach(ASTNode const *Node) noexcept {
-  if (GlobalValue == Node) {
-    GlobalValue = nullptr;
-    return;
-  }
+void GlobalGet::replace(ASTNode const *Old, ASTNode *New) noexcept {
+  if (getGlobalValue() == Old) setGlobalValue(dyn_cast<Global>(New));
   utility::unreachable();
 }
 

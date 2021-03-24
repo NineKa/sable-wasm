@@ -33,7 +33,7 @@ public:
   std::size_t getSize() const;
 
   Module *getParent() const;
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(ASTNode const *Node);
 };
 
@@ -59,10 +59,12 @@ public:
 
   std::span<Function *const> getContent() const;
   void setContent(std::span<Function *const> Content_);
+  Function *getEntry(std::size_t Index) const;
+  void setEntry(std::size_t Index, Function *Function_);
   std::size_t getSize() const;
 
   Module *getParent() const;
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(ASTNode const *Node);
 };
 
@@ -86,7 +88,7 @@ public:
   void setInitializer(std::unique_ptr<InitializerExpr> Initializer_);
 
   Module *getParent() const;
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(ASTNode const *Node);
 };
 
@@ -123,8 +125,12 @@ public:
   void setInitializers(std::span<Data *const> DataSegments_);
   bool hasInitializer() const;
 
+  std::size_t getNumInitializers() const;
+  Data *getInitializer(std::size_t Index) const;
+  void setInitializer(std::size_t Index, Data *DataSegment_);
+
   Module *getParent() const;
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(ASTNode const *Node);
 };
 
@@ -161,8 +167,12 @@ public:
   void setInitializers(std::span<Element *const> ElementSegments_);
   bool hasInitializer() const;
 
+  std::size_t getNumInitializers() const;
+  Element *getInitializer(std::size_t Index) const;
+  void setInitializer(std::size_t Index, Element *ElementSegment_);
+
   Module *getParent() const;
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(ASTNode const *Node);
 };
 
@@ -204,7 +214,7 @@ public:
   static llvm::ilist<Table> Module::*getSublistAccess(Table *);
   static llvm::ilist<Data> Module::*getSublistAccess(Data *);
   static llvm::ilist<Element> Module::*getSublistAccess(Element *);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(ASTNode const *Node);
 };
 } // namespace mir

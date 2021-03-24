@@ -31,6 +31,7 @@ add_library(sablewasm
         src/bytecode/Validation.cc
         src/mir/ASTNode.cc
         src/mir/Instruction.cc
+        src/mir/Instructions.cc
         src/mir/BasicBlock.cc
         src/mir/InitializerExpr.cc
         src/mir/Module.cc

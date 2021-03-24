@@ -57,7 +57,7 @@ public:
 
   void add_use(ASTNode *Referrer);
   void remove_use(ASTNode *Referrer);
-  virtual void detach(ASTNode const *) noexcept = 0;
+  virtual void replace(ASTNode const *Old, ASTNode *New) noexcept = 0;
 };
 
 class ImportableEntity {
@@ -94,11 +94,13 @@ template <ast_node T> bool is_a(ASTNode const *Node) {
 }
 
 template <ast_node T> T *dyn_cast(ASTNode *Node) {
+  if (Node == nullptr) return nullptr;
   assert(is_a<T>(Node));
   return static_cast<T *>(Node);
 }
 
 template <ast_node T> T const *dyn_cast(ASTNode const *Node) {
+  if (Node == nullptr) return nullptr;
   assert(is_a<T>(Node));
   return static_cast<T const *>(Node);
 }

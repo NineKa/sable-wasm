@@ -82,7 +82,7 @@ public:
 
   Function *getParent() const;
   static llvm::ilist<Instruction> BasicBlock::*getSublistAccess(Instruction *);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *, ASTNode *) noexcept override;
   static bool classof(ASTNode const *Node);
 };
 } // namespace mir

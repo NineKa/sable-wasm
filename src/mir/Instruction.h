@@ -70,9 +70,7 @@ public:
   bool isBranching() const;
   bool isTerminating() const;
 
-  static bool classof(ASTNode const *Node) {
-    return Node->getASTNodeKind() == ASTNodeKind::Instruction;
-  }
+  static bool classof(ASTNode const *Node);
 };
 
 template <typename T>
@@ -87,11 +85,13 @@ template <instruction T> bool is_a(Instruction const *Inst) {
 }
 
 template <instruction T> T *dyn_cast(Instruction *Inst) {
+  if (Inst == nullptr) return nullptr;
   assert(is_a<T>(Inst));
   return static_cast<T *>(Inst);
 }
 
 template <instruction T> T const *dyn_cast(Instruction const *Inst) {
+  if (Inst == nullptr) return nullptr;
   assert(is_a<T>(Inst));
   return static_cast<T const *>(Inst);
 }
@@ -102,7 +102,7 @@ namespace mir::instructions {
 class Unreachable : public Instruction {
 public:
   Unreachable();
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -131,7 +131,7 @@ public:
   void setTarget(BasicBlock *Target_);
   BasicBlock *getFalseTarget() const;
   void setFalseTarget(BasicBlock *FalseTarget_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -155,9 +155,12 @@ public:
   void setOperand(Instruction *Operand_);
   BasicBlock *getDefaultTarget() const;
   void setDefaultTarget(BasicBlock *DefaultTarget_);
+  std::size_t getNumTargets() const;
+  BasicBlock *getTarget(std::size_t Index) const;
   std::span<BasicBlock *const> getTargets() const;
+  void setTarget(std::size_t Index, BasicBlock *Target);
   void setTargets(std::span<BasicBlock *const> Targets_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -177,7 +180,7 @@ public:
   bool hasReturnValue() const;
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -197,8 +200,11 @@ public:
   Function *getTarget() const;
   void setTarget(Function *Target_);
   std::span<Instruction *const> getArguments() const;
+  std::size_t getNumArguments() const;
+  Instruction *getArgument(std::size_t Index) const;
   void setArguments(std::span<Instruction *const> Arguments_);
-  void detach(ASTNode const *) noexcept override;
+  void setArgument(std::size_t Index, Instruction *Argument);
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -227,8 +233,11 @@ public:
   bytecode::FunctionType const &getExpectType() const;
   void setExpectType(bytecode::FunctionType Type_);
   std::span<Instruction *const> getArguments() const;
+  std::size_t getNumArguments() const;
+  Instruction *getArgument(std::size_t Index) const;
   void setArguments(std::span<Instruction *const> Arguments_);
-  void detach(ASTNode const *) noexcept override;
+  void setArgument(std::size_t Index, Instruction *Argument);
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -252,7 +261,7 @@ public:
   void setTrue(Instruction *True_);
   Instruction *getFalse() const;
   void setFalse(Instruction *False_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -270,7 +279,7 @@ public:
   ~LocalGet() noexcept override;
   Local *getTarget() const;
   void setTarget(Local *Target_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -291,7 +300,7 @@ public:
   void setTarget(Local *Target_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -309,7 +318,7 @@ public:
   ~GlobalGet() noexcept override;
   Global *getTarget() const;
   void setTarget(Global *Target_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -330,7 +339,7 @@ public:
   void setTarget(Global *Target_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -353,7 +362,7 @@ public:
   float asF32() const;
   double asF64() const;
   bytecode::ValueType getValueType() const;
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -375,7 +384,7 @@ public:
   void setOperator(IntUnaryOperator Operator_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -407,7 +416,7 @@ public:
   void setLHS(Instruction *LHS_);
   Instruction *getRHS() const;
   void setRHS(Instruction *RHS_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -432,7 +441,7 @@ public:
   void setOperator(FPUnaryOperator Operator_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -461,7 +470,7 @@ public:
   void setLHS(Instruction *LHS_);
   Instruction *getRHS() const;
   void setRHS(Instruction *RHS_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -490,7 +499,7 @@ public:
   void setAddress(Instruction *Address_);
   unsigned getLoadWidth() const;
   void setLoadWidth(unsigned LoadWidth_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -519,7 +528,7 @@ public:
   void setOperand(Instruction *Operand_);
   unsigned getStoreWidth() const;
   void setStoreWidth(unsigned StoreWidth_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -544,7 +553,7 @@ public:
   void setAddress(Instruction *Address_);
   std::uint32_t getGuardSize() const;
   void setGuardSize(std::uint32_t GuardSize_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -565,7 +574,7 @@ public:
   void setLinearMemory(Memory *LinearMemory_);
   Instruction *getSize() const;
   void setSize(Instruction *Size_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -583,7 +592,7 @@ public:
   ~MemorySize() noexcept override;
   Memory *getLinearMemory() const;
   void setLinearMemory(Memory *LinearMemory_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -616,7 +625,7 @@ public:
   void setType(bytecode::ValueType const &Type_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -637,7 +646,7 @@ public:
   void setOperand(Instruction *Operand_);
   unsigned getFromWidth() const;
   void setFromWidth(unsigned FromWidth_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -653,9 +662,12 @@ public:
   Pack &operator=(Pack const &) = delete;
   Pack &operator=(Pack &&) noexcept = delete;
   ~Pack() noexcept override;
+  std::size_t getNumArguments() const;
+  Instruction *getArgument(std::size_t Index) const;
   std::span<Instruction *const> getArguments() const;
   void setArguments(std::span<Instruction *const> Arguments_);
-  void detach(ASTNode const *) noexcept override;
+  void setArgument(std::size_t Index, Instruction *Argument);
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -676,7 +688,7 @@ public:
   void setIndex(unsigned Index_);
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -695,12 +707,15 @@ public:
   ~Phi() noexcept override;
 
   std::span<std::pair<Instruction *, BasicBlock *> const> getCandidates() const;
+  std::size_t getNumCandidates() const;
+  std::pair<Instruction *, BasicBlock *> getCandidate(std::size_t Index) const;
   void setCandidates(
       std::span<std::pair<Instruction *, BasicBlock *> const> Candidates_);
+  void setCandidate(std::size_t Index, Instruction *Value, BasicBlock *Flow);
   void addCandidate(Instruction *Value_, BasicBlock *Path_);
   bytecode::ValueType getType() const;
   void setType(bytecode::ValueType Type_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };

@@ -8,7 +8,11 @@ Local::Local(bytecode::ValueType Type_)
 bytecode::ValueType const &Local::getType() const { return Type; }
 bool Local::isParameter() const { return IsParameter; }
 Function *Local::getParent() const { return Parent; }
-void Local::detach(ASTNode const *) noexcept { utility::unreachable(); }
+
+void Local::replace(ASTNode const *, ASTNode *) noexcept {
+  utility::unreachable();
+}
+
 bool Local::classof(ASTNode const *Node) {
   return Node->getASTNodeKind() == ASTNodeKind::Local;
 }
@@ -75,7 +79,8 @@ llvm::ilist<BasicBlock> Function::*Function::getSublistAccess(BasicBlock *)
 { return &Function::BasicBlocks; }
 llvm::ilist<Local> Function::*Function::getSublistAccess(Local *) 
 { return &Function::Locals; }
-void Function::detach(ASTNode const *) noexcept { utility::unreachable(); }
+void Function::replace(ASTNode const *, ASTNode *) noexcept 
+{ utility::unreachable(); }
 bool Function::classof(ASTNode const *Node) 
 { return Node->getASTNodeKind() == ASTNodeKind::Function; }
 // clang-format on

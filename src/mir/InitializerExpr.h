@@ -28,11 +28,13 @@ template <initializer_expr T> bool is_a(InitializerExpr const *Node) {
 }
 
 template <initializer_expr T> T *dyn_cast(InitializerExpr *Node) {
+  if (Node == nullptr) return nullptr;
   assert(is_a<T>(Node));
   return static_cast<T *>(Node);
 }
 
 template <initializer_expr T> T const *dyn_cast(InitializerExpr const *Node) {
+  if (Node == nullptr) return nullptr;
   assert(is_a<T>(Node));
   return static_cast<T const *>(Node);
 }
@@ -56,7 +58,7 @@ public:
   float asF32() const;
   double asF64() const;
   bytecode::ValueType getValueType() const;
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(InitializerExpr const *ConstExpr);
   static bool classof(ASTNode const *Node);
 };
@@ -73,7 +75,7 @@ public:
   ~GlobalGet() noexcept override;
   Global *getGlobalValue() const;
   void setGlobalValue(Global *GlobalValue_);
-  void detach(ASTNode const *) noexcept override;
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(InitializerExpr const *ConstExpr);
   static bool classof(ASTNode const *Node);
 };

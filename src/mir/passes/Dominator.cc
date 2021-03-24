@@ -1,6 +1,5 @@
 #include "Dominator.h"
 
-#include "../Function.h"
 #include "../Module.h"
 
 #include <range/v3/algorithm/binary_search.hpp>
@@ -85,6 +84,10 @@ void DominatorPass::finalize() {
 
 DominatorPass::AnalysisResult DominatorPass::getResult() const {
   return DominatorPassResult(Dominator);
+}
+
+bool DominatorPass::isSkipped(mir::Function const &Function) const {
+  return Function.isDeclaration();
 }
 
 } // namespace mir::passes

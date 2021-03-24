@@ -1,5 +1,7 @@
 #include "Instruction.h"
 
+#include <range/v3/view/filter.hpp>
+
 namespace mir {
 bool Instruction::isPhi() const { return instructions::Phi::classof(this); }
 
@@ -23,6 +25,20 @@ bool Instruction::isTerminating() const {
 
 bool Instruction::classof(ASTNode const *Node) {
   return Node->getASTNodeKind() == ASTNodeKind::Instruction;
+}
+
+void Instruction::replaceAllUseWith(Instruction *ReplaceValue) {
+  // clang-format off
+  auto ReplaceQueue = getUsedSites() 
+    | ranges::view::filter([](auto const *Node) {
+        return is_a<mir::Instruction>(Node);
+      }) 
+    | ranges::to<std::vector<ASTNode *>>();
+  // clang-format on
+  for (auto *Node : ReplaceQueue) {
+    auto *CastedPtr = dyn_cast<Instruction>(Node);
+    CastedPtr->replace(this, ReplaceValue);
+  }
 }
 } // namespace mir
 

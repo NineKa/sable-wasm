@@ -1,6 +1,7 @@
 #ifndef SABLE_INCLUDE_GUARD_MIR_PASSES_IS_WELLFORMED_PASS
 #define SABLE_INCLUDE_GUARD_MIR_PASSES_IS_WELLFORMED_PASS
 
+#include "../Module.h"
 #include "Dominator.h"
 #include "Pass.h"
 
@@ -105,7 +106,7 @@ public:
   void prepare(mir::Function const &Function_);
   PassStatus run();
   void finalize();
-  bool isSkipped(mir::Function const &) { return false; }
+  bool isSkipped(mir::Function const &) const;
   using AnalysisResult = IsWellformedCallback const &;
   AnalysisResult getResult() const;
 

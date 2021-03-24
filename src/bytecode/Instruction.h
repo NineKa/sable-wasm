@@ -89,16 +89,30 @@ template <instruction T> bool is_a(Instruction const *Inst) {
   return T::classof(Inst);
 }
 
+template <instruction T> bool is_a(Instruction const &Inst) {
+  return T::classof(std::addressof(Inst));
+}
+
 template <instruction T> T *dyn_cast(Instruction *Inst) {
   if (Inst == nullptr) return nullptr;
   assert(is_a<T>(Inst));
   return static_cast<T *>(Inst);
 }
 
+template <instruction T> T &dyn_cast(Instruction &Inst) {
+  assert(is_a<T>(Inst));
+  return static_cast<T &>(Inst);
+}
+
 template <instruction T> T const *dyn_cast(Instruction const *Inst) {
   if (Inst == nullptr) return nullptr;
   assert(is_a<T>(Inst));
   return static_cast<T const *>(Inst);
+}
+
+template <instruction T> T const &dyn_cast(Instruction const &Inst) {
+  assert(is_a<T>(Inst));
+  return static_cast<T const &>(Inst);
 }
 
 namespace detail {

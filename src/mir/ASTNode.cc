@@ -1,5 +1,7 @@
 #include "ASTNode.h"
 
+#include <range/v3/algorithm/find_if.hpp>
+
 namespace mir {
 ASTNode::ASTNode(ASTNodeKind Kind_) : Kind(Kind_), Name() {}
 ASTNode::~ASTNode() noexcept {
@@ -12,12 +14,31 @@ bool ASTNode::hasName() const { return !Name.empty(); }
 
 ASTNodeKind ASTNode::getASTNodeKind() const { return Kind; }
 
-using Iterator = ASTNode::use_site_iterator;
-Iterator ASTNode::use_site_begin() const { return Uses.begin(); }
-Iterator ASTNode::use_site_end() const { return Uses.end(); }
+ASTNode::use_site_iterator ASTNode::use_site_begin() const {
+  return Uses.begin();
+}
+
+ASTNode::use_site_iterator ASTNode::use_site_end() const { return Uses.end(); }
 
 void ASTNode::add_use(ASTNode *Referrer) { Uses.push_front(Referrer); }
-void ASTNode::remove_use(ASTNode *Referrer) { std::erase(Uses, Referrer); }
+
+namespace {
+template <typename Iterator, typename T>
+Iterator find_before(Iterator BeforeFist, Iterator Last, T const &Value) {
+  assert(BeforeFist != Last);
+  auto Next = std::next(BeforeFist);
+  if (Next == Last) return Last;
+  if (*Next == Value) return BeforeFist;
+  return find_before(Next, Last, Value);
+}
+} // namespace
+
+void ASTNode::remove_use(ASTNode *Referrer) {
+  auto SearchIter = find_before(Uses.before_begin(), Uses.end(), Referrer);
+  assert(SearchIter != Uses.end());
+  assert(*std::next(SearchIter) == Referrer);
+  Uses.erase_after(SearchIter);
+}
 
 bool ImportableEntity::isImported() const { return Import != nullptr; }
 

@@ -5,6 +5,7 @@
 
 #include "Instruction.h"
 
+#include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/ilist.h>
 #include <llvm/ADT/ilist_node.h>
 
@@ -77,8 +78,11 @@ public:
 
   bool isEntryBlock() const;
   bool hasNoInwardFlow() const;
-  std::vector<BasicBlock *> getInwardFlow() const;
-  std::vector<BasicBlock *> getOutwardFlow() const;
+
+  llvm::SmallPtrSet<BasicBlock *, 4> getInwardFlow() const;
+  llvm::SmallPtrSet<BasicBlock *, 2> getOutwardFlow() const;
+
+  Instruction *getTerminatingInst();
 
   Function *getParent() const;
   static llvm::ilist<Instruction> BasicBlock::*getSublistAccess(Instruction *);

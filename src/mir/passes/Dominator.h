@@ -1,6 +1,7 @@
 #ifndef SABLE_INCLUDE_GUARD_MIR_PASSES_DOMINATOR
 #define SABLE_INCLUDE_GUARD_MIR_PASSES_DOMINATOR
 
+#include "../Function.h"
 #include "Pass.h"
 
 #include <memory>
@@ -41,7 +42,7 @@ public:
 
   static constexpr bool isConstantPass() { return true; }
   static constexpr bool isSingleRunPass() { return false; }
-  bool isSkipped(mir::Function const &) { return false; }
+  bool isSkipped(mir::Function const &Function_) const;
 };
 
 static_assert(function_pass<DominatorPass>);

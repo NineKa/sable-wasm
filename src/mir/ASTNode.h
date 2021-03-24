@@ -4,6 +4,7 @@
 #include "../bytecode/Type.h"
 
 #include <llvm/ADT/ilist.h>
+#include <range/v3/view/transform.hpp>
 
 #include <cstdint>
 #include <forward_list>
@@ -45,7 +46,7 @@ public:
 
   ASTNodeKind getASTNodeKind() const;
 
-  using use_site_iterator = typename decltype(Uses)::const_iterator;
+  using use_site_iterator = decltype(Uses)::const_iterator;
   use_site_iterator use_site_begin() const;
   use_site_iterator use_site_end() const;
 
@@ -93,16 +94,30 @@ template <ast_node T> bool is_a(ASTNode const *Node) {
   return T::classof(Node);
 }
 
+template <ast_node T> bool is_a(ASTNode const &Node) {
+  return T::classof(std::addressof(Node));
+}
+
 template <ast_node T> T *dyn_cast(ASTNode *Node) {
   if (Node == nullptr) return nullptr;
   assert(is_a<T>(Node));
   return static_cast<T *>(Node);
 }
 
+template <ast_node T> T &dyn_cast(ASTNode &Node) {
+  assert(is_a<T>(Node));
+  return static_cast<T &>(Node);
+}
+
 template <ast_node T> T const *dyn_cast(ASTNode const *Node) {
   if (Node == nullptr) return nullptr;
   assert(is_a<T>(Node));
   return static_cast<T const *>(Node);
+}
+
+template <ast_node T> T const &dyn_cast(ASTNode const &Node) {
+  assert(is_a<T>(Node));
+  return static_cast<T const &>(Node);
 }
 
 namespace detail {

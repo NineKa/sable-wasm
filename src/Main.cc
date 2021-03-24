@@ -14,6 +14,7 @@
 #include "codegen-llvm-instance/LLVMCodege.h"
 #include "mir/ASTNode.h"
 #include "mir/passes/IsWellformed.h"
+#include "mir/passes/SimplifyCFG.h"
 
 #include <llvm/Support/Host.h>
 #include <llvm/Support/TargetRegistry.h>
@@ -31,7 +32,7 @@ int main(int argc, char const *argv[]) {
       //    "../test/polybench-c-4.2.1-beta/2mm.wasm");
       "../test/2mm.wasm");
   //"../test/main.wasm");
-  //"../test/viu.wasm");
+  // "../test/viu.wasm");
 
   using namespace std::chrono;
   parser::ByteArrayReader Reader(Source);
@@ -88,6 +89,21 @@ int main(int argc, char const *argv[]) {
   std::ofstream OutFile("out.mir");
   std::ostream_iterator<char> It(OutFile);
   mir::dump(It, M);
+
+  auto SimplifyTime = utility::measure([&]() {
+    mir::passes::SimpleForEachFunctionPassDriver<mir::passes::SimplifyCFGPass>
+        Driver;
+    Driver(M);
+  });
+  fmt::print(
+      "MIR Simplification Time: {} milliseconds\n",
+      duration_cast<milliseconds>(SimplifyTime).count());
+
+  std::ofstream OutOptFile("out.opt.mir");
+  std::ostream_iterator<char> It2(OutOptFile);
+  mir::dump(It2, M);
+
+  if (!mir::validate(M)) utility::unreachable();
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();

@@ -1,7 +1,6 @@
 #include "IsWellformed.h"
+
 #include "../../bytecode/Validation.h"
-#include "../Function.h"
-#include "Dominator.h"
 
 #include <iterator>
 #include <memory>
@@ -627,6 +626,10 @@ void IsWellformedFunctionPass::finalize() {
   Function = nullptr;
   Dominator = nullptr;
   AvailableBB = nullptr;
+}
+
+bool IsWellformedFunctionPass::isSkipped(mir::Function const &Function) const {
+  return Function.isDeclaration();
 }
 
 IsWellformedFunctionPass::AnalysisResult

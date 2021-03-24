@@ -5,6 +5,7 @@
 
 #include <concepts>
 #include <type_traits>
+#include <unordered_map>
 
 namespace mir::passes {
 enum class PassStatus { Converged, InProgress };
@@ -40,7 +41,7 @@ template<typename T> concept module_pass = requires(T Pass) {
 };
 // clang-format on
 
-template <module_pass T> struct SimpleModulePassDriver {
+template <module_pass T> class SimpleModulePassDriver {
   T Pass;
   using ArgType = std::conditional_t<
       T::isConstantPass(), mir::Module const &, mir::Module &>;
@@ -61,7 +62,7 @@ public:
   }
 };
 
-template <function_pass T> struct SimpleFunctionPassDriver {
+template <function_pass T> class SimpleFunctionPassDriver {
   T Pass;
   using ArgType = std::conditional_t<
       T::isConstantPass(), mir::Function const &, mir::Function &>;
@@ -75,12 +76,54 @@ public:
       : Pass(std::forward<ArgTypes>(Args)...) {}
 
   typename T::AnalysisResult operator()(ArgType Function) {
+    assert(!Pass.isSkipped(Function));
     Pass.prepare(Function);
     while (Pass.run() != PassStatus::Converged) {}
     Pass.finalize();
     return Pass.getResult();
   }
 };
+
+template <function_pass T> class SimpleForEachFunctionPassDriver {
+public:
+  using AnalysisResult = typename T::AnalysisResult;
+
+private:
+  T Pass;
+  using ArgType = std::conditional_t<
+      T::isConstantPass(), mir::Module const &, mir::Module &>;
+
+public:
+  template <
+      typename... ArgTypes,
+      typename = std::enable_if_t<std::is_constructible_v<T, ArgTypes...>>>
+  explicit SimpleForEachFunctionPassDriver(ArgTypes &&...Args)
+      : Pass(std::forward<ArgTypes>(Args)...) {}
+
+  using ResultMapType = std::unordered_map<Function const *, AnalysisResult>;
+  ResultMapType
+  operator()(ArgType Module) requires(!std::same_as<AnalysisResult, void>) {
+    ResultMapType ResultMap;
+    for (auto &&Function : Module.getFunctions().asView()) {
+      if (Pass.isSkipped(Function)) continue;
+      Pass.prepare(Function);
+      while (Pass.run() != PassStatus::Converged) {}
+      Pass.finalize();
+      ResultMap.emplace(std::addressof(Function), Pass.getResult());
+    }
+    return ResultMap;
+  }
+
+  void operator()(ArgType Module) requires std::same_as<AnalysisResult, void> {
+    for (auto &&Function : Module.getFunctions().asView()) {
+      if (Pass.isSkipped(Function)) continue;
+      Pass.prepare(Function);
+      while (Pass.run() != PassStatus::Converged) {}
+      Pass.finalize();
+    }
+  }
+};
+
 } // namespace mir::passes
 
 #endif

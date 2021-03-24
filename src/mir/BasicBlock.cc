@@ -3,6 +3,9 @@
 #include "Instruction.h"
 #include "Module.h"
 
+#include <range/v3/algorithm/sort.hpp>
+#include <range/v3/algorithm/unique.hpp>
+
 namespace mir {
 BasicBlock::BasicBlock() : ASTNode(ASTNodeKind::BasicBlock), Parent(nullptr) {}
 
@@ -98,34 +101,34 @@ bool BasicBlock::hasNoInwardFlow() const {
   return HasNoInwardFlow;
 }
 
-std::vector<BasicBlock *> BasicBlock::getInwardFlow() const {
-  std::vector<BasicBlock *> Result;
+llvm::SmallPtrSet<BasicBlock *, 4> BasicBlock::getInwardFlow() const {
+  llvm::SmallPtrSet<BasicBlock *, 4> Result;
   for (auto const *ASTNode : this->getUsedSites()) {
     if (!is_a<Instruction>(ASTNode)) continue;
     auto *CastedPtr = dyn_cast<Instruction>(ASTNode);
-    if (CastedPtr->isBranching()) Result.push_back(CastedPtr->getParent());
+    if (CastedPtr->isBranching()) Result.insert(CastedPtr->getParent());
   }
   return Result;
 }
 
 namespace {
 struct OutwardFlowVisitor :
-    mir::InstVisitorBase<OutwardFlowVisitor, std::vector<BasicBlock *>> {
-  using ResultType = std::vector<BasicBlock *>;
+    mir::InstVisitorBase<
+        OutwardFlowVisitor, llvm::SmallPtrSet<BasicBlock *, 2>> {
+  using ResultType = llvm::SmallPtrSet<BasicBlock *, 2>;
   ResultType operator()(instructions::Unreachable const *) { return {}; }
   ResultType operator()(instructions::Return const *) { return {}; }
   ResultType operator()(instructions::Branch const *Inst) {
     ResultType Out;
-    Out.reserve(2);
-    if (Inst->getTarget()) Out.push_back(Inst->getTarget());
-    if (Inst->getFalseTarget()) Out.push_back(Inst->getFalseTarget());
+    if (Inst->getTarget()) Out.insert(Inst->getTarget());
+    if (Inst->getFalseTarget()) Out.insert(Inst->getFalseTarget());
     return Out;
   };
   ResultType operator()(instructions::BranchTable const *Inst) {
     ResultType Out;
-    if (Inst->getDefaultTarget()) Out.push_back(Inst->getDefaultTarget());
+    if (Inst->getDefaultTarget()) Out.insert(Inst->getDefaultTarget());
     for (auto *Target : Inst->getTargets())
-      if (Target) Out.push_back(Target);
+      if (Target) Out.insert(Target);
     return Out;
   }
   template <mir::instruction T> ResultType operator()(T const *) {
@@ -134,9 +137,14 @@ struct OutwardFlowVisitor :
 };
 } // namespace
 
-std::vector<BasicBlock *> BasicBlock::getOutwardFlow() const {
+llvm::SmallPtrSet<BasicBlock *, 2> BasicBlock::getOutwardFlow() const {
   OutwardFlowVisitor Visitor;
-  return Visitor(std::addressof(back()));
+  return Visitor.visit(std::addressof(back()));
+}
+
+Instruction *BasicBlock::getTerminatingInst() {
+  if (!empty() && !back().isTerminating()) { return std::addressof(back()); }
+  return nullptr;
 }
 
 // clang-format off

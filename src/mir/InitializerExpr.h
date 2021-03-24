@@ -27,16 +27,30 @@ template <initializer_expr T> bool is_a(InitializerExpr const *Node) {
   return T::classof(Node);
 }
 
+template <initializer_expr T> bool is_a(InitializerExpr const &Node) {
+  return T::classof(std::addressof(Node));
+}
+
 template <initializer_expr T> T *dyn_cast(InitializerExpr *Node) {
   if (Node == nullptr) return nullptr;
   assert(is_a<T>(Node));
   return static_cast<T *>(Node);
 }
 
+template <initializer_expr T> T &dyn_cast(InitializerExpr &Node) {
+  assert(is_a<T>(Node));
+  return static_cast<T &>(Node);
+}
+
 template <initializer_expr T> T const *dyn_cast(InitializerExpr const *Node) {
   if (Node == nullptr) return nullptr;
   assert(is_a<T>(Node));
   return static_cast<T const *>(Node);
+}
+
+template <initializer_expr T> T const &dyn_cast(InitializerExpr const &Node) {
+  assert(is_a<T>(Node));
+  return static_cast<T const &>(Node);
 }
 
 class Global;

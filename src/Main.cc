@@ -99,9 +99,10 @@ int main(int argc, char const *argv[]) {
       if (Function.isDeclaration()) continue;
       mir::passes::SimpleFunctionPassDriver<mir::passes::DominatorPass> D;
       auto DomTree = D(Function).buildDomTree(Function.getEntryBasicBlock());
-      utility::ignore(DomTree);
-      // fmt::print(
-      //    "{} : {}\n", Function.getName(), DomTree->getChildren().size());
+      fmt::print(
+          "{} : {} {} {} {}\n", Function.getName(),
+          Function.getBasicBlocks().size(), DomTree->getChildren().size(),
+          DomTree->asPreorder().size(), DomTree->asPostorder().size());
     }
   });
   fmt::print(

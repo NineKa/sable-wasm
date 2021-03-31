@@ -28,16 +28,6 @@ public:
 
   using DomView = std::span<mir::BasicBlock const *const>;
   DomView getDom(mir::BasicBlock const &BB) const;
-
-  auto getStrictlyDom(mir::BasicBlock const &BB) const {
-    // clang-format off
-    return getDom(BB) 
-      | ranges::views::filter([&](mir::BasicBlock const *BB_) {
-          return BB_ != std::addressof(BB);
-        });
-    // clang-format on
-  }
-
   mir::BasicBlock const *getImmediateDom(mir::BasicBlock const &BB) const;
 
   class DomTreeNode {

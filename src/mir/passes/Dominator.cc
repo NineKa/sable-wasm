@@ -1,6 +1,7 @@
 #include "Dominator.h"
 
 #include "../Module.h"
+#include "range/v3/view/filter.hpp"
 
 #include <range/v3/algorithm/binary_search.hpp>
 #include <range/v3/algorithm/equal_range.hpp>
@@ -25,16 +26,27 @@ DominatorPassResult::getDom(BasicBlock const &BB) const {
   return std::get<1>(*SearchIter);
 }
 
+mir::BasicBlock const *DominatorPassResult::DomTreeNode::get() const {
+  return BasicBlock;
+}
+
 mir::BasicBlock const *
 DominatorPassResult::getImmediateDom(mir::BasicBlock const &BB) const {
   mir::BasicBlock const *ImmediateDom = nullptr;
-  auto StrictlyDom = getStrictlyDom(BB);
+  // clang-format off
+  auto StrictlyDom = getDom(BB)
+    | ranges::views::filter([&](mir::BasicBlock const *BB_) {
+        return BB_ != std::addressof(BB);
+      });
+  // clang-format on
+
   for (auto const *Candidate : StrictlyDom) {
     // clang-format off
     auto Others = StrictlyDom
       | ranges::views::filter([&](mir::BasicBlock const *Candidate_) {
-          return Candidate_ != Candidate;
-        });
+	  return Candidate_ != Candidate;
+        })
+      | ranges::to<std::vector<mir::BasicBlock const *>>();
     // clang-format on
     auto SearchIter =
         ranges::find_if(Others, [&](mir::BasicBlock const *Candidate_) {
@@ -86,6 +98,38 @@ DominatorPassResult::buildDomTree(mir::BasicBlock const &EntryBB) const {
   return std::get<1>(*NodesMap.find(std::addressof(EntryBB)));
 }
 
+namespace {
+template <typename ContainerType>
+void collectInPreOrder(
+    DominatorPassResult::DomTreeNode const &Node, ContainerType &Container) {
+  Container.push_back(Node.get());
+  for (auto const &Child : Node.getChildren())
+    collectInPreOrder(*Child, Container);
+}
+
+template <typename ContainerType>
+void collectInPostOrder(
+    DominatorPassResult::DomTreeNode const &Node, ContainerType &Container) {
+  for (auto const &Child : Node.getChildren())
+    collectInPostOrder(*Child, Container);
+  Container.push_back(Node.get());
+}
+} // namespace
+
+std::vector<mir::BasicBlock const *>
+DominatorPassResult::DomTreeNode::asPreorder() const {
+  std::vector<mir::BasicBlock const *> Result;
+  collectInPreOrder(*this, Result);
+  return Result;
+}
+
+std::vector<mir::BasicBlock const *>
+DominatorPassResult::DomTreeNode::asPostorder() const {
+  std::vector<mir::BasicBlock const *> Result;
+  collectInPostOrder(*this, Result);
+  return Result;
+}
+
 bool DominatorPassResult::dominate(
     mir::BasicBlock const &V, mir::BasicBlock const &U) const {
   auto Dom = getDom(U);
@@ -94,8 +138,8 @@ bool DominatorPassResult::dominate(
 
 bool DominatorPassResult::strictlyDominate(
     mir::BasicBlock const &V, mir::BasicBlock const &U) const {
-  auto StrictlyDom = getStrictlyDom(U);
-  return ranges::binary_search(StrictlyDom, std::addressof(V));
+  if (std::addressof(V) == std::addressof(U)) return false;
+  return dominate(V, U);
 }
 
 void DominatorPass::prepare(mir::Function const &Function_) {

@@ -63,7 +63,10 @@ public:
   pointer remove(pointer InstPtr);
   void erase(pointer Inst);
   void push_back(pointer Inst);
+  void push_front(pointer Inst);
   void clear();
+  void pop_back();
+  void pop_front();
 
   iterator begin();
   const_iterator begin() const;
@@ -84,6 +87,7 @@ public:
 
   Instruction *getTerminatingInst();
 
+  void eraseFromParent();
   Function *getParent() const;
   static llvm::ilist<Instruction> BasicBlock::*getSublistAccess(Instruction *);
   void replace(ASTNode const *, ASTNode *) noexcept override;

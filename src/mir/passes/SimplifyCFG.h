@@ -10,6 +10,8 @@ class SimplifyCFGPass {
 
   bool simplifyTrivialPhi(mir::BasicBlock &BasicBlock);
   bool simplifyTrivialBranch(mir::BasicBlock &BasicBlock);
+  bool deadBasicBlockElem(mir::BasicBlock &BasicBlock);
+  bool deadInstructionElem(mir::BasicBlock &BasicBlock);
 
 public:
   void prepare(mir::Function &Function_);

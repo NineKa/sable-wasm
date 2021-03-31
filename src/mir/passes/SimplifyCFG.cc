@@ -3,35 +3,74 @@
 namespace mir::passes {
 
 bool SimplifyCFGPass::simplifyTrivialPhi(mir::BasicBlock &BasicBlock) {
-  std::vector<Instruction *> KillSet;
-  for (auto &Instruction : BasicBlock) {
-    if (!is_a<instructions::Phi>(Instruction)) continue;
-    auto *CastedPtr = dyn_cast<instructions::Phi>(std::addressof(Instruction));
-    if (CastedPtr->getNumCandidates() != 1) continue;
-    auto [Value, Path] = CastedPtr->getCandidate(0);
-    utility::ignore(Path);
-    Instruction.replaceAllUseWith(Value);
-    KillSet.push_back(CastedPtr);
-  }
-  for (auto *KillInst : KillSet) BasicBlock.erase(KillInst);
-  return !KillSet.empty();
+  for (auto &Instruction : BasicBlock)
+    if (is_a<instructions::Phi>(Instruction)) {
+      auto &PhiNode = dyn_cast<instructions::Phi>(Instruction);
+      if (PhiNode.getNumCandidates() == 1) {
+        auto [Value, Path] = PhiNode.getCandidate(0);
+        utility::ignore(Path);
+        PhiNode.replaceAllUseWith(Value);
+        PhiNode.eraseFromParent();
+        return true;
+      }
+    }
+  return false;
 }
 
 bool SimplifyCFGPass::simplifyTrivialBranch(mir::BasicBlock &BasicBlock) {
-  auto &EnclosingFunction = *BasicBlock.getParent();
-  auto *CurrentBlock = std::addressof(BasicBlock);
-  auto InwardFlow = CurrentBlock->getInwardFlow();
-  if (InwardFlow.size() != 1) return false;
-  auto *PreviousBlock = *InwardFlow.begin();
-  auto OutwardFlow = PreviousBlock->getOutwardFlow();
-  if (OutwardFlow.size() != 1) return false;
-  assert(*OutwardFlow.begin() == CurrentBlock);
+  auto InwardFlow = BasicBlock.getInwardFlow();
+  if (InwardFlow.size() == 1) {
+    auto &PreviousBlock = **InwardFlow.begin();
+    auto OutwardFlow = PreviousBlock.getOutwardFlow();
+    if (OutwardFlow.size() == 1) {
+      assert(*OutwardFlow.begin() == std::addressof(BasicBlock));
+      PreviousBlock.pop_back();
+      PreviousBlock.splice(PreviousBlock.end(), BasicBlock);
+      BasicBlock.eraseFromParent();
+      return true;
+    }
+  }
+  return false;
+}
 
-  auto *PreviousBlockLastinst = std::addressof(PreviousBlock->back());
-  PreviousBlock->erase(PreviousBlockLastinst);
-  PreviousBlock->splice(PreviousBlock->end(), *CurrentBlock);
-  EnclosingFunction.getBasicBlocks().erase(CurrentBlock);
-  return true;
+bool SimplifyCFGPass::deadBasicBlockElem(mir::BasicBlock &BasicBlock) {
+  if (!BasicBlock.isEntryBlock() && BasicBlock.hasNoUsedSites()) {
+    BasicBlock.eraseFromParent();
+    return true;
+  }
+  return false;
+}
+
+namespace {
+bool isDroppableInstruction(Instruction const &Inst) {
+  switch (Inst.getInstructionKind()) {
+  case InstructionKind::Select:
+  case InstructionKind::LocalGet:
+  case InstructionKind::GlobalGet:
+  case InstructionKind::Constant:
+  case InstructionKind::IntUnaryOp:
+  case InstructionKind::IntBinaryOp:
+  case InstructionKind::FPUnaryOp:
+  case InstructionKind::FPBinaryOp:
+  case InstructionKind::Load:
+  case InstructionKind::MemorySize:
+  case InstructionKind::Cast:
+  case InstructionKind::Extend:
+  case InstructionKind::Pack:
+  case InstructionKind::Unpack:
+  case InstructionKind::Phi: return true;
+  default: return false;
+  }
+}
+} // namespace
+
+bool SimplifyCFGPass::deadInstructionElem(mir::BasicBlock &BasicBlock) {
+  for (auto &Instruction : BasicBlock)
+    if (Instruction.hasNoUsedSites() && isDroppableInstruction(Instruction)) {
+      Instruction.eraseFromParent();
+      return true;
+    }
+  return false;
 }
 
 void SimplifyCFGPass::prepare(mir::Function &Function_) {
@@ -39,10 +78,12 @@ void SimplifyCFGPass::prepare(mir::Function &Function_) {
 }
 
 PassStatus SimplifyCFGPass::run() {
-  for (auto &BasicBlock : Function->getBasicBlocks().asView())
+  for (auto &BasicBlock : Function->getBasicBlocks().asView()) {
     if (simplifyTrivialPhi(BasicBlock)) return PassStatus::InProgress;
-  for (auto &BasicBlock : Function->getBasicBlocks().asView())
     if (simplifyTrivialBranch(BasicBlock)) return PassStatus::InProgress;
+    if (deadBasicBlockElem(BasicBlock)) return PassStatus::InProgress;
+    if (deadInstructionElem(BasicBlock)) return PassStatus::InProgress;
+  }
   return PassStatus::Converged;
 }
 

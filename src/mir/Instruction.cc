@@ -1,4 +1,5 @@
 #include "Instruction.h"
+#include "BasicBlock.h"
 
 #include <range/v3/view/filter.hpp>
 
@@ -25,6 +26,11 @@ bool Instruction::isTerminating() const {
 
 bool Instruction::classof(ASTNode const *Node) {
   return Node->getASTNodeKind() == ASTNodeKind::Instruction;
+}
+
+void Instruction::eraseFromParent() {
+  auto &Parent = *getParent();
+  Parent.erase(this);
 }
 
 void Instruction::replaceAllUseWith(Instruction *ReplaceValue) {

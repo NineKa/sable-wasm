@@ -50,6 +50,7 @@ public:
   use_site_iterator use_site_begin() const;
   use_site_iterator use_site_end() const;
 
+  bool hasNoUsedSites() const;
   auto getUsedSites() const {
     auto Begin = use_site_begin();
     auto End = use_site_end();

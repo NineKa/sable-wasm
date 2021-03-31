@@ -4,6 +4,8 @@
 #include "../Function.h"
 #include "Pass.h"
 
+#include <range/v3/view/filter.hpp>
+
 #include <memory>
 #include <vector>
 
@@ -23,8 +25,45 @@ private:
 
 public:
   explicit DominatorPassResult(std::shared_ptr<DominatorMap> Dominator_);
-  std::span<mir::BasicBlock const *const> get(mir::BasicBlock const &BB) const;
-  bool dominate(mir::BasicBlock const &V, mir::BasicBlock const &U) const;
+
+  using DomView = std::span<mir::BasicBlock const *const>;
+  DomView getDom(mir::BasicBlock const &BB) const;
+
+  auto getStrictlyDom(mir::BasicBlock const &BB) const {
+    // clang-format off
+    return getDom(BB) 
+      | ranges::views::filter([&](mir::BasicBlock const *BB_) {
+          return BB_ != std::addressof(BB);
+        });
+    // clang-format on
+  }
+
+  mir::BasicBlock const *getImmediateDom(mir::BasicBlock const &BB) const;
+
+  class DomTreeNode {
+    mir::BasicBlock const *BasicBlock;
+    std::vector<std::shared_ptr<DomTreeNode>> Children;
+    friend class DominatorPassResult;
+    void addChildren(std::shared_ptr<DomTreeNode> Child);
+
+  public:
+    explicit DomTreeNode(mir::BasicBlock const *BasicBlock_);
+    mir::BasicBlock const *get() const;
+
+    using iterator = decltype(Children)::const_iterator;
+    iterator begin() const;
+    iterator end() const;
+    auto getChildren() const { return ranges::make_subrange(begin(), end()); }
+
+    std::vector<mir::BasicBlock const *> asPreorder() const;
+    std::vector<mir::BasicBlock const *> asPostorder() const;
+  };
+
+  std::shared_ptr<DomTreeNode>
+  buildDomTree(mir::BasicBlock const &EntryBB) const;
+
+  bool dominate(BasicBlock const &V, BasicBlock const &U) const;
+  bool strictlyDominate(BasicBlock const &V, BasicBlock const &U) const;
 };
 
 class DominatorPass {

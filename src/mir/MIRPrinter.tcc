@@ -751,7 +751,14 @@ Iterator dump(
     }
     Writer << '}' << Writer.linebreak();
     for (auto const &BasicBlock : Function_.getBasicBlocks()) {
-      Writer << BasicBlock << ":" << Writer.linebreak();
+      auto Predecessors = BasicBlock.getInwardFlow();
+      Writer << BasicBlock << ": #pred = {";
+      auto const *Separator = "";
+      for (auto const *Predecessor : Predecessors) {
+        Writer << Separator << Predecessor;
+        Separator = ", ";
+      }
+      Writer << "}" << Writer.linebreak();
       for (auto const &Instruction : BasicBlock) {
         Writer << Writer.indent();
         auto OutIterator =

@@ -66,7 +66,17 @@ void BasicBlock::push_back(pointer Inst) {
   Instructions.push_back(Inst);
 }
 
+void BasicBlock::push_front(pointer Inst) {
+  assert(Inst->Parent == nullptr);
+  Inst->Parent = this;
+  Instructions.push_front(Inst);
+}
+
 void BasicBlock::clear() { Instructions.clear(); }
+
+void BasicBlock::pop_back() { Instructions.pop_back(); }
+
+void BasicBlock::pop_front() { Instructions.pop_front(); }
 
 // clang-format off
 BasicBlock::iterator BasicBlock::begin()  
@@ -145,6 +155,11 @@ llvm::SmallPtrSet<BasicBlock *, 2> BasicBlock::getOutwardFlow() const {
 Instruction *BasicBlock::getTerminatingInst() {
   if (!empty() && !back().isTerminating()) { return std::addressof(back()); }
   return nullptr;
+}
+
+void BasicBlock::eraseFromParent() {
+  auto &Parent = *getParent();
+  Parent.getBasicBlocks().erase(this);
 }
 
 // clang-format off

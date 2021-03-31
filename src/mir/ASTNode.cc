@@ -20,6 +20,8 @@ ASTNode::use_site_iterator ASTNode::use_site_begin() const {
 
 ASTNode::use_site_iterator ASTNode::use_site_end() const { return Uses.end(); }
 
+bool ASTNode::hasNoUsedSites() const { return Uses.empty(); }
+
 void ASTNode::add_use(ASTNode *Referrer) { Uses.push_front(Referrer); }
 
 namespace {

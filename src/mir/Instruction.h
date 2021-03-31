@@ -72,6 +72,7 @@ public:
 
   static bool classof(ASTNode const *Node);
 
+  void eraseFromParent();
   void replaceAllUseWith(Instruction *ReplaceValue);
 };
 

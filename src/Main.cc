@@ -31,7 +31,7 @@ int main(int argc, char const *argv[]) {
   mio::basic_mmap_source<std::byte> Source(
       //    "../test/polybench-c-4.2.1-beta/2mm.wasm");
       "../test/2mm.wasm");
-  //"../test/main.wasm");
+  // "../test/main.wasm");
   // "../test/viu.wasm");
 
   using namespace std::chrono;
@@ -94,6 +94,15 @@ int main(int argc, char const *argv[]) {
     mir::passes::SimpleForEachFunctionPassDriver<mir::passes::SimplifyCFGPass>
         Driver;
     Driver(M);
+
+    for (auto const &Function : M.getFunctions().asView()) {
+      if (Function.isDeclaration()) continue;
+      mir::passes::SimpleFunctionPassDriver<mir::passes::DominatorPass> D;
+      auto DomTree = D(Function).buildDomTree(Function.getEntryBasicBlock());
+      utility::ignore(DomTree);
+      // fmt::print(
+      //    "{} : {}\n", Function.getName(), DomTree->getChildren().size());
+    }
   });
   fmt::print(
       "MIR Simplification Time: {} milliseconds\n",

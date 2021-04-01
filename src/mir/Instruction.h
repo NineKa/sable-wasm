@@ -21,6 +21,44 @@ class Memory;
 class BasicBlock;
 class Local;
 
+enum class TypeKind { Unit, Primitive, Aggregate, Bottom };
+
+class Type {
+  struct AggregateStorage;
+  TypeKind Kind;
+  std::variant<
+      /* Bottom    */ std::monostate,
+      /* Primitive */ bytecode::ValueType,
+      /* Aggregate */ std::shared_ptr<AggregateStorage>>
+      Storage;
+
+  explicit Type(TypeKind Kind_);
+  explicit Type(bytecode::ValueType Primitive);
+  explicit Type(std::span<Type const> Aggregrate);
+
+public:
+  Type(Type const &);
+  Type(Type &&) noexcept;
+  Type &operator=(Type const &);
+  Type &operator=(Type &&) noexcept;
+  ~Type() noexcept;
+
+  bool isUnit() const;
+  bool isBottom() const;
+  bool isPrimitive() const;
+  bool isAggregrate() const;
+  TypeKind getKind() const;
+  bytecode::ValueType const &asPrimitive() const;
+  std::span<Type const> asAggregrate() const;
+
+  static Type BuildUnit();
+  static Type BuildPrimitive(bytecode::ValueType Primitive);
+  static Type BuildAggregate(std::span<Type const> Aggregate);
+  static Type BuildBottom();
+
+  bool operator==(Type const &Other) const;
+};
+
 enum class InstructionKind : std::uint8_t {
   Unreachable,
   Branch,

@@ -38,6 +38,7 @@ add_library(sablewasm
         src/mir/Function.cc
         src/mir/MIRCodegen.cc
         src/mir/passes/IsWellformed.cc
+        src/mir/passes/TypeInfer.cc
         src/mir/passes/Dominator.cc
         src/mir/passes/SimplifyCFG.cc
         src/parser/ExprBuilderDelegate.cc

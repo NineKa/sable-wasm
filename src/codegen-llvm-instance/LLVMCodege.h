@@ -99,6 +99,16 @@ public:
   FunctionEntry const &operator[](mir::Function const &Function) const;
   ElementEntry const &operator[](mir::Element const &ElementSegment) const;
 
+  /* List of Builtins (implement by the runtime library
+   * __sable_memory_guard
+   * __sable_table_guard
+   * __sable_table_set    (* no boundary check is required *)
+   * __sable_table_get    (* no boundary check is required *)
+   * error handling:
+   * __sable_unreachable
+   * __sable_conversion_overflow
+   * __sable_zero_divisor
+   */
   llvm::Function *getBuiltin(std::string_view Name);
 
   llvm::Value *
@@ -156,7 +166,7 @@ class FunctionTranslationTask {
 
 public:
   FunctionTranslationTask(
-      EntityLayout const &EntityLayout_, mir::Function const &Source_,
+      EntityLayout &EntityLayout_, mir::Function const &Source_,
       llvm::Function &Target_);
   FunctionTranslationTask(FunctionTranslationTask const &) = delete;
   FunctionTranslationTask(FunctionTranslationTask &&) noexcept;
@@ -164,6 +174,16 @@ public:
   FunctionTranslationTask &operator=(FunctionTranslationTask &&) noexcept;
   ~FunctionTranslationTask() noexcept;
 
+  void perform();
+};
+
+class ModuleTranslationTask {
+  std::unique_ptr<EntityLayout> Layout;
+  mir::Module const *Source;
+  llvm::Module *Target;
+
+public:
+  ModuleTranslationTask(mir::Module const &Source_, llvm::Module &Target);
   void perform();
 };
 } // namespace codegen::llvm_instance

@@ -136,9 +136,14 @@ int main(int argc, char const *argv[]) {
   LM.setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
   auto LLVMCodegenTime = utility::measure([&]() {
-    codegen::llvm_instance::EntityLayout ELayout(M, LM);
-    // LM.print(llvm::outs(), nullptr);
+    codegen::llvm_instance::ModuleTranslationTask Task(M, LM);
+    Task.perform();
   });
+
+  std::error_code EC;
+  llvm::raw_fd_ostream out("out.ll", EC);
+  LM.print(out, nullptr);
+
   fmt::print(
       "LLVM Codegen Time: {} milliseconds\n",
       duration_cast<milliseconds>(LLVMCodegenTime).count());

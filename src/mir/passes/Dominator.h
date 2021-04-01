@@ -1,6 +1,7 @@
 #ifndef SABLE_INCLUDE_GUARD_MIR_PASSES_DOMINATOR
 #define SABLE_INCLUDE_GUARD_MIR_PASSES_DOMINATOR
 
+#include "../BasicBlock.h"
 #include "../Function.h"
 #include "Pass.h"
 

@@ -3,7 +3,83 @@
 
 #include <range/v3/view/filter.hpp>
 
+#include <vector>
+
 namespace mir {
+class Type::AggregateStorage {
+  std::vector<Type> Members;
+
+public:
+  explicit AggregateStorage(std::span<Type const> Aggregate)
+      : Members(ranges::to<std::vector<Type>>(Aggregate)) {}
+  using iterator = decltype(Members)::const_iterator;
+  iterator begin() const { return Members.begin(); }
+  iterator end() const { return Members.end(); }
+  std::size_t size() const { return Members.size(); }
+  std::span<Type const> asView() const { return Members; }
+  bool operator==(AggregateStorage const &Other) const = default;
+};
+
+Type::Type(TypeKind Kind_) : Kind(Kind_), Storage(std::monostate()) {}
+Type::Type(bytecode::ValueType Primitive)
+    : Kind(TypeKind::Primitive), Storage(std::move(Primitive)) {}
+Type::Type(std::span<Type const> Aggregate)
+    : Kind(TypeKind::Aggregate),
+      Storage(std::make_shared<AggregateStorage>(Aggregate)) {}
+
+Type::Type(Type const &) = default;
+Type::Type(Type &&) noexcept = default;
+Type &Type::operator=(Type const &) = default;
+Type &Type::operator=(Type &&) noexcept = default;
+Type::~Type() noexcept = default;
+
+bool Type::isBottom() const { return Kind == TypeKind::Bottom; }
+bool Type::isPrimitive() const { return Kind == TypeKind::Primitive; }
+bool Type::isAggregrate() const { return Kind == TypeKind::Aggregate; }
+TypeKind Type::getKind() const { return Kind; }
+
+bytecode::ValueType const &Type::asPrimitive() const {
+  assert(isPrimitive());
+  return std::get<bytecode::ValueType>(Storage);
+}
+
+std::span<Type const> Type::asAggregrate() const {
+  assert(isAggregrate());
+  return std::get<std::shared_ptr<AggregateStorage>>(Storage)->asView();
+}
+
+Type Type::BuildUnit() { return Type(TypeKind::Unit); }
+
+Type Type::BuildPrimitive(bytecode::ValueType Primitive) {
+  return Type(std::move(Primitive));
+}
+
+Type Type::BuildAggregate(std::span<Type const> Aggregate) {
+  return Type(Aggregate);
+}
+
+Type Type::BuildBottom() { return Type(TypeKind::Bottom); }
+
+bool Type::operator==(Type const &Other) const {
+  if (Kind != Other.getKind()) return false;
+  switch (Kind) {
+  case TypeKind::Unit:
+  case TypeKind::Bottom: return true;
+  case TypeKind::Primitive: {
+    auto const &LHS = std::get<bytecode::ValueType>(Storage);
+    auto const &RHS = std::get<bytecode::ValueType>(Other.Storage);
+    return LHS == RHS;
+  }
+  case TypeKind::Aggregate: {
+    using AggregateStoragePtr = std::shared_ptr<AggregateStorage>;
+    auto const &LHS = std::get<AggregateStoragePtr>(Storage);
+    auto const &RHS = std::get<AggregateStoragePtr>(Other.Storage);
+    return *LHS == *RHS;
+  }
+  default: utility::unreachable();
+  }
+}
+
 bool Instruction::isPhi() const { return instructions::Phi::classof(this); }
 
 bool Instruction::isBranching() const {

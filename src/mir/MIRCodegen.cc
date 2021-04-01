@@ -932,29 +932,29 @@ void FunctionTranslationTask::perform() {
 /////////////////////////// ModuleTranslationTask //////////////////////////////
 ModuleTranslationTask::ModuleTranslationTask(
     bytecode::Module const &Source_, mir::Module &Target_)
-    : LayOut(nullptr), Source(std::addressof(Source_)),
+    : Layout(nullptr), Source(std::addressof(Source_)),
       Target(std::addressof(Target_)), Names(nullptr) {}
 
 ModuleTranslationTask::ModuleTranslationTask(
     bytecode::Module const &Source_, mir::Module &Target_,
     parser::customsections::Name const &Names_)
-    : LayOut(nullptr), Source(std::addressof(Source_)),
+    : Layout(nullptr), Source(std::addressof(Source_)),
       Target(std::addressof(Target_)), Names(std::addressof(Names_)) {}
 
 void ModuleTranslationTask::perform() {
-  LayOut = std::make_unique<EntityLayout>(*Source, *Target);
-  for (auto const &[SourceFunc, TargetFunc] : LayOut->functions()) {
+  Layout = std::make_unique<EntityLayout>(*Source, *Target);
+  for (auto const &[SourceFunc, TargetFunc] : Layout->functions()) {
     if (SourceFunc.isDeclaration()) continue;
-    FunctionTranslationTask FTask(*LayOut, SourceFunc, *TargetFunc);
+    FunctionTranslationTask FTask(*Layout, SourceFunc, *TargetFunc);
     FTask.perform();
   }
   if (Names != nullptr) {
     for (auto const &FuncNameEntry : Names->getFunctionNames()) {
-      auto *MFunction = (*LayOut)[FuncNameEntry.FuncIndex];
+      auto *MFunction = (*Layout)[FuncNameEntry.FuncIndex];
       MFunction->setName(FuncNameEntry.Name);
     }
     for (auto const &LocalNameEntry : Names->getLocalNames()) {
-      auto *MFunction = (*LayOut)[LocalNameEntry.FuncIndex];
+      auto *MFunction = (*Layout)[LocalNameEntry.FuncIndex];
       auto &MLocal = *std::next(
           MFunction->getLocals().begin(),
           static_cast<std::size_t>(LocalNameEntry.LocalIndex));

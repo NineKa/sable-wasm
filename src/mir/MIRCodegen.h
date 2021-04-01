@@ -70,7 +70,7 @@ public:
 };
 
 class ModuleTranslationTask {
-  std::unique_ptr<EntityLayout> LayOut;
+  std::unique_ptr<EntityLayout> Layout;
   bytecode::Module const *Source;
   mir::Module *Target;
   parser::customsections::Name const *Names;

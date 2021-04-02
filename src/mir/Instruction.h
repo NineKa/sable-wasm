@@ -24,7 +24,7 @@ class Local;
 enum class TypeKind { Unit, Primitive, Aggregate, Bottom };
 
 class Type {
-  struct AggregateStorage;
+  class AggregateStorage;
   TypeKind Kind;
   std::variant<
       /* Bottom    */ std::monostate,
@@ -46,10 +46,17 @@ public:
   bool isUnit() const;
   bool isBottom() const;
   bool isPrimitive() const;
-  bool isAggregrate() const;
+  bool isAggregate() const;
   TypeKind getKind() const;
   bytecode::ValueType const &asPrimitive() const;
-  std::span<Type const> asAggregrate() const;
+  std::span<Type const> asAggregate() const;
+
+  bool isPrimitiveI32() const;
+  bool isPrimitiveI64() const;
+  bool isPrimitiveF32() const;
+  bool isPrimitiveF64() const;
+  bool isIntegral() const;
+  bool isFloatingPoint() const;
 
   static Type BuildUnit();
   static Type BuildPrimitive(bytecode::ValueType Primitive);

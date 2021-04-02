@@ -28,13 +28,13 @@ llvm::StructType *EntityLayout::createNamedStructTy(std::string_view Name) {
   return llvm::StructType::create(Target.getContext(), Name);
 }
 
-llvm::StructType *EntityLayout::getNamedStructTy(std::string_view Name) {
+llvm::StructType *EntityLayout::getNamedStructTy(std::string_view Name) const {
   auto *Type = Target.getTypeByName(Name);
   assert((Type != nullptr) && (llvm::isa<llvm::StructType>(Type)));
   return llvm::dyn_cast<llvm::StructType>(Type);
 }
 
-llvm::StructType *EntityLayout::getOpaqueTy(std::string_view Name) {
+llvm::StructType *EntityLayout::getOpaqueTy(std::string_view Name) const {
   auto *Type = Target.getTypeByName(Name);
   assert((Type != nullptr) && (llvm::isa<llvm::StructType>(Type)));
   return llvm::dyn_cast<llvm::StructType>(Type);
@@ -650,7 +650,7 @@ EntityLayout::EntityLayout(mir::Module const &Source_, llvm::Module &Target_)
   setupInitialization();
 }
 
-llvm::Type *EntityLayout::convertType(bytecode::ValueType const &Type) {
+llvm::Type *EntityLayout::convertType(bytecode::ValueType const &Type) const {
   switch (Type.getKind()) {
   case bytecode::ValueTypeKind::I32: return getI32Ty();
   case bytecode::ValueTypeKind::I64: return getI64Ty();
@@ -661,7 +661,7 @@ llvm::Type *EntityLayout::convertType(bytecode::ValueType const &Type) {
 }
 
 llvm::FunctionType *
-EntityLayout::convertType(bytecode::FunctionType const &Type) {
+EntityLayout::convertType(bytecode::FunctionType const &Type) const {
   auto &Context = Target.getContext();
   std::vector<llvm::Type *> ParamTypes;
   ParamTypes.reserve(Type.getNumParameter() + 1);
@@ -714,7 +714,7 @@ EntityLayout::operator[](mir::Element const &ElementSegment) const {
   return std::get<1>(*SearchIter);
 }
 
-llvm::Function *EntityLayout::getBuiltin(std::string_view Name) {
+llvm::Function *EntityLayout::getBuiltin(std::string_view Name) const {
   auto *Builtin = Target.getFunction(Name);
   assert(Builtin != nullptr);
   return Builtin;
@@ -722,7 +722,7 @@ llvm::Function *EntityLayout::getBuiltin(std::string_view Name) {
 
 llvm::Value *EntityLayout::get(
     llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-    mir::Global const &MGlobal) {
+    mir::Global const &MGlobal) const {
   auto Offset = getOffset(MGlobal);
   auto GlobalValueType = MGlobal.getType().getType();
   auto *CastedToTy = llvm::PointerType::getUnqual(convertType(GlobalValueType));
@@ -735,7 +735,7 @@ llvm::Value *EntityLayout::get(
 
 llvm::Value *EntityLayout::get(
     llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-    mir::Function const &MFunction) {
+    mir::Function const &MFunction) const {
   auto Offset = getOffset(MFunction);
   auto *FunctionTy = convertType(MFunction.getType());
   llvm::Value *FunctionPtr = Builder.CreateStructGEP(InstancePtr, Offset);
@@ -749,7 +749,7 @@ llvm::Value *EntityLayout::get(
 
 llvm::Value *EntityLayout::get(
     llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-    mir::Memory const &MMemory) {
+    mir::Memory const &MMemory) const {
   auto Offset = getOffset(MMemory);
   llvm::Value *MemoryPtr = Builder.CreateStructGEP(InstancePtr, Offset);
   MemoryPtr = Builder.CreateLoad(MemoryPtr);
@@ -759,7 +759,7 @@ llvm::Value *EntityLayout::get(
 
 llvm::Value *EntityLayout::get(
     llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-    const mir::Table &MTable) {
+    const mir::Table &MTable) const {
   auto Offset = getOffset(MTable);
   llvm::Value *TablePtr = Builder.CreateStructGEP(InstancePtr, Offset);
   TablePtr = Builder.CreateLoad(TablePtr);
@@ -767,7 +767,7 @@ llvm::Value *EntityLayout::get(
   return TablePtr;
 }
 
-char EntityLayout::getTypeChar(bytecode::ValueType const &Type) {
+char EntityLayout::getTypeChar(bytecode::ValueType const &Type) const {
   switch (Type.getKind()) {
   case bytecode::ValueTypeKind::I32: return 'I';
   case bytecode::ValueTypeKind::I64: return 'J';
@@ -777,7 +777,8 @@ char EntityLayout::getTypeChar(bytecode::ValueType const &Type) {
   }
 }
 
-std::string EntityLayout::getTypeString(bytecode::FunctionType const &Type) {
+std::string
+EntityLayout::getTypeString(bytecode::FunctionType const &Type) const {
   std::string Result;
   Result.reserve(Type.getNumParameter() + Type.getNumResult() + 1);
   for (auto const &ValueType : Type.getParamTypes())
@@ -788,20 +789,20 @@ std::string EntityLayout::getTypeString(bytecode::FunctionType const &Type) {
   return Result;
 }
 
-llvm::Type *EntityLayout::getVoidTy() {
+llvm::Type *EntityLayout::getVoidTy() const {
   return llvm::Type::getVoidTy(Target.getContext());
 }
 
-llvm::PointerType *EntityLayout::getVoidPtrTy() {
+llvm::PointerType *EntityLayout::getVoidPtrTy() const {
   return llvm::Type::getInt8PtrTy(Target.getContext());
 }
 
-llvm::PointerType *EntityLayout::getCStringPtrTy() {
+llvm::PointerType *EntityLayout::getCStringPtrTy() const {
   return llvm::Type::getInt8PtrTy(Target.getContext());
 }
 
-llvm::Constant *
-EntityLayout::getCStringPtr(std::string_view Content, std::string_view Name) {
+llvm::Constant *EntityLayout::getCStringPtr(
+    std::string_view Content, std::string_view Name) const {
   auto &Context = Target.getContext();
   auto *ContentConstant = llvm::ConstantDataArray::getString(Context, Content);
   auto *CString = new llvm::GlobalVariable(
@@ -820,97 +821,99 @@ EntityLayout::getCStringPtr(std::string_view Content, std::string_view Name) {
       CastedPtr->getValueType(), CString, Indices);
 }
 
-llvm::IntegerType *EntityLayout::getI32Ty() {
+llvm::IntegerType *EntityLayout::getI32Ty() const {
   return llvm::Type::getInt32Ty(Target.getContext());
 }
 
-llvm::Constant *EntityLayout::getI32Constant(std::int32_t Value) {
+llvm::ConstantInt *EntityLayout::getI32Constant(std::int32_t Value) const {
   return llvm::ConstantInt::get(getI32Ty(), Value);
 }
 
-llvm::IntegerType *EntityLayout::getI64Ty() {
+llvm::IntegerType *EntityLayout::getI64Ty() const {
   return llvm::Type::getInt64Ty(Target.getContext());
 }
 
-llvm::Constant *EntityLayout::getI64Constant(std::int64_t Value) {
+llvm::ConstantInt *EntityLayout::getI64Constant(std::int64_t Value) const {
   return llvm::ConstantInt::get(getI64Ty(), Value);
 }
 
-llvm::Type *EntityLayout::getF32Ty() {
+llvm::Type *EntityLayout::getF32Ty() const {
   return llvm::Type::getFloatTy(Target.getContext());
 }
 
-llvm::Constant *EntityLayout::getF32Constant(float Value) {
-  return llvm::ConstantFP::get(getF32Ty(), Value);
+llvm::ConstantFP *EntityLayout::getF32Constant(float Value) const {
+  auto *Result = llvm::ConstantFP::get(getF32Ty(), Value);
+  return llvm::dyn_cast<llvm::ConstantFP>(Result);
 }
 
-llvm::Type *EntityLayout::getF64Ty() {
+llvm::Type *EntityLayout::getF64Ty() const {
   return llvm::Type::getDoubleTy(Target.getContext());
 }
 
-llvm::Constant *EntityLayout::getF64Constant(double Value) {
-  return llvm::ConstantFP::get(getF64Ty(), Value);
+llvm::ConstantFP *EntityLayout::getF64Constant(double Value) const {
+  auto *Result = llvm::ConstantFP::get(getF64Ty(), Value);
+  return llvm::dyn_cast<llvm::ConstantFP>(Result);
 }
 
-llvm::Type *EntityLayout::getPtrIntTy() {
+llvm::Type *EntityLayout::getPtrIntTy() const {
   auto &TargetDataLayout = Target.getDataLayout();
   return TargetDataLayout.getIntPtrType(Target.getContext());
 }
 
-llvm::PointerType *EntityLayout::getInstancePtrTy() {
+llvm::PointerType *EntityLayout::getInstancePtrTy() const {
   auto *InstanceTy = getNamedStructTy("__sable_instance_t");
   return llvm::PointerType::getUnqual(InstanceTy);
 }
 
-llvm::StructType *EntityLayout::getMemoryMetadataTy() {
+llvm::StructType *EntityLayout::getMemoryMetadataTy() const {
   return getNamedStructTy("__sable_memory_metadata_t");
 }
 
-llvm::StructType *EntityLayout::getTableMetadataTy() {
+llvm::StructType *EntityLayout::getTableMetadataTy() const {
   return getNamedStructTy("__sable_table_metadata_t");
 }
 
-llvm::StructType *EntityLayout::getGlobalMetadataTy() {
+llvm::StructType *EntityLayout::getGlobalMetadataTy() const {
   return getNamedStructTy("__sable_global_metadata_t");
 }
 
-llvm::StructType *EntityLayout::getFunctionMetadataTy() {
+llvm::StructType *EntityLayout::getFunctionMetadataTy() const {
   return getNamedStructTy("__sable_function_metadata_t");
 }
 
-llvm::PointerType *EntityLayout::getMemoryPtrTy() {
+llvm::PointerType *EntityLayout::getMemoryPtrTy() const {
   auto *OpaqueTy = getOpaqueTy("__sable_memory_t");
   return llvm::PointerType::getUnqual(OpaqueTy);
 }
 
-llvm::PointerType *EntityLayout::getTablePtrTy() {
+llvm::PointerType *EntityLayout::getTablePtrTy() const {
   auto *OpaqueTy = getOpaqueTy("__sable_table_t");
   return llvm::PointerType::getUnqual(OpaqueTy);
 }
 
-llvm::PointerType *EntityLayout::getGlobalPtrTy() {
+llvm::PointerType *EntityLayout::getGlobalPtrTy() const {
   auto *OpaqueTy = getOpaqueTy("__sable_global_t");
   return llvm::PointerType::getUnqual(OpaqueTy);
 }
 
-llvm::PointerType *EntityLayout::getFunctionPtrTy() {
+llvm::PointerType *EntityLayout::getFunctionPtrTy() const {
   auto *OpaqueTy = getOpaqueTy("__sable_function_t");
   return llvm::PointerType::getUnqual(OpaqueTy);
 }
 
-llvm::GlobalVariable *EntityLayout::getMemoryMetadata() {
+llvm::GlobalVariable *EntityLayout::getMemoryMetadata() const {
   return Target.getGlobalVariable("__sable_memory_metadata");
 }
 
-llvm::GlobalVariable *EntityLayout::getTableMetadata() {
+llvm::GlobalVariable *EntityLayout::getTableMetadata() const {
   return Target.getGlobalVariable("__sable_table_metadata");
 }
 
-llvm::GlobalVariable *EntityLayout::getGlobalMetadata() {
+llvm::GlobalVariable *EntityLayout::getGlobalMetadata() const {
   return Target.getGlobalVariable("__sable_global_metadata");
 }
 
-llvm::GlobalVariable *EntityLayout::getFunctionMetadata() {
+llvm::GlobalVariable *EntityLayout::getFunctionMetadata() const {
   return Target.getGlobalVariable("__sable_function_metadata");
 }
 } // namespace codegen::llvm_instance

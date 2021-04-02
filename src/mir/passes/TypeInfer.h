@@ -3,6 +3,7 @@
 
 #include "../Function.h"
 #include "../Instruction.h"
+#include "Dominator.h"
 #include "Pass.h"
 
 #include <memory>
@@ -16,18 +17,24 @@ public:
 
 private:
   std::shared_ptr<TypeMap> Types;
+  friend class TypeInferPass;
+  explicit TypeInferPassResult(std::shared_ptr<TypeMap> Types_);
 
 public:
-  explicit TypeInferPassResult(std::shared_ptr<TypeMap> Types_);
-  mir::Type const &operator[](mir::Instruction const &Instruction);
+  TypeInferPassResult() = default;
+  mir::Type const &operator[](mir::Instruction const &Instruction) const;
 };
 
 class TypeInferPass {
   std::shared_ptr<TypeInferPassResult::TypeMap> Types;
-  mir::Type const &operator[](mir::Instruction const &Instruction);
+  mir::Function const *Function = nullptr;
+  std::shared_ptr<DominatorTreeNode> DomTree;
 
 public:
   void prepare(mir::Function const &Function_);
+  void prepare(
+      mir::Function const &Function_,
+      std::shared_ptr<DominatorTreeNode> DomTree);
   PassStatus run();
   void finalize();
 

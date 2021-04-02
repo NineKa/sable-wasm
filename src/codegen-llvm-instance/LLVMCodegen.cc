@@ -9,11 +9,12 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Value.h>
 
-#include <cassert>
-#include <memory>
 #include <range/v3/view/enumerate.hpp>
 #include <range/v3/view/filter.hpp>
+#include <range/v3/view/transform.hpp>
 
+#include <cassert>
+#include <memory>
 #include <unordered_map>
 
 namespace codegen::llvm_instance {
@@ -25,7 +26,7 @@ class FunctionTranslationTask::TranslationContext {
 
   std::unordered_map<mir::Instruction const *, llvm::Value *> ValueMap;
   std::unordered_map<mir::Local const *, llvm::Value *> LocalMap;
-  mir::passes::DominatorPassResult DomPassResult;
+  std::shared_ptr<mir::passes::DominatorTreeNode> DominatorTree;
   mir::passes::TypeInferPassResult TypePassResult;
 
   std::unordered_map<
@@ -46,16 +47,20 @@ class FunctionTranslationTask::TranslationContext {
   }
 
 public:
-  using DominatorPassDriver =
-      mir::passes::SimpleFunctionPassDriver<mir::passes::DominatorPass>;
-  using TypeInferPassDriver =
-      mir::passes::SimpleFunctionPassDriver<mir::passes::TypeInferPass>;
   TranslationContext(
       EntityLayout &Layout_, mir::Function const &Source_,
       llvm::Function &Target_)
-      : Layout(Layout_), Source(Source_), Target(Target_),
-        DomPassResult(DominatorPassDriver()(Source)),
-        TypePassResult(TypeInferPassDriver()(Source)) {
+      : Layout(Layout_), Source(Source_), Target(Target_) {
+    auto const &EntryBB = Source.getEntryBasicBlock();
+    mir::passes::SimpleFunctionPassDriver<mir::passes::DominatorPass>
+        DominatorPassDriver;
+    DominatorTree = DominatorPassDriver(Source).buildDomTree(EntryBB);
+    mir::passes::TypeInferPass TypeInferPass;
+    TypeInferPass.prepare(Source, DominatorTree);
+    TypeInferPass.run();
+    TypeInferPass.finalize();
+    TypePassResult = TypeInferPass.getResult();
+
     auto *EntryBlock = llvm::BasicBlock::Create(
         /* Context */ Target.getContext(),
         /* Name    */ "pre_entry",
@@ -87,6 +92,41 @@ public:
     auto SearchIter = ValueMap.find(std::addressof(Instruction));
     assert(SearchIter != ValueMap.end());
     return std::get<1>(*SearchIter);
+  }
+
+  llvm::Value *getAsBool(
+      llvm::IRBuilder<> &Builder, mir::Instruction const &Instruction) const {
+    assert(getInferredType()[Instruction].isPrimitiveI32());
+    auto *Value = this->operator[](Instruction);
+    if (Value->getType() == Builder.getInt1Ty()) return Value;
+    /*
+    assert(Value->getType() == getLayout().getI32Ty());
+    return Builder.CreateTrunc(Value, Builder.getInt1Ty());
+    */
+    if (Value->getType() == getLayout().getI32Ty())
+      return Builder.CreateTrunc(Value, Builder.getInt1Ty());
+    return Value;
+  }
+
+  llvm::Value *getAsValue(
+      llvm::IRBuilder<> &Builder, mir::Instruction const &Instruction) const {
+    auto *Value = this->operator[](Instruction);
+    auto const &InferredType = getInferredType()[Instruction];
+    assert(InferredType.isPrimitive() || InferredType.isAggregate());
+    if (InferredType.isAggregate()) return Value;
+    using VKind = bytecode::ValueTypeKind;
+    switch (InferredType.asPrimitive().getKind()) {
+    case VKind::I32: {
+      if (Value->getType() == getLayout().getI32Ty()) return Value;
+      /* assert(Value->getType() == Builder.getInt1Ty());
+      return Builder.CreateZExt(Value, getLayout().getI32Ty());
+       */
+      if (Value->getType() == Builder.getInt1Ty())
+        return Builder.CreateZExt(Value, getLayout().getI32Ty());
+      return Value;
+    }
+    default: return Value;
+    }
   }
 
   llvm::Value *operator[](mir::Local const &Local) const {
@@ -125,18 +165,18 @@ public:
     ValueMap.emplace(std::addressof(Inst), Value);
   }
 
-  EntityLayout &layout() { return Layout; }
+  EntityLayout const &getLayout() const { return Layout; }
 
-  mir::passes::DominatorPassResult const &dominator() const {
-    return DomPassResult;
+  std::shared_ptr<mir::passes::DominatorTreeNode> getDominatorTree() const {
+    return DominatorTree;
   }
 
-  mir::passes::TypeInferPassResult const &type() const {
+  mir::passes::TypeInferPassResult const &getInferredType() const {
     return TypePassResult;
   }
 
-  mir::Function const &source() const { return Source; }
-  llvm::Function &target() { return Target; }
+  mir::Function const &getSource() const { return Source; }
+  llvm::Function &getTarget() { return Target; }
 };
 
 namespace minsts = mir::instructions;
@@ -157,7 +197,7 @@ public:
   llvm::Value *operator()(minsts::Branch const *Inst) {
     llvm::Value *LLVMBrInstruction = nullptr;
     if (Inst->isConditional()) {
-      auto *Condition = Context[*Inst->getCondition()];
+      auto *Condition = Context.getAsBool(Builder, *Inst->getCondition());
       auto *TrueBB = std::get<0>(Context[*Inst->getTarget()]);
       auto *FalseBB = std::get<0>(Context[*Inst->getFalseTarget()]);
       LLVMBrInstruction = Builder.CreateCondBr(Condition, TrueBB, FalseBB);
@@ -169,21 +209,96 @@ public:
     return LLVMBrInstruction;
   }
 
+  llvm::Value *operator()(minsts::BranchTable const *Inst) {
+    auto *Operand = Context.getAsValue(Builder, *Inst->getOperand());
+    auto [DefaultFirst, DefaultLast] = Context[*Inst->getDefaultTarget()];
+    utility::ignore(DefaultLast);
+    // clang-format off
+    auto Targets = Inst->getTargets()
+      | ranges::views::transform([&](mir::BasicBlock const *Target) {
+          auto [TargetFirst, TargetLast] = Context[*Target];
+          utility::ignore(TargetLast);
+          return TargetFirst;
+        })
+      | ranges::to<std::vector<llvm::BasicBlock *>>();
+    // clang-format on
+    auto *LLVMSwitch =
+        Builder.CreateSwitch(Operand, DefaultFirst, Targets.size());
+    for (auto const &[Index, Target] : ranges::views::enumerate(Targets))
+      LLVMSwitch->addCase(Context.getLayout().getI32Constant(Index), Target);
+    return LLVMSwitch;
+  }
+
   llvm::Value *operator()(minsts::Return const *Inst) {
     if (Inst->hasReturnValue()) {
-      auto *ReturnValue = Context[*Inst->getOperand()];
+      auto *ReturnValue = Context.getAsValue(Builder, *Inst->getOperand());
       return Builder.CreateRet(ReturnValue);
     }
     return Builder.CreateRetVoid();
   }
 
+  llvm::Value *operator()(minsts::Call const *Inst) {
+    auto *InstancePtr = Context.getTarget().arg_begin();
+    auto *Target = Context.getLayout()[*Inst->getTarget()].definition();
+    std::vector<llvm::Value *> Arguments;
+    Arguments.reserve(Inst->getTarget()->getType().getNumParameter() + 1);
+    Arguments.push_back(InstancePtr);
+    for (auto const *Argument : Inst->getArguments())
+      Arguments.push_back(Context.getAsValue(Builder, *Argument));
+    return Builder.CreateCall(Target, Arguments);
+  }
+
+  llvm::Value *operator()(minsts::CallIndirect const *Inst) {
+    auto *InstancePtr = Context.getTarget().arg_begin();
+    auto *Index = Context.getAsValue(Builder, *Inst->getOperand());
+    auto *Table = Context.getLayout().get(
+        Builder, InstancePtr, *Inst->getIndirectTable());
+    std::vector<llvm::Value *> Arguments;
+    Arguments.reserve(Inst->getNumArguments() + 1);
+    Arguments.push_back(InstancePtr);
+    for (auto const *Argument : Inst->getArguments())
+      Arguments.push_back(Context.getAsValue(Builder, *Argument));
+    auto *BuiltinTableGuard =
+        Context.getLayout().getBuiltin("__sable_table_guard");
+    Builder.CreateCall(BuiltinTableGuard, {Table, Index});
+    auto *BuiltinTableGet = Context.getLayout().getBuiltin("__sable_table_get");
+    auto *TypeString = Context.getLayout().getCStringPtr(
+        Context.getLayout().getTypeString(Inst->getExpectType()),
+        "typestr.indirect.call");
+    auto *TargetType = Context.getLayout().convertType(Inst->getExpectType());
+    auto *TargetPtrType = llvm::PointerType::getUnqual(TargetType);
+    llvm::Value *Target =
+        Builder.CreateCall(BuiltinTableGet, {Table, Index, TypeString});
+    Target = Builder.CreatePointerCast(Target, TargetPtrType);
+    llvm::FunctionCallee Callee(TargetType, Target);
+    return Builder.CreateCall(Callee, Arguments);
+  }
+
+  llvm::Value *operator()(minsts::Select const *Inst) {
+    auto *Condition = Context.getAsBool(Builder, *Inst->getCondition());
+    auto *True = Context.getAsValue(Builder, *Inst->getTrue());
+    auto *False = Context.getAsValue(Builder, *Inst->getFalse());
+    return Builder.CreateSelect(Condition, True, False);
+  }
+
+  llvm::Value *operator()(minsts::LocalGet const *Inst) {
+    auto *Local = Context[*Inst->getTarget()];
+    return Builder.CreateLoad(Local);
+  }
+
+  llvm::Value *operator()(minsts::LocalSet const *Inst) {
+    auto *Local = Context[*Inst->getTarget()];
+    auto *Value = Context.getAsValue(Builder, *Inst->getOperand());
+    return Builder.CreateStore(Value, Local);
+  }
+
   llvm::Value *operator()(minsts::Constant const *Inst) {
     using VKind = bytecode::ValueTypeKind;
     switch (Inst->getValueType().getKind()) {
-    case VKind::I32: return Context.layout().getI32Constant(Inst->asI32());
-    case VKind::I64: return Context.layout().getI64Constant(Inst->asI64());
-    case VKind::F32: return Context.layout().getF32Constant(Inst->asF32());
-    case VKind::F64: return Context.layout().getF64Constant(Inst->asF64());
+    case VKind::I32: return Context.getLayout().getI32Constant(Inst->asI32());
+    case VKind::I64: return Context.getLayout().getI64Constant(Inst->asI64());
+    case VKind::F32: return Context.getLayout().getF32Constant(Inst->asF32());
+    case VKind::F64: return Context.getLayout().getF64Constant(Inst->asF64());
     default: utility::unreachable();
     }
   }
@@ -202,12 +317,12 @@ FunctionTranslationTask::FunctionTranslationTask(
 
 FunctionTranslationTask::FunctionTranslationTask(
     FunctionTranslationTask &&) noexcept = default;
+FunctionTranslationTask &FunctionTranslationTask::operator=(
+    FunctionTranslationTask &&) noexcept = default;
 FunctionTranslationTask::~FunctionTranslationTask() noexcept = default;
 
 void FunctionTranslationTask::perform() {
-  auto const &EntryBB = Context->source().getEntryBasicBlock();
-  auto DomTree = Context->dominator().buildDomTree(EntryBB);
-  for (auto const *BBPtr : DomTree->asPreorder()) {
+  for (auto const *BBPtr : Context->getDominatorTree()->asPreorder()) {
     auto [FirstBBPtr, LastBBPtr] = Context->operator[](*BBPtr);
     utility::ignore(LastBBPtr);
     llvm::IRBuilder<> Builder(FirstBBPtr);

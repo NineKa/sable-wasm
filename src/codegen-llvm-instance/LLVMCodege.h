@@ -48,9 +48,9 @@ private:
   llvm::DenseMap<mir::Function const *, FunctionEntry> FunctionMap;
 
   llvm::StructType *declareOpaqueTy(std::string_view Name);
-  llvm::StructType *getOpaqueTy(std::string_view Name);
+  llvm::StructType *getOpaqueTy(std::string_view Name) const;
   llvm::StructType *createNamedStructTy(std::string_view Name);
-  llvm::StructType *getNamedStructTy(std::string_view Name);
+  llvm::StructType *getNamedStructTy(std::string_view Name) const;
 
   /*
    * Instance Struct Layout:
@@ -90,8 +90,8 @@ private:
 
 public:
   EntityLayout(mir::Module const &Source_, llvm::Module &Target_);
-  llvm::Type *convertType(bytecode::ValueType const &Type);
-  llvm::FunctionType *convertType(bytecode::FunctionType const &Type);
+  llvm::Type *convertType(bytecode::ValueType const &Type) const;
+  llvm::FunctionType *convertType(bytecode::FunctionType const &Type) const;
 
   std::size_t getOffset(mir::ASTNode const &Node) const;
 
@@ -109,54 +109,59 @@ public:
    * __sable_conversion_overflow
    * __sable_zero_divisor
    */
-  llvm::Function *getBuiltin(std::string_view Name);
+  llvm::Function *getBuiltin(std::string_view Name) const;
 
   llvm::Value *
   get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::Global const &MGlobal);
+      mir::Global const &MGlobal) const;
   llvm::Value *
   get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::Function const &MFunction);
+      mir::Function const &MFunction) const;
   llvm::Value *
   get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::Memory const &MMemory);
+      mir::Memory const &MMemory) const;
   llvm::Value *
   get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::Table const &MTable);
+      mir::Table const &MTable) const;
 
-  char getTypeChar(bytecode::ValueType const &Type);
-  std::string getTypeString(bytecode::FunctionType const &Type);
+  char getTypeChar(bytecode::ValueType const &Type) const;
+  std::string getTypeString(bytecode::FunctionType const &Type) const;
 
-  /* void          */ llvm::Type *getVoidTy();
-  /* void *        */ llvm::PointerType *getVoidPtrTy();
-  /* char const *  */ llvm::PointerType *getCStringPtrTy();
-  llvm::Constant *getCStringPtr(std::string_view, std::string_view Name = "");
-  /* std::int32_t  */ llvm::IntegerType *getI32Ty();
-  llvm::Constant *getI32Constant(std::int32_t Value);
-  /* std::int64_t  */ llvm::IntegerType *getI64Ty();
-  llvm::Constant *getI64Constant(std::int64_t Value);
-  /* float         */ llvm::Type *getF32Ty();
-  llvm::Constant *getF32Constant(float Value);
-  /* double        */ llvm::Type *getF64Ty();
-  llvm::Constant *getF64Constant(double Value);
-  /* std::intptr_t */ llvm::Type *getPtrIntTy();
+  /* void          */ llvm::Type *getVoidTy() const;
+  /* void *        */ llvm::PointerType *getVoidPtrTy() const;
+  /* char const *  */ llvm::PointerType *getCStringPtrTy() const;
+  llvm::Constant *
+  getCStringPtr(std::string_view, std::string_view Name = "") const;
+  /* std::int32_t  */ llvm::IntegerType *getI32Ty() const;
+  llvm::ConstantInt *getI32Constant(std::int32_t Value) const;
+  /* std::int64_t  */ llvm::IntegerType *getI64Ty() const;
+  llvm::ConstantInt *getI64Constant(std::int64_t Value) const;
+  /* float         */ llvm::Type *getF32Ty() const;
+  llvm::ConstantFP *getF32Constant(float Value) const;
+  /* double        */ llvm::Type *getF64Ty() const;
+  llvm::ConstantFP *getF64Constant(double Value) const;
+  /* std::intptr_t */ llvm::Type *getPtrIntTy() const;
 
-  /* __sable_instance_t * */ llvm::PointerType *getInstancePtrTy();
+  /* __sable_instance_t * */ llvm::PointerType *getInstancePtrTy() const;
 
-  /* __sable_memory_metadata_t   */ llvm::StructType *getMemoryMetadataTy();
-  /* __sable_table_metadata_t    */ llvm::StructType *getTableMetadataTy();
-  /* __sable_global_metadata_t   */ llvm::StructType *getGlobalMetadataTy();
-  /* __sable_function_metadata_t */ llvm::StructType *getFunctionMetadataTy();
+  /* __sable_memory_metadata_t   */
+  llvm::StructType *getMemoryMetadataTy() const;
+  /* __sable_table_metadata_t    */
+  llvm::StructType *getTableMetadataTy() const;
+  /* __sable_global_metadata_t   */
+  llvm::StructType *getGlobalMetadataTy() const;
+  /* __sable_function_metadata_t */
+  llvm::StructType *getFunctionMetadataTy() const;
 
-  /* __sable_memory_t *   */ llvm::PointerType *getMemoryPtrTy();
-  /* __sable_table_t *    */ llvm::PointerType *getTablePtrTy();
-  /* __sable_global_t *   */ llvm::PointerType *getGlobalPtrTy();
-  /* __sable_function_t * */ llvm::PointerType *getFunctionPtrTy();
+  /* __sable_memory_t *   */ llvm::PointerType *getMemoryPtrTy() const;
+  /* __sable_table_t *    */ llvm::PointerType *getTablePtrTy() const;
+  /* __sable_global_t *   */ llvm::PointerType *getGlobalPtrTy() const;
+  /* __sable_function_t * */ llvm::PointerType *getFunctionPtrTy() const;
 
-  llvm::GlobalVariable *getMemoryMetadata();
-  llvm::GlobalVariable *getTableMetadata();
-  llvm::GlobalVariable *getGlobalMetadata();
-  llvm::GlobalVariable *getFunctionMetadata();
+  llvm::GlobalVariable *getMemoryMetadata() const;
+  llvm::GlobalVariable *getTableMetadata() const;
+  llvm::GlobalVariable *getGlobalMetadata() const;
+  llvm::GlobalVariable *getFunctionMetadata() const;
 };
 
 class FunctionTranslationTask {

@@ -26,9 +26,7 @@ DominatorPassResult::getDom(BasicBlock const &BB) const {
   return std::get<1>(*SearchIter);
 }
 
-mir::BasicBlock const *DominatorPassResult::DomTreeNode::get() const {
-  return BasicBlock;
-}
+mir::BasicBlock const *DominatorTreeNode::get() const { return BasicBlock; }
 
 mir::BasicBlock const *
 DominatorPassResult::getImmediateDom(mir::BasicBlock const &BB) const {
@@ -60,31 +58,29 @@ DominatorPassResult::getImmediateDom(mir::BasicBlock const &BB) const {
   return ImmediateDom;
 }
 
-DominatorPassResult::DomTreeNode::DomTreeNode(mir::BasicBlock const *BB_)
+DominatorTreeNode::DominatorTreeNode(mir::BasicBlock const *BB_)
     : BasicBlock(BB_) {}
 
-void DominatorPassResult::DomTreeNode::addChildren(
-    std::shared_ptr<DomTreeNode> Node) {
+void DominatorTreeNode::addChildren(std::shared_ptr<DominatorTreeNode> Node) {
   Children.push_back(std::move(Node));
 }
 
-DominatorPassResult::DomTreeNode::iterator
-DominatorPassResult::DomTreeNode::begin() const {
+DominatorTreeNode::iterator DominatorTreeNode::begin() const {
   return Children.begin();
 }
 
-DominatorPassResult::DomTreeNode::iterator
-DominatorPassResult::DomTreeNode::end() const {
+DominatorTreeNode::iterator DominatorTreeNode::end() const {
   return Children.end();
 }
 
-std::shared_ptr<DominatorPassResult::DomTreeNode>
+std::shared_ptr<DominatorTreeNode>
 DominatorPassResult::buildDomTree(mir::BasicBlock const &EntryBB) const {
-  std::unordered_map<mir::BasicBlock const *, std::shared_ptr<DomTreeNode>>
+  std::unordered_map<
+      mir::BasicBlock const *, std::shared_ptr<DominatorTreeNode>>
       NodesMap;
   for (auto const &[BBPtr, Dom] : *Dominator) {
     utility::ignore(Dom);
-    auto Node = std::make_shared<DomTreeNode>(BBPtr);
+    auto Node = std::make_shared<DominatorTreeNode>(BBPtr);
     NodesMap.insert(std::make_pair(BBPtr, std::move(Node)));
   }
   for (auto const &[BBPtr, Dom] : *Dominator) {
@@ -101,7 +97,7 @@ DominatorPassResult::buildDomTree(mir::BasicBlock const &EntryBB) const {
 namespace {
 template <typename ContainerType>
 void collectInPreOrder(
-    DominatorPassResult::DomTreeNode const &Node, ContainerType &Container) {
+    DominatorTreeNode const &Node, ContainerType &Container) {
   Container.push_back(Node.get());
   for (auto const &Child : Node.getChildren())
     collectInPreOrder(*Child, Container);
@@ -109,22 +105,20 @@ void collectInPreOrder(
 
 template <typename ContainerType>
 void collectInPostOrder(
-    DominatorPassResult::DomTreeNode const &Node, ContainerType &Container) {
+    DominatorTreeNode const &Node, ContainerType &Container) {
   for (auto const &Child : Node.getChildren())
     collectInPostOrder(*Child, Container);
   Container.push_back(Node.get());
 }
 } // namespace
 
-std::vector<mir::BasicBlock const *>
-DominatorPassResult::DomTreeNode::asPreorder() const {
+std::vector<mir::BasicBlock const *> DominatorTreeNode::asPreorder() const {
   std::vector<mir::BasicBlock const *> Result;
   collectInPreOrder(*this, Result);
   return Result;
 }
 
-std::vector<mir::BasicBlock const *>
-DominatorPassResult::DomTreeNode::asPostorder() const {
+std::vector<mir::BasicBlock const *> DominatorTreeNode::asPostorder() const {
   std::vector<mir::BasicBlock const *> Result;
   collectInPostOrder(*this, Result);
   return Result;

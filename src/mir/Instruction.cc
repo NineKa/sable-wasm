@@ -22,7 +22,7 @@ public:
 
 Type::Type(TypeKind Kind_) : Kind(Kind_), Storage(std::monostate()) {}
 Type::Type(bytecode::ValueType Primitive)
-    : Kind(TypeKind::Primitive), Storage(std::move(Primitive)) {}
+    : Kind(TypeKind::Primitive), Storage(Primitive) {}
 Type::Type(std::span<Type const> Aggregate)
     : Kind(TypeKind::Aggregate),
       Storage(std::make_shared<AggregateStorage>(Aggregate)) {}
@@ -33,9 +33,10 @@ Type &Type::operator=(Type const &) = default;
 Type &Type::operator=(Type &&) noexcept = default;
 Type::~Type() noexcept = default;
 
+bool Type::isUnit() const { return Kind == TypeKind::Unit; }
 bool Type::isBottom() const { return Kind == TypeKind::Bottom; }
 bool Type::isPrimitive() const { return Kind == TypeKind::Primitive; }
-bool Type::isAggregrate() const { return Kind == TypeKind::Aggregate; }
+bool Type::isAggregate() const { return Kind == TypeKind::Aggregate; }
 TypeKind Type::getKind() const { return Kind; }
 
 bytecode::ValueType const &Type::asPrimitive() const {
@@ -43,15 +44,37 @@ bytecode::ValueType const &Type::asPrimitive() const {
   return std::get<bytecode::ValueType>(Storage);
 }
 
-std::span<Type const> Type::asAggregrate() const {
-  assert(isAggregrate());
+std::span<Type const> Type::asAggregate() const {
+  assert(isAggregate());
   return std::get<std::shared_ptr<AggregateStorage>>(Storage)->asView();
+}
+
+bool Type::isPrimitiveI32() const {
+  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::I32);
+}
+
+bool Type::isPrimitiveI64() const {
+  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::I64);
+}
+
+bool Type::isPrimitiveF32() const {
+  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::F32);
+}
+
+bool Type::isPrimitiveF64() const {
+  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::F64);
+}
+
+bool Type::isIntegral() const { return isPrimitiveI32() || isPrimitiveI64(); }
+
+bool Type::isFloatingPoint() const {
+  return isPrimitiveF32() || isPrimitiveF64();
 }
 
 Type Type::BuildUnit() { return Type(TypeKind::Unit); }
 
 Type Type::BuildPrimitive(bytecode::ValueType Primitive) {
-  return Type(std::move(Primitive));
+  return Type(Primitive);
 }
 
 Type Type::BuildAggregate(std::span<Type const> Aggregate) {
@@ -104,15 +127,12 @@ bool Instruction::classof(ASTNode const *Node) {
   return Node->getASTNodeKind() == ASTNodeKind::Instruction;
 }
 
-void Instruction::eraseFromParent() {
-  auto &Parent = *getParent();
-  Parent.erase(this);
-}
+void Instruction::eraseFromParent() { Parent->erase(this); }
 
 void Instruction::replaceAllUseWith(Instruction *ReplaceValue) {
   // clang-format off
   auto ReplaceQueue = getUsedSites() 
-    | ranges::view::filter([](auto const *Node) {
+    | ranges::views::filter([](auto const *Node) {
         return is_a<mir::Instruction>(Node);
       }) 
     | ranges::to<std::vector<ASTNode *>>();

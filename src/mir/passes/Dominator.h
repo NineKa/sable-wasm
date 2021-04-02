@@ -15,6 +15,25 @@ namespace mir::passes {
 // A simple iterative dataflow approach to compute CFG dominators
 // TODO: use Tarjan's algorithm
 
+class DominatorTreeNode {
+  mir::BasicBlock const *BasicBlock;
+  std::vector<std::shared_ptr<DominatorTreeNode>> Children;
+  friend class DominatorPassResult;
+  void addChildren(std::shared_ptr<DominatorTreeNode> Child);
+
+public:
+  explicit DominatorTreeNode(mir::BasicBlock const *BasicBlock_);
+  mir::BasicBlock const *get() const;
+
+  using iterator = decltype(Children)::const_iterator;
+  iterator begin() const;
+  iterator end() const;
+  auto getChildren() const { return ranges::make_subrange(begin(), end()); }
+
+  std::vector<mir::BasicBlock const *> asPreorder() const;
+  std::vector<mir::BasicBlock const *> asPostorder() const;
+};
+
 class DominatorPassResult {
 public:
   using BasicBlockSet = std::vector<mir::BasicBlock const *>;
@@ -31,26 +50,7 @@ public:
   DomView getDom(mir::BasicBlock const &BB) const;
   mir::BasicBlock const *getImmediateDom(mir::BasicBlock const &BB) const;
 
-  class DomTreeNode {
-    mir::BasicBlock const *BasicBlock;
-    std::vector<std::shared_ptr<DomTreeNode>> Children;
-    friend class DominatorPassResult;
-    void addChildren(std::shared_ptr<DomTreeNode> Child);
-
-  public:
-    explicit DomTreeNode(mir::BasicBlock const *BasicBlock_);
-    mir::BasicBlock const *get() const;
-
-    using iterator = decltype(Children)::const_iterator;
-    iterator begin() const;
-    iterator end() const;
-    auto getChildren() const { return ranges::make_subrange(begin(), end()); }
-
-    std::vector<mir::BasicBlock const *> asPreorder() const;
-    std::vector<mir::BasicBlock const *> asPostorder() const;
-  };
-
-  std::shared_ptr<DomTreeNode>
+  std::shared_ptr<DominatorTreeNode>
   buildDomTree(mir::BasicBlock const &EntryBB) const;
 
   bool dominate(BasicBlock const &V, BasicBlock const &U) const;

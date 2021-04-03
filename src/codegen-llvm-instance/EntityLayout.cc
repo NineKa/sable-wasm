@@ -592,6 +592,25 @@ void EntityLayout::setupBuiltins() {
       /* Name    */ "__sable_memory_guard",
       /* Parent  */ Target);
 
+  /* std::uint32_t
+   * __sable_memory_grow(__sable_memory_t * mem, std::uint32_t delta) */
+  auto *MemoryGrowTy = llvm::FunctionType::get(
+      getI32Ty(), {getMemoryPtrTy(), getI32Ty()}, false);
+  llvm::Function::Create(
+      /* Type    */ MemoryGrowTy,
+      /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+      /* Name    */ "__sable_memory_grow",
+      /* Parent  */ Target);
+
+  /* std::uint32_t __sable_memory_size(__sable_memory_t * mem) */
+  auto *MemorySizeTy =
+      llvm::FunctionType::get(getI32Ty(), {getMemoryPtrTy()}, false);
+  llvm::Function::Create(
+      /* Type    */ MemorySizeTy,
+      /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+      /* Name    */ "__sable_memory_size",
+      /* Parent  */ Target);
+
   /* void __sable_table_guard(__sable_table_t *table, std::uint32_t index) */
   auto *TableGuardTy = llvm::FunctionType::get(
       getVoidTy(), {getTablePtrTy(), getI32Ty()}, false);

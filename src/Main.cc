@@ -30,8 +30,9 @@ int main(int argc, char const *argv[]) {
 
   mio::basic_mmap_source<std::byte> Source(
       //    "../test/polybench-c-4.2.1-beta/2mm.wasm");
-      "../test/2mm.wasm");
-  // "../test/main.wasm");
+      //"../test/2mm.wasm");
+      // "../test/main.wasm");
+      "../test/fibonacci.wasm");
   // "../test/viu.wasm");
 
   using namespace std::chrono;

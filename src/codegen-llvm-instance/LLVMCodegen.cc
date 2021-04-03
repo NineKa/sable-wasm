@@ -7,6 +7,7 @@
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/Value.h>
 
 #include <range/v3/view/enumerate.hpp>
@@ -91,42 +92,26 @@ public:
   llvm::Value *operator[](mir::Instruction const &Instruction) const {
     auto SearchIter = ValueMap.find(std::addressof(Instruction));
     assert(SearchIter != ValueMap.end());
+    auto *Value = std::get<1>(*SearchIter);
+#ifndef NDEBUG
+    auto ExpectType = TypePassResult[Instruction];
+    assert(ExpectType.isPrimitive() || ExpectType.isAggregate());
+    if (ExpectType.isPrimitive())
+      assert(Layout.convertType(ExpectType.asPrimitive()) == Value->getType());
+    if (ExpectType.isAggregate()) {
+      // clang-format off
+      auto Members = ExpectType.asAggregate()
+        | ranges::views::transform([&](bytecode::ValueType const &ValueType) {
+            return Layout.convertType(ValueType);
+          })
+        | ranges::to<std::vector<llvm::Type *>>();
+      // clang-format on
+      auto *StructTy = llvm::StructType::get(Target.getContext(), Members);
+      auto *StructPtrTy = llvm::PointerType::getUnqual(StructTy);
+      assert(StructPtrTy == Value->getType());
+    }
+#endif
     return std::get<1>(*SearchIter);
-  }
-
-  llvm::Value *getAsBool(
-      llvm::IRBuilder<> &Builder, mir::Instruction const &Instruction) const {
-    assert(getInferredType()[Instruction].isPrimitiveI32());
-    auto *Value = this->operator[](Instruction);
-    if (Value->getType() == Builder.getInt1Ty()) return Value;
-    /*
-    assert(Value->getType() == getLayout().getI32Ty());
-    return Builder.CreateTrunc(Value, Builder.getInt1Ty());
-    */
-    if (Value->getType() == getLayout().getI32Ty())
-      return Builder.CreateTrunc(Value, Builder.getInt1Ty());
-    return Value;
-  }
-
-  llvm::Value *getAsValue(
-      llvm::IRBuilder<> &Builder, mir::Instruction const &Instruction) const {
-    auto *Value = this->operator[](Instruction);
-    auto const &InferredType = getInferredType()[Instruction];
-    assert(InferredType.isPrimitive() || InferredType.isAggregate());
-    if (InferredType.isAggregate()) return Value;
-    using VKind = bytecode::ValueTypeKind;
-    switch (InferredType.asPrimitive().getKind()) {
-    case VKind::I32: {
-      if (Value->getType() == getLayout().getI32Ty()) return Value;
-      /* assert(Value->getType() == Builder.getInt1Ty());
-      return Builder.CreateZExt(Value, getLayout().getI32Ty());
-       */
-      if (Value->getType() == Builder.getInt1Ty())
-        return Builder.CreateZExt(Value, getLayout().getI32Ty());
-      return Value;
-    }
-    default: return Value;
-    }
   }
 
   llvm::Value *operator[](mir::Local const &Local) const {
@@ -177,6 +162,7 @@ public:
 
   mir::Function const &getSource() const { return Source; }
   llvm::Function &getTarget() { return Target; }
+  llvm::Argument *getInstancePtr() const { return Target.arg_begin(); }
 };
 
 namespace minsts = mir::instructions;
@@ -197,7 +183,11 @@ public:
   llvm::Value *operator()(minsts::Branch const *Inst) {
     llvm::Value *LLVMBrInstruction = nullptr;
     if (Inst->isConditional()) {
-      auto *Condition = Context.getAsBool(Builder, *Inst->getCondition());
+      llvm::Value *Condition = Context[*Inst->getCondition()];
+      assert(Context.getInferredType()[*Inst->getCondition()].isPrimitiveI32());
+      assert(Condition->getType() == Context.getLayout().getI32Ty());
+      auto *Zero = Context.getLayout().getI32Constant(0);
+      Condition = Builder.CreateICmpNE(Condition, Zero);
       auto *TrueBB = std::get<0>(Context[*Inst->getTarget()]);
       auto *FalseBB = std::get<0>(Context[*Inst->getFalseTarget()]);
       LLVMBrInstruction = Builder.CreateCondBr(Condition, TrueBB, FalseBB);
@@ -210,7 +200,9 @@ public:
   }
 
   llvm::Value *operator()(minsts::BranchTable const *Inst) {
-    auto *Operand = Context.getAsValue(Builder, *Inst->getOperand());
+    auto *Operand = Context[*Inst->getOperand()];
+    assert(Context.getInferredType()[*Inst->getOperand()].isPrimitiveI32());
+    assert(Operand->getType() == Context.getLayout().getI32Ty());
     auto [DefaultFirst, DefaultLast] = Context[*Inst->getDefaultTarget()];
     utility::ignore(DefaultLast);
     // clang-format off
@@ -231,33 +223,41 @@ public:
 
   llvm::Value *operator()(minsts::Return const *Inst) {
     if (Inst->hasReturnValue()) {
-      auto *ReturnValue = Context.getAsValue(Builder, *Inst->getOperand());
-      return Builder.CreateRet(ReturnValue);
+      auto *ReturnValue = Context[*Inst->getOperand()];
+      auto ReturnTy = Context.getInferredType()[*Inst->getOperand()];
+      assert(ReturnTy.isPrimitive() || ReturnTy.isAggregate());
+      if (ReturnTy.isPrimitive()) return Builder.CreateRet(ReturnValue);
+      if (ReturnTy.isAggregate()) {
+        assert(ReturnValue->getType()->isPointerTy());
+        auto *AggregateStruct = Builder.CreateLoad(ReturnValue);
+        return Builder.CreateRet(AggregateStruct);
+      }
+      utility::unreachable();
     }
     return Builder.CreateRetVoid();
   }
 
   llvm::Value *operator()(minsts::Call const *Inst) {
-    auto *InstancePtr = Context.getTarget().arg_begin();
-    auto *Target = Context.getLayout()[*Inst->getTarget()].definition();
+    auto *InstancePtr = Context.getInstancePtr();
+    auto *Callee = Context.getLayout()[*Inst->getTarget()].definition();
     std::vector<llvm::Value *> Arguments;
     Arguments.reserve(Inst->getTarget()->getType().getNumParameter() + 1);
     Arguments.push_back(InstancePtr);
     for (auto const *Argument : Inst->getArguments())
-      Arguments.push_back(Context.getAsValue(Builder, *Argument));
-    return Builder.CreateCall(Target, Arguments);
+      Arguments.push_back(Context[*Argument]);
+    return Builder.CreateCall(Callee, Arguments);
   }
 
   llvm::Value *operator()(minsts::CallIndirect const *Inst) {
-    auto *InstancePtr = Context.getTarget().arg_begin();
-    auto *Index = Context.getAsValue(Builder, *Inst->getOperand());
+    auto *InstancePtr = Context.getInstancePtr();
+    auto *Index = Context[*Inst->getOperand()];
     auto *Table = Context.getLayout().get(
         Builder, InstancePtr, *Inst->getIndirectTable());
     std::vector<llvm::Value *> Arguments;
     Arguments.reserve(Inst->getNumArguments() + 1);
     Arguments.push_back(InstancePtr);
     for (auto const *Argument : Inst->getArguments())
-      Arguments.push_back(Context.getAsValue(Builder, *Argument));
+      Arguments.push_back(Context[*Argument]);
     auto *BuiltinTableGuard =
         Context.getLayout().getBuiltin("__sable_table_guard");
     Builder.CreateCall(BuiltinTableGuard, {Table, Index});
@@ -265,19 +265,23 @@ public:
     auto *TypeString = Context.getLayout().getCStringPtr(
         Context.getLayout().getTypeString(Inst->getExpectType()),
         "typestr.indirect.call");
-    auto *TargetType = Context.getLayout().convertType(Inst->getExpectType());
-    auto *TargetPtrType = llvm::PointerType::getUnqual(TargetType);
-    llvm::Value *Target =
+    auto *CalleeTy = Context.getLayout().convertType(Inst->getExpectType());
+    auto *CalleePtrTy = llvm::PointerType::getUnqual(CalleeTy);
+    llvm::Value *CalleePtr =
         Builder.CreateCall(BuiltinTableGet, {Table, Index, TypeString});
-    Target = Builder.CreatePointerCast(Target, TargetPtrType);
-    llvm::FunctionCallee Callee(TargetType, Target);
+    CalleePtr = Builder.CreatePointerCast(CalleePtr, CalleePtrTy);
+    llvm::FunctionCallee Callee(CalleeTy, CalleePtr);
     return Builder.CreateCall(Callee, Arguments);
   }
 
   llvm::Value *operator()(minsts::Select const *Inst) {
-    auto *Condition = Context.getAsBool(Builder, *Inst->getCondition());
-    auto *True = Context.getAsValue(Builder, *Inst->getTrue());
-    auto *False = Context.getAsValue(Builder, *Inst->getFalse());
+    llvm::Value *Condition = Context[*Inst->getCondition()];
+    assert(Context.getInferredType()[*Inst->getCondition()].isPrimitiveI32());
+    assert(Condition->getType() == Context.getLayout().getI32Ty());
+    auto *Zero = Context.getLayout().getI32Constant(0);
+    Condition = Builder.CreateICmpNE(Condition, Zero);
+    auto *True = Context[*Inst->getTrue()];
+    auto *False = Context[*Inst->getFalse()];
     return Builder.CreateSelect(Condition, True, False);
   }
 
@@ -288,8 +292,31 @@ public:
 
   llvm::Value *operator()(minsts::LocalSet const *Inst) {
     auto *Local = Context[*Inst->getTarget()];
-    auto *Value = Context.getAsValue(Builder, *Inst->getOperand());
+    auto *Value = Context[*Inst->getOperand()];
     return Builder.CreateStore(Value, Local);
+  }
+
+  llvm::Value *operator()(minsts::GlobalGet const *Inst) {
+    auto *InstancePtr = Context.getInstancePtr();
+    llvm::Value *Global =
+        Context.getLayout().get(Builder, InstancePtr, *Inst->getTarget());
+    auto GlobalValueType = Inst->getTarget()->getType().getType();
+    auto *GlobalType = Context.getLayout().convertType(GlobalValueType);
+    auto *GlobalPtrType = llvm::PointerType::getUnqual(GlobalType);
+    Global = Builder.CreatePointerCast(Global, GlobalPtrType);
+    return Builder.CreateLoad(Global);
+  }
+
+  llvm::Value *operator()(minsts::GlobalSet const *Inst) {
+    auto *InstancePtr = Context.getInstancePtr();
+    auto *Value = Context[*Inst->getOperand()];
+    llvm::Value *Global =
+        Context.getLayout().get(Builder, InstancePtr, *Inst->getTarget());
+    auto GlobalValueType = Inst->getTarget()->getType().getType();
+    auto *GlobalType = Context.getLayout().convertType(GlobalValueType);
+    auto *GlobalPtrType = llvm::PointerType::getUnqual(GlobalType);
+    Global = Builder.CreatePointerCast(Global, GlobalPtrType);
+    return Builder.CreateStore(Value, Global);
   }
 
   llvm::Value *operator()(minsts::Constant const *Inst) {
@@ -303,9 +330,381 @@ public:
     }
   }
 
-  template <mir::instruction T> llvm::Value *operator()(T const *) {
-    utility::ignore(Context);
-    return Builder.CreateUnreachable();
+  template <llvm::Intrinsic::ID IntrinsicID, typename... ArgTypes>
+  llvm::Function *getIntrinsic(ArgTypes &&...Args) {
+    auto *EnclosingModule = Context.getTarget().getParent();
+    std::array<llvm::Type *, sizeof...(ArgTypes)> IntrinsicArgumentTys{
+        std::forward<ArgTypes>(Args)...};
+    return llvm::Intrinsic::getDeclaration(
+        EnclosingModule, IntrinsicID, IntrinsicArgumentTys);
+  }
+
+  llvm::Value *operator()(minsts::IntUnaryOp const *Inst) {
+    auto *MIROperand = Inst->getOperand();
+    auto *Operand = Context[*MIROperand];
+    switch (Inst->getOperator()) {
+    case minsts::IntUnaryOperator::Eqz: {
+      llvm::Value *Zero = nullptr;
+      if (Context.getInferredType()[*MIROperand].isPrimitiveI32()) {
+        Zero = Context.getLayout().getI32Constant(0);
+      } else /* Context.getInferredType()[*MIROperand].isPrimitiveI64() */ {
+        assert(Context.getInferredType()[*MIROperand].isPrimitiveI64());
+        Zero = Context.getLayout().getI64Constant(0);
+      }
+      return Builder.CreateICmpEQ(Operand, Zero);
+    }
+    case minsts::IntUnaryOperator::Clz: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::ctlz>(
+          Context.getLayout().convertType(OperandType.asPrimitive()),
+          Builder.getInt1Ty());
+      return Builder.CreateCall(Intrinsic, {Operand, Builder.getFalse()});
+    }
+    case minsts::IntUnaryOperator::Ctz: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::cttz>(
+          Context.getLayout().convertType(OperandType.asPrimitive()),
+          Builder.getInt1Ty());
+      return Builder.CreateCall(Intrinsic, {Operand, Builder.getFalse()});
+    }
+    case minsts::IntUnaryOperator::Popcnt: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::ctpop>(
+          Context.getLayout().convertType(OperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {Operand});
+    }
+    default: utility::unreachable();
+    }
+  }
+
+  llvm::Value *operator()(minsts::IntBinaryOp const *Inst) {
+    auto *MIRValueLHS = Inst->getLHS();
+    auto *MIRValueRHS = Inst->getRHS();
+    auto *LHS = Context[*MIRValueLHS];
+    auto *RHS = Context[*MIRValueRHS];
+    using IntBinaryOperator = mir::instructions::IntBinaryOperator;
+    switch (Inst->getOperator()) {
+    case IntBinaryOperator::Eq: return Builder.CreateICmpEQ(LHS, RHS);
+    case IntBinaryOperator::Ne: return Builder.CreateICmpNE(LHS, RHS);
+    case IntBinaryOperator::LtS: return Builder.CreateICmpSLT(LHS, RHS);
+    case IntBinaryOperator::LtU: return Builder.CreateICmpULT(LHS, RHS);
+    case IntBinaryOperator::GtS: return Builder.CreateICmpSGT(LHS, RHS);
+    case IntBinaryOperator::GtU: return Builder.CreateICmpUGT(LHS, RHS);
+    case IntBinaryOperator::LeS: return Builder.CreateICmpSLE(LHS, RHS);
+    case IntBinaryOperator::LeU: return Builder.CreateICmpULE(LHS, RHS);
+    case IntBinaryOperator::GeS: return Builder.CreateICmpSGE(LHS, RHS);
+    case IntBinaryOperator::GeU: return Builder.CreateICmpUGE(LHS, RHS);
+    case IntBinaryOperator::Add: return Builder.CreateAdd(LHS, RHS);
+    case IntBinaryOperator::Sub: return Builder.CreateSub(LHS, RHS);
+    case IntBinaryOperator::Mul: return Builder.CreateMul(LHS, RHS);
+    case IntBinaryOperator::DivS: return Builder.CreateSDiv(LHS, RHS);
+    case IntBinaryOperator::DivU: return Builder.CreateUDiv(LHS, RHS);
+    case IntBinaryOperator::RemS: return Builder.CreateSRem(LHS, RHS);
+    case IntBinaryOperator::RemU: return Builder.CreateURem(LHS, RHS);
+    case IntBinaryOperator::And: return Builder.CreateAnd(LHS, RHS);
+    case IntBinaryOperator::Or: return Builder.CreateOr(LHS, RHS);
+    case IntBinaryOperator::Xor: return Builder.CreateXor(LHS, RHS);
+    case IntBinaryOperator::Shl: return Builder.CreateShl(LHS, RHS);
+    case IntBinaryOperator::ShrS: return Builder.CreateAShr(LHS, RHS);
+    case IntBinaryOperator::ShrU: return Builder.CreateLShr(LHS, RHS);
+    case IntBinaryOperator::Rotl: {
+      auto OperandType = Context.getInferredType()[*MIRValueLHS];
+      auto ShiftAmountType = Context.getInferredType()[*MIRValueRHS];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::fshl>(
+          Context.getLayout().convertType(OperandType.asPrimitive()),
+          Context.getLayout().convertType(OperandType.asPrimitive()),
+          Context.getLayout().convertType(ShiftAmountType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {LHS, LHS, RHS});
+    }
+    case IntBinaryOperator::Rotr: {
+      auto OperandType = Context.getInferredType()[*MIRValueLHS];
+      auto ShiftAmountType = Context.getInferredType()[*MIRValueRHS];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::fshr>(
+          Context.getLayout().convertType(OperandType.asPrimitive()),
+          Context.getLayout().convertType(OperandType.asPrimitive()),
+          Context.getLayout().convertType(ShiftAmountType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {LHS, LHS, RHS});
+    }
+    default: utility::unreachable();
+    }
+  }
+
+  llvm::Value *operator()(minsts::FPUnaryOp const *Inst) {
+    auto *MIROperand = Inst->getOperand();
+    auto *Operand = Context[*MIROperand];
+    using FPUnaryOperator = mir::instructions::FPUnaryOperator;
+    switch (Inst->getOperator()) {
+    case FPUnaryOperator::Abs: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::fabs>(
+          Context.getLayout().convertType(OperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {Operand});
+    }
+    case FPUnaryOperator::Neg: return Builder.CreateFNeg(Operand);
+    case FPUnaryOperator::Ceil: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::ceil>(
+          Context.getLayout().convertType(OperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {Operand});
+    }
+    case FPUnaryOperator::Floor: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::floor>(
+          Context.getLayout().convertType(OperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {Operand});
+    }
+    case FPUnaryOperator::Trunc: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::trunc>(
+          Context.getLayout().convertType(OperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {Operand});
+    }
+    case FPUnaryOperator::Nearest: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::nearbyint>(
+          Context.getLayout().convertType(OperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {Operand});
+    }
+    case FPUnaryOperator::Sqrt: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::sqrt>(
+          Context.getLayout().convertType(OperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {Operand});
+    }
+    default: utility::unreachable();
+    }
+  }
+
+  llvm::Value *operator()(minsts::FPBinaryOp const *Inst) {
+    auto *MIRValueLHS = Inst->getLHS();
+    auto *MIRValueRHS = Inst->getRHS();
+    auto *LHS = Context[*MIRValueLHS];
+    auto *RHS = Context[*MIRValueRHS];
+    using FPBinaryOperator = mir::instructions::FPBinaryOperator;
+    switch (Inst->getOperator()) {
+    case FPBinaryOperator::Eq: return Builder.CreateFCmpOEQ(LHS, RHS);
+    case FPBinaryOperator::Ne: return Builder.CreateFCmpONE(LHS, RHS);
+    case FPBinaryOperator::Lt: return Builder.CreateFCmpOLT(LHS, RHS);
+    case FPBinaryOperator::Gt: return Builder.CreateFCmpOGT(LHS, RHS);
+    case FPBinaryOperator::Le: return Builder.CreateFCmpOLE(LHS, RHS);
+    case FPBinaryOperator::Ge: return Builder.CreateFCmpOGE(LHS, RHS);
+    case FPBinaryOperator::Add: return Builder.CreateFAdd(LHS, RHS);
+    case FPBinaryOperator::Sub: return Builder.CreateFSub(LHS, RHS);
+    case FPBinaryOperator::Mul: return Builder.CreateFMul(LHS, RHS);
+    case FPBinaryOperator::Div: return Builder.CreateFDiv(LHS, RHS);
+    case FPBinaryOperator::Min: {
+      auto LHSOperandType = Context.getInferredType()[*MIRValueLHS];
+      auto RHSOperandType = Context.getInferredType()[*MIRValueRHS];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::minimum>(
+          Context.getLayout().convertType(LHSOperandType.asPrimitive()),
+          Context.getLayout().convertType(RHSOperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {LHS, RHS});
+    }
+    case FPBinaryOperator::Max: {
+      auto LHSOperandType = Context.getInferredType()[*MIRValueLHS];
+      auto RHSOperandType = Context.getInferredType()[*MIRValueRHS];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::maximum>(
+          Context.getLayout().convertType(LHSOperandType.asPrimitive()),
+          Context.getLayout().convertType(RHSOperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {LHS, RHS});
+    }
+    case FPBinaryOperator::CopySign: {
+      auto LHSOperandType = Context.getInferredType()[*MIRValueLHS];
+      auto RHSOperandType = Context.getInferredType()[*MIRValueRHS];
+      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::copysign>(
+          Context.getLayout().convertType(LHSOperandType.asPrimitive()),
+          Context.getLayout().convertType(RHSOperandType.asPrimitive()));
+      return Builder.CreateCall(Intrinsic, {LHS, RHS});
+    }
+    default: utility::unreachable();
+    }
+  }
+
+  llvm::Value *
+  getMemoryLocation(mir::Memory const &Memory, llvm::Value *Offset) {
+    auto *InstancePtr = Context.getInstancePtr();
+    auto *PtrIntTy = Context.getLayout().getPtrIntTy();
+    llvm::Value *Address =
+        Context.getLayout().get(Builder, InstancePtr, Memory);
+    Address = Builder.CreatePtrToInt(Address, PtrIntTy);
+    if (Offset->getType() != PtrIntTy)
+      Offset = Builder.CreateZExtOrTrunc(Offset, PtrIntTy);
+    Address = Builder.CreateNUWAdd(Address, Offset);
+    return Address;
+  }
+
+  llvm::Value *operator()(minsts::Load const *Inst) {
+    auto *MIRMemory = Inst->getLinearMemory();
+    auto *Offset = Context[*Inst->getAddress()];
+    auto *Address = getMemoryLocation(*MIRMemory, Offset);
+    llvm::Value *Result = nullptr;
+    if (Inst->getType().isF32() || Inst->getType().isF64()) {
+      auto *LoadTy = Context.getLayout().convertType(Inst->getType());
+      auto *LoadPtrTy = llvm::PointerType::getUnqual(LoadTy);
+      Address = Builder.CreateIntToPtr(Address, LoadPtrTy);
+      auto *LoadInst = Builder.CreateLoad(Address);
+      LoadInst->setAlignment(llvm::Align(1));
+      Result = LoadInst;
+    } else {
+      assert(Inst->getType().isI32() || Inst->getType().isI64());
+      auto *ExpectLoadTy = llvm::dyn_cast<llvm::IntegerType>(
+          Context.getLayout().convertType(Inst->getType()));
+      auto *LoadTy = llvm::IntegerType::get(
+          Context.getTarget().getContext(), Inst->getLoadWidth());
+      auto *LoadPtrTy = llvm::PointerType::getUnqual(LoadTy);
+      Address = Builder.CreateIntToPtr(Address, LoadPtrTy);
+      auto *LoadInst = Builder.CreateLoad(Address);
+      LoadInst->setAlignment(llvm::Align(1));
+      Result = LoadInst;
+      if (ExpectLoadTy != LoadTy)
+        Result = Builder.CreateZExt(Result, ExpectLoadTy);
+    }
+    return Result;
+  }
+
+  llvm::Value *operator()(minsts::Store const *Inst) {
+    llvm::Value *Value = Context[*Inst->getOperand()];
+    if (Context.getInferredType()[*Inst->getOperand()].isIntegral()) {
+      assert(Value->getType()->isIntegerTy());
+      auto *CastedTy = llvm::dyn_cast<llvm::IntegerType>(Value->getType());
+      assert(Inst->getStoreWidth() <= CastedTy->getIntegerBitWidth());
+      if (Inst->getStoreWidth() < CastedTy->getIntegerBitWidth()) {
+        auto *TruncatedTy = llvm::IntegerType::getIntNTy(
+            Context.getTarget().getContext(), Inst->getStoreWidth());
+        Value = Builder.CreateTrunc(Value, TruncatedTy);
+      }
+    }
+    auto *Offset = Context[*Inst->getAddress()];
+    auto *Address = getMemoryLocation(*Inst->getLinearMemory(), Offset);
+    auto *StoreTy = Value->getType();
+    auto *StorePtrTy = llvm::PointerType::getUnqual(StoreTy);
+    Address = Builder.CreateIntToPtr(Address, StorePtrTy);
+    auto *Result = Builder.CreateStore(Value, Address);
+    Result->setAlignment(llvm::Align(1));
+    return Result;
+  }
+
+  llvm::Value *operator()(minsts::MemoryGuard const *Inst) {
+    auto *InstancePtr = Context.getInstancePtr();
+    auto *BuiltinMemoryGuard =
+        Context.getLayout().getBuiltin("__sable_memory_guard");
+    auto *Memory =
+        Context.getLayout().get(Builder, InstancePtr, *Inst->getLinearMemory());
+    auto *Offset = Context[*Inst->getAddress()];
+    return Builder.CreateCall(BuiltinMemoryGuard, {Memory, Offset});
+  }
+
+  llvm::Value *operator()(minsts::MemoryGrow const *Inst) {
+    auto *InstancePtr = Context.getInstancePtr();
+    auto *BuiltinMemoryGrow =
+        Context.getLayout().getBuiltin("__sable_memory_grow");
+    auto *Memory =
+        Context.getLayout().get(Builder, InstancePtr, *Inst->getLinearMemory());
+    auto *DeltaSize = Context[*Inst->getSize()];
+    return Builder.CreateCall(BuiltinMemoryGrow, {Memory, DeltaSize});
+  }
+
+  llvm::Value *operator()(minsts::MemorySize const *Inst) {
+    auto *InstancePtr = Context.getInstancePtr();
+    auto *BuiltinMemorySize =
+        Context.getLayout().getBuiltin("__sable_memory_size");
+    auto *Memory =
+        Context.getLayout().get(Builder, InstancePtr, *Inst->getLinearMemory());
+    return Builder.CreateCall(BuiltinMemorySize, {Memory});
+  }
+
+  llvm::Value *operator()(minsts::Cast const *Inst) {
+    auto *Operand = Context[*Inst->getOperand()];
+    auto FromMIRTy = Context.getInferredType()[*Inst->getOperand()];
+    auto ToMIRTy = Context.getInferredType()[*Inst];
+    auto *ToTy = Context.getLayout().convertType(ToMIRTy.asPrimitive());
+    using CastMode = mir::instructions::CastMode;
+    switch (Inst->getMode()) {
+    case CastMode::Conversion: {
+      if (FromMIRTy.isIntegral() && ToMIRTy.isIntegral())
+        return Builder.CreateTrunc(Operand, ToTy);
+      if (FromMIRTy.isFloatingPoint() && ToMIRTy.isFloatingPoint())
+        return Builder.CreateFPCast(Operand, ToTy);
+      utility::unreachable();
+    }
+    case CastMode::ConversionSigned: {
+      if (FromMIRTy.isIntegral() && ToMIRTy.isIntegral())
+        return Builder.CreateSExt(Operand, ToTy);
+      if (FromMIRTy.isIntegral() && ToMIRTy.isFloatingPoint())
+        return Builder.CreateSIToFP(Operand, ToTy);
+      if (FromMIRTy.isFloatingPoint() && ToMIRTy.isIntegral())
+        return Builder.CreateFPToSI(Operand, ToTy);
+      utility::unreachable();
+    }
+    case CastMode::ConversionUnsigned: {
+      if (FromMIRTy.isIntegral() && ToMIRTy.isIntegral())
+        return Builder.CreateZExt(Operand, ToTy);
+      if (FromMIRTy.isIntegral() && ToMIRTy.isFloatingPoint())
+        return Builder.CreateUIToFP(Operand, ToTy);
+      if (FromMIRTy.isFloatingPoint() && ToMIRTy.isIntegral())
+        return Builder.CreateFPToUI(Operand, ToTy);
+      utility::unreachable();
+    }
+    case CastMode::Reinterpret: return Builder.CreateBitCast(Operand, ToTy);
+    case CastMode::SatConversionSigned:   // TODO: not yet implement
+    case CastMode::SatConversionUnsigned: // TODO: not yet implement
+    default: utility::unreachable();
+    }
+  }
+
+  llvm::Value *operator()(minsts::Extend const *Inst) {
+    auto *Operand = Context[*Inst->getOperand()];
+    auto OperandMIRTy = Context.getInferredType()[*Inst];
+    auto *OperandTy =
+        Context.getLayout().convertType(OperandMIRTy.asPrimitive());
+    auto *FromTy = llvm::IntegerType::getIntNTy(
+        Context.getTarget().getContext(), Inst->getFromWidth());
+    llvm::Value *Result = Builder.CreateTrunc(Operand, FromTy);
+    return Builder.CreateSExt(Result, OperandTy);
+  }
+
+  llvm::Value *operator()(minsts::Pack const *Inst) {
+    // clang-format off
+    auto Members = Inst->getArguments()
+      | ranges::views::transform([&](mir::Instruction const *Argument) {
+          return Context[*Argument];
+        })
+      | ranges::to<std::vector<llvm::Value *>>();
+    auto MemberTypes = Context.getInferredType()[*Inst].asAggregate()
+      | ranges::views::transform([&](bytecode::ValueType const &ValueType) {
+          return Context.getLayout().convertType(ValueType);
+        })
+      | ranges::to<std::vector<llvm::Type *>>();
+    // clang-format on
+    auto *StructTy =
+        llvm::StructType::get(Context.getTarget().getContext(), MemberTypes);
+    auto *Result = Builder.CreateAlloca(StructTy);
+    for (auto const &[Index, Member] : ranges::views::enumerate(Members)) {
+      auto *MemberPtr = Builder.CreateStructGEP(Result, Index);
+      Builder.CreateStore(Member, MemberPtr);
+    }
+    return Result;
+  }
+
+  llvm::Value *operator()(minsts::Unpack const *Inst) {
+    auto *Struct = Context[*Inst->getOperand()];
+    auto *MemberPtr = Builder.CreateStructGEP(Struct, Inst->getIndex());
+    return Builder.CreateLoad(MemberPtr);
+  }
+
+  llvm::Value *operator()(minsts::Phi const *Inst) {
+    auto *PhiTy = Context.getLayout().convertType(Inst->getType());
+    auto NumCandidate = Inst->getNumCandidates();
+    return Builder.CreatePHI(PhiTy, NumCandidate);
+  }
+
+  llvm::Value *visit(mir::Instruction const *Inst) {
+    auto *Result = InstVisitorBase::visit(Inst);
+    if (Context.getInferredType()[*Inst].isPrimitiveI32() &&
+        (Result->getType() == Builder.getInt1Ty())) {
+      Result = Builder.CreateZExt(Result, Context.getLayout().getI32Ty());
+    }
+    return Result;
   }
 };
 
@@ -332,6 +731,20 @@ void FunctionTranslationTask::perform() {
       Context->setValueMapping(Instruction, Value);
     }
   }
+
+  for (auto const *BBPtr : Context->getDominatorTree()->asPreorder())
+    for (auto const &Instruction : *BBPtr) {
+      if (!mir::is_a<mir::instructions::Phi>(Instruction)) continue;
+      auto &PhiNode = mir::dyn_cast<mir::instructions::Phi>(Instruction);
+      auto *LLVMPhi =
+          llvm::dyn_cast<llvm::PHINode>(Context->operator[](Instruction));
+      for (auto [Value, Path] : PhiNode.getCandidates()) {
+        auto *LLVMValue = Context->operator[](*Value);
+        auto [LLVMFirstBB, LLVMLastBB] = Context->operator[](*Path);
+        utility::ignore(LLVMFirstBB);
+        LLVMPhi->addIncoming(LLVMValue, LLVMLastBB);
+      }
+    }
 }
 
 ModuleTranslationTask::ModuleTranslationTask(

@@ -55,14 +55,7 @@ public:
     if (TargetType.isSingleValueResult())
       return Type::BuildPrimitive(TargetType.getResultTypes()[0]);
     assert(TargetType.isMultiValueResult());
-    // clang-format off
-    auto MemberTypes = TargetType.getResultTypes()
-      | ranges::views::transform([](bytecode::ValueType const &ValueType) {
-          return Type::BuildPrimitive(ValueType);
-        })
-      | ranges::to<std::vector<Type>>();
-    // clang-format on
-    return Type::BuildAggregate(MemberTypes);
+    return Type::BuildAggregate(TargetType.getResultTypes());
   }
 
   Type operator()(minsts::CallIndirect const *Inst) {
@@ -70,14 +63,7 @@ public:
     if (Inst->getExpectType().isSingleValueResult())
       return Type::BuildPrimitive(Inst->getExpectType().getResultTypes()[0]);
     assert(Inst->getExpectType().isMultiValueResult());
-    // clang-format off
-    auto MemberTypes = Inst->getExpectType().getResultTypes()
-      | ranges::views::transform([](bytecode::ValueType const &ValueType) {
-          return Type::BuildPrimitive(ValueType);
-        })
-      | ranges::to<std::vector<Type>>();
-    // clang-format on
-    return Type::BuildAggregate(MemberTypes);
+    return Type::BuildAggregate(Inst->getExpectType().getResultTypes());
   }
 
   Type operator()(minsts::Select const *Inst) {
@@ -220,13 +206,12 @@ public:
   }
 
   Type operator()(minsts::Pack const *Inst) {
-    // clang-format off
-    auto Members = Inst->getArguments()
-      | ranges::views::transform([&](mir::Instruction const *Instruction) {
-          return getType(Instruction);
-        })
-      | ranges::to<std::vector<Type>>();
-    // clang-format on
+    std::vector<bytecode::ValueType> Members;
+    Members.reserve(Inst->getNumArguments());
+    for (auto const *Instruction : Inst->getArguments()) {
+      if (!getType(Instruction).isPrimitive()) return Type::BuildBottom();
+      Members.push_back(getType(Instruction).asPrimitive());
+    }
     return Type::BuildAggregate(Members);
   }
 
@@ -235,7 +220,8 @@ public:
     if (!OperandTy.isAggregate()) return Type::BuildBottom();
     if (!(Inst->getIndex() < OperandTy.asAggregate().size()))
       return Type::BuildBottom();
-    return OperandTy.asAggregate()[Inst->getIndex()];
+    auto MemberTy = OperandTy.asAggregate()[Inst->getIndex()];
+    return Type::BuildPrimitive(MemberTy);
   }
 
   Type operator()(minsts::Phi const *Inst) {

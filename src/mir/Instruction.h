@@ -34,7 +34,7 @@ class Type {
 
   explicit Type(TypeKind Kind_);
   explicit Type(bytecode::ValueType Primitive);
-  explicit Type(std::span<Type const> Aggregrate);
+  explicit Type(std::span<bytecode::ValueType const> Aggregrate);
 
 public:
   Type(Type const &);
@@ -49,7 +49,7 @@ public:
   bool isAggregate() const;
   TypeKind getKind() const;
   bytecode::ValueType const &asPrimitive() const;
-  std::span<Type const> asAggregate() const;
+  std::span<bytecode::ValueType const> asAggregate() const;
 
   bool isPrimitiveI32() const;
   bool isPrimitiveI64() const;
@@ -60,7 +60,7 @@ public:
 
   static Type BuildUnit();
   static Type BuildPrimitive(bytecode::ValueType Primitive);
-  static Type BuildAggregate(std::span<Type const> Aggregate);
+  static Type BuildAggregate(std::span<bytecode::ValueType const> Aggregate);
   static Type BuildBottom();
 
   bool operator==(Type const &Other) const;

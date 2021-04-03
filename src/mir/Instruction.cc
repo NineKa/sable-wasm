@@ -7,23 +7,23 @@
 
 namespace mir {
 class Type::AggregateStorage {
-  std::vector<Type> Members;
+  std::vector<bytecode::ValueType> Members;
 
 public:
-  explicit AggregateStorage(std::span<Type const> Aggregate)
-      : Members(ranges::to<std::vector<Type>>(Aggregate)) {}
+  explicit AggregateStorage(std::span<bytecode::ValueType const> Aggregate)
+      : Members(ranges::to<std::vector<bytecode::ValueType>>(Aggregate)) {}
   using iterator = decltype(Members)::const_iterator;
   iterator begin() const { return Members.begin(); }
   iterator end() const { return Members.end(); }
   std::size_t size() const { return Members.size(); }
-  std::span<Type const> asView() const { return Members; }
+  std::span<bytecode::ValueType const> asView() const { return Members; }
   bool operator==(AggregateStorage const &Other) const = default;
 };
 
 Type::Type(TypeKind Kind_) : Kind(Kind_), Storage(std::monostate()) {}
 Type::Type(bytecode::ValueType Primitive)
     : Kind(TypeKind::Primitive), Storage(Primitive) {}
-Type::Type(std::span<Type const> Aggregate)
+Type::Type(std::span<bytecode::ValueType const> Aggregate)
     : Kind(TypeKind::Aggregate),
       Storage(std::make_shared<AggregateStorage>(Aggregate)) {}
 
@@ -44,7 +44,7 @@ bytecode::ValueType const &Type::asPrimitive() const {
   return std::get<bytecode::ValueType>(Storage);
 }
 
-std::span<Type const> Type::asAggregate() const {
+std::span<bytecode::ValueType const> Type::asAggregate() const {
   assert(isAggregate());
   return std::get<std::shared_ptr<AggregateStorage>>(Storage)->asView();
 }
@@ -77,7 +77,7 @@ Type Type::BuildPrimitive(bytecode::ValueType Primitive) {
   return Type(Primitive);
 }
 
-Type Type::BuildAggregate(std::span<Type const> Aggregate) {
+Type Type::BuildAggregate(std::span<bytecode::ValueType const> Aggregate) {
   return Type(Aggregate);
 }
 

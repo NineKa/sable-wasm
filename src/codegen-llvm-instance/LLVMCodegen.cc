@@ -92,8 +92,8 @@ public:
   llvm::Value *operator[](mir::Instruction const &Instruction) const {
     auto SearchIter = ValueMap.find(std::addressof(Instruction));
     assert(SearchIter != ValueMap.end());
-    auto *Value = std::get<1>(*SearchIter);
 #ifndef NDEBUG
+    auto *Value = std::get<1>(*SearchIter);
     auto ExpectType = TypePassResult[Instruction];
     assert(ExpectType.isPrimitive() || ExpectType.isAggregate());
     if (ExpectType.isPrimitive())
@@ -177,6 +177,9 @@ public:
       : Context(Context_), Builder(Builder_) {}
 
   llvm::Value *operator()(minsts::Unreachable const *) {
+    auto *BuiltinUnreachable =
+        Context.getLayout().getBuiltin("__sable_unreachable");
+    Builder.CreateCall(BuiltinUnreachable);
     return Builder.CreateUnreachable();
   }
 

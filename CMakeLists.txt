@@ -46,6 +46,7 @@ add_library(sablewasm
         src/codegen-llvm-instance/LLVMCodegen.cc
         src/codegen-llvm-instance/EntityLayout.cc)
 
+
 target_link_libraries(sablewasm
         fmt::fmt
         mio::mio
@@ -54,8 +55,18 @@ target_link_libraries(sablewasm
         range-v3
         ${llvm_libs})
 
+add_library(sablewasm-rt
+        src/codegen-llvm-instance/WASI.cc
+        src/codegen-llvm-instance/WebAssemblyMemory.cc
+        src/codegen-llvm-instance/WebAssemblyGlobal.cc
+        src/codegen-llvm-instance/WebAssemblyInstance.cc)
+target_link_libraries(sablewasm-rt fmt::fmt range-v3)
+target_link_options(sablewasm-rt PRIVATE "-rdynamic")
+
 add_executable(sable-wasm src/Main.cc)
 target_link_libraries(sable-wasm sablewasm)
 
-add_library(tester src/codegen-llvm-instance/InstanceTester.cc)
-target_link_libraries(tester range-v3 fmt::fmt)
+add_executable(tester src/Tester.cc)
+target_link_libraries(tester sablewasm-rt)
+target_link_options(tester PRIVATE "-rdynamic")
+target_link_options(tester PRIVATE "-ldl")

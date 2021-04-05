@@ -18,25 +18,26 @@ namespace codegen::llvm_instance {
 class EntityLayout {
 public:
   class FunctionEntry {
+    std::size_t Index;
     llvm::Function *Definition;
     llvm::Constant *TypeString;
 
   public:
-    FunctionEntry(llvm::Function *Definition_, llvm::Constant *TypeString_)
-        : Definition(Definition_), TypeString(TypeString_) {}
+    FunctionEntry(
+        std::size_t Index_, llvm::Function *Definition_,
+        llvm::Constant *TypeString_)
+        : Index(Index_), Definition(Definition_), TypeString(TypeString_) {}
+    std::size_t index() const { return Index; }
     llvm::Function *definition() const { return Definition; }
     llvm::Constant *typeString() const { return TypeString; }
   };
 
   class ElementEntry {
-    llvm::Constant *Pointers;
-    llvm::Constant *TypeStrings;
+    llvm::Constant *Indices;
 
   public:
-    ElementEntry(llvm::Constant *Pointers_, llvm::Constant *TypeStrings_)
-        : Pointers(Pointers_), TypeStrings(TypeStrings_) {}
-    llvm::Constant *pointers() const { return Pointers; }
-    llvm::Constant *typeStrings() const { return TypeStrings; }
+    ElementEntry(llvm::Constant *Indices_) : Indices(Indices_) {}
+    llvm::Constant *indices() const { return Indices; }
   };
 
 private:
@@ -54,14 +55,15 @@ private:
 
   /*
    * Instance Struct Layout:
+   * void *                       reserved for host
    * __sable_memory_metadata_t *
    * __sable_table_metadata_t *
    * __sable_global_metadata_t *
    * __sable_function_metadata_t *
-   * ...... Memory Instance Pointers   ......
-   * ...... Table Instance Pointers    ......
-   * ...... Global Instance Pointers   ......
-   * ...... Function Pointers          ......
+   * ... Memory Instance Pointers (__sable_memory_t *)
+   * ... Table Instance Pointers  (__sable_table_t *)
+   * ... Global Instance Pointers (__sable_global_t *)
+   * ... Function Pointers        (__sable_instance_t *, __sable_function_t *)
    */
 
   void setupInstanceType();
@@ -102,21 +104,24 @@ public:
   /* List of Builtins (implement by the runtime library
    * __sable_memory_guard
    * __sable_table_guard
-   * __sable_table_set    (* no boundary check is required *)
-   * __sable_table_get    (* no boundary check is required *)
+   * __sable_table_set
+   * __sable_table_check
+   * __sable_table_function_ptr        (* no boundary check is required *)
+   * __sable_table_instance_closure    (* no boundary check is required *)
    * error handling:
    * __sable_unreachable
-   * __sable_conversion_overflow
-   * __sable_zero_divisor
    */
   llvm::Function *getBuiltin(std::string_view Name) const;
 
   llvm::Value *
   get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
       mir::Global const &MGlobal) const;
-  llvm::Value *
-  get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+  llvm::Value *getInstanceClosurePtr(
+      llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
       mir::Function const &MFunction) const;
+  llvm::Value *getFunctionPtr(
+      llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+      mir::Function const &Function) const;
   llvm::Value *
   get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
       mir::Memory const &MMemory) const;

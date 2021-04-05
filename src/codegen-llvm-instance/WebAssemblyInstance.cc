@@ -7,22 +7,24 @@
 
 #include <stdexcept>
 
+#define INSTANCE_ENTITY_START_OFFSET 5
+
 void __sable_unreachable() { throw runtime::exceptions::Unreachable(); }
 
 namespace runtime {
-namespace {
+namespace detail {
 bytecode::ValueType fromTypeChar(char TypeChar) {
   switch (std::toupper(TypeChar)) {
   case 'I': return bytecode::valuetypes::I32;
   case 'J': return bytecode::valuetypes::I64;
   case 'F': return bytecode::valuetypes::F32;
   case 'D': return bytecode::valuetypes::F64;
-  default: utility::unreachable();
+  default: throw std::invalid_argument("bad type character");
   }
 }
 
-char toTypeChar(bytecode::ValueType const &ValueType) {
-  switch (ValueType.getKind()) {
+char toTypeChar(bytecode::ValueType const &Type) {
+  switch (Type.getKind()) {
   case bytecode::ValueTypeKind::I32: return 'I';
   case bytecode::ValueTypeKind::I64: return 'J';
   case bytecode::ValueTypeKind::F32: return 'F';
@@ -30,7 +32,37 @@ char toTypeChar(bytecode::ValueType const &ValueType) {
   default: utility::unreachable();
   }
 }
-} // namespace
+
+bytecode::FunctionType fromTypeString(std::string_view TypeString) {
+  std::vector<bytecode::ValueType> ParamTypes;
+  std::vector<bytecode::ValueType> ResultTypes;
+  bool SeenSeparator = false;
+  for (auto TypeChar : TypeString) {
+    if (TypeChar == ':') {
+      if (SeenSeparator) throw std::invalid_argument("bad type string");
+      SeenSeparator = true;
+      continue;
+    }
+    if (!SeenSeparator) {
+      ParamTypes.push_back(fromTypeChar(TypeChar));
+    } else {
+      ResultTypes.push_back(fromTypeChar(TypeChar));
+    }
+  }
+  return bytecode::FunctionType(std::move(ParamTypes), std::move(ResultTypes));
+}
+
+std::string toTypeString(bytecode::FunctionType const &Type) {
+  std::string Result;
+  Result.reserve(Type.getNumParameter() + Type.getNumResult() + 1);
+  for (auto const &ValueType : Type.getParamTypes())
+    Result.push_back(toTypeChar(ValueType));
+  Result.push_back(':');
+  for (auto const &ValueType : Type.getResultTypes())
+    Result.push_back(toTypeChar(ValueType));
+  return Result;
+}
+} // namespace detail
 
 struct WebAssemblyInstance::ImportDescriptor {
   std::uint32_t Index;
@@ -81,44 +113,48 @@ struct WebAssemblyInstance::FunctionMetadata {
 
 WebAssemblyInstanceBuilder::WebAssemblyInstanceBuilder(char const *Path) {
   Instance = std::unique_ptr<WebAssemblyInstance>(new WebAssemblyInstance());
-  // dlopen(NULL, RTLD_NOW | RTLD_GLOBAL);
   Instance->DLHandler = dlopen(Path, RTLD_NOW | RTLD_LOCAL);
-  if (Instance->DLHandler == nullptr) fmt::print("{}\n", dlerror());
-  assert(Instance->DLHandler != nullptr);
+  if (Instance->DLHandler == nullptr)
+    throw exceptions::MalformedInstanceLibrary(dlerror());
   // clang-format off
   auto *MemoryMetadata = reinterpret_cast
     <WebAssemblyInstance::MemoryMetadata *>
     (dlsym(Instance->DLHandler, "__sable_memory_metadata"));
+  if (MemoryMetadata == nullptr)
+    throw exceptions::MalformedInstanceLibrary(dlerror());
   auto *TableMetadata = reinterpret_cast
     <WebAssemblyInstance::TableMetadata *>
     (dlsym(Instance->DLHandler, "__sable_table_metadata"));
+  if (TableMetadata == nullptr)
+    throw exceptions::MalformedInstanceLibrary(dlerror());
   auto *GlobalMetadata = reinterpret_cast
     <WebAssemblyInstance::GlobalMetadata *>
     (dlsym(Instance->DLHandler, "__sable_global_metadata"));
+  if (GlobalMetadata == nullptr)
+    throw exceptions::MalformedInstanceLibrary(dlerror());
   auto *FunctionMetadata = reinterpret_cast
     <WebAssemblyInstance::FunctionMetadata *>
     (dlsym(Instance->DLHandler, "__sable_function_metadata"));
+  if (FunctionMetadata == nullptr)
+    throw exceptions::MalformedInstanceLibrary(dlerror());
   // clang-format on
-  assert(MemoryMetadata != nullptr);
-  assert(TableMetadata != nullptr);
-  assert(GlobalMetadata != nullptr);
-  assert(FunctionMetadata != nullptr);
 
-  auto MemoryOffset = 4;
+  auto MemoryOffset = INSTANCE_ENTITY_START_OFFSET;
   auto TableOffset = MemoryOffset + MemoryMetadata->Size;
   auto GlobalOffset = TableOffset + TableMetadata->Size;
   auto FunctionOffset = GlobalOffset + GlobalMetadata->Size;
-  auto Size = FunctionOffset + FunctionMetadata->Size;
+  auto Size = FunctionOffset + FunctionMetadata->Size * 2;
 
   Instance->Storage = new void *[Size + 1];
   std::fill(Instance->Storage, Instance->Storage + Size + 1, nullptr);
   Instance->Storage[0] = Instance.get();
   Instance->Storage = std::addressof(Instance->Storage[1]);
 
-  Instance->Storage[0] = MemoryMetadata;
-  Instance->Storage[1] = TableMetadata;
-  Instance->Storage[2] = GlobalMetadata;
-  Instance->Storage[3] = FunctionMetadata;
+  Instance->Storage[0] = nullptr; // reserved
+  Instance->Storage[1] = MemoryMetadata;
+  Instance->Storage[2] = TableMetadata;
+  Instance->Storage[3] = GlobalMetadata;
+  Instance->Storage[4] = FunctionMetadata;
 }
 
 bool WebAssemblyInstanceBuilder::tryImport(
@@ -144,6 +180,26 @@ bool WebAssemblyInstanceBuilder::tryImport(
 
 bool WebAssemblyInstanceBuilder::tryImport(
     std::string_view ModuleName, std::string_view EntityName,
+    WebAssemblyTable &Table) {
+  auto const &TableMetadata = Instance->getTableMetadata();
+  for (std::size_t I = 0; I < TableMetadata.ISize; ++I) {
+    if ((TableMetadata.Imports[I].ModuleName != ModuleName) ||
+        (TableMetadata.Imports[I].EntityName != EntityName))
+      continue;
+    auto Index = TableMetadata.Imports[I].Index;
+    auto Min = TableMetadata.Entities[Index].Min;
+    auto Max = TableMetadata.Entities[Index].Min;
+    if (!(Table.getSize() >= Min)) continue;
+    if (!(Table.getMaxSize() <= Max)) continue;
+    auto *InstancePtr = Table.asInstancePtr();
+    Instance->getTable(Index) = InstancePtr;
+    return true;
+  }
+  return false;
+}
+
+bool WebAssemblyInstanceBuilder::tryImport(
+    std::string_view ModuleName, std::string_view EntityName,
     WebAssemblyGlobal &Global) {
   auto const &GlobalMetadata = Instance->getGlobalMetadata();
   for (std::size_t I = 0; I < GlobalMetadata.ISize; ++I) {
@@ -152,10 +208,28 @@ bool WebAssemblyInstanceBuilder::tryImport(
       continue;
     auto Index = GlobalMetadata.Imports[I].Index;
     auto ExpectTypeChar = std::toupper(GlobalMetadata.Entities[Index]);
-    auto ActualTypeChar = toTypeChar(Global.getValueType());
+    auto ActualTypeChar = detail::toTypeChar(Global.getValueType());
     if (ExpectTypeChar != ActualTypeChar) continue;
     auto *InstancePtr = Global.asInstancePtr();
     Instance->getGlobal(Index) = InstancePtr;
+    return true;
+  }
+  return false;
+}
+
+bool WebAssemblyInstanceBuilder::tryImport(
+    std::string_view ModuleName, std::string_view EntityName,
+    WebAssemblyCallee Callee) {
+  auto const &FunctionMetadata = Instance->getFunctionMetadata();
+  for (std::size_t I = 0; I < FunctionMetadata.ISize; ++I) {
+    if ((FunctionMetadata.Imports[I].ModuleName != ModuleName) ||
+        (FunctionMetadata.Imports[I].EntityName != EntityName))
+      continue;
+    auto Index = FunctionMetadata.Imports[I].Index;
+    if (FunctionMetadata.Entities[Index] != Callee.getTypeString()) continue;
+    Instance->getFunctionInstanceClosure(Index) =
+        Callee.getInstanceClosurePointer();
+    Instance->getFunctionPointer(Index) = Callee.getFunctionPointer();
     return true;
   }
   return false;
@@ -172,7 +246,8 @@ bool WebAssemblyInstanceBuilder::tryImport(
     auto Index = FunctionMetadata.Imports[I].Index;
     if (FunctionMetadata.Entities[Index] != TypeString) continue;
     auto *CastedPtr = reinterpret_cast<__sable_function_t *>(Function);
-    Instance->getFunction(Index) = CastedPtr;
+    Instance->getFunctionInstanceClosure(Index) = nullptr;
+    Instance->getFunctionPointer(Index) = CastedPtr;
     return true;
   }
   return false;
@@ -183,6 +258,14 @@ WebAssemblyInstanceBuilder &WebAssemblyInstanceBuilder::import(
     WebAssemblyMemory &Memory) {
   if (!tryImport(ModuleName, EntityName, Memory))
     throw std::invalid_argument("cannot locate import memory");
+  return *this;
+}
+
+WebAssemblyInstanceBuilder &WebAssemblyInstanceBuilder::import(
+    std::string_view ModuleName, std::string_view EntityName,
+    WebAssemblyTable &Table) {
+  if (!tryImport(ModuleName, EntityName, Table))
+    throw std::invalid_argument("cannot locate import table");
   return *this;
 }
 
@@ -202,6 +285,14 @@ WebAssemblyInstanceBuilder &WebAssemblyInstanceBuilder::import(
   return *this;
 }
 
+WebAssemblyInstanceBuilder &WebAssemblyInstanceBuilder::import(
+    std::string_view ModuleName, std::string_view EntityName,
+    WebAssemblyCallee Callee) {
+  if (!tryImport(ModuleName, EntityName, Callee))
+    throw std::invalid_argument("cannot locate import function");
+  return *this;
+}
+
 std::unique_ptr<WebAssemblyInstance> WebAssemblyInstanceBuilder::Build() {
   auto MemoryDefFirst = Instance->getMemoryMetadata().ISize;
   auto MemoryDefLast = Instance->getMemoryMetadata().Size;
@@ -213,11 +304,20 @@ std::unique_ptr<WebAssemblyInstance> WebAssemblyInstanceBuilder::Build() {
     Instance->getMemory(I) = Memory->asInstancePtr();
   }
 
+  auto TableDefStart = Instance->getTableMetadata().ISize;
+  auto TableDefLast = Instance->getTableMetadata().Size;
+  for (std::size_t I = TableDefStart; I < TableDefLast; ++I) {
+    auto Min = Instance->getTableMetadata().Entities[I].Min;
+    auto Max = Instance->getTableMetadata().Entities[I].Max;
+    auto *Table = new WebAssemblyTable(Min, Max);
+    Instance->getTable(I) = Table->asInstancePtr();
+  }
+
   auto GlobalDefFirst = Instance->getGlobalMetadata().ISize;
   auto GlobalDefEnd = Instance->getGlobalMetadata().Size;
   for (std::size_t I = GlobalDefFirst; I < GlobalDefEnd; ++I) {
     auto TypeChar = Instance->getGlobalMetadata().Entities[I];
-    auto GlobalValueType = fromTypeChar(TypeChar);
+    auto GlobalValueType = detail::fromTypeChar(TypeChar);
     auto *Global = new WebAssemblyGlobal(GlobalValueType);
     Instance->getGlobal(I) = Global->asInstancePtr();
   }
@@ -226,9 +326,24 @@ std::unique_ptr<WebAssemblyInstance> WebAssemblyInstanceBuilder::Build() {
   // clang-format off
   auto *Initializer = reinterpret_cast<SableInitializeFnTy>
     (dlsym(Instance->DLHandler, "__sable_initialize"));
+  if (Initializer == nullptr)
+    throw exceptions::MalformedInstanceLibrary(dlerror());
   // clang-format on
   assert(Initializer != nullptr);
   Initializer(Instance->Storage);
+
+  for (std::size_t I = 0; I < Instance->getMemoryMetadata().Size; ++I)
+    if (Instance->getMemory(I) == nullptr)
+      throw std::runtime_error("incomplete instance (missing memory)");
+  for (std::size_t I = 0; I < Instance->getTableMetadata().Size; ++I)
+    if (Instance->getTable(I) == nullptr)
+      throw std::runtime_error("incomplete instance (missing table)");
+  for (std::size_t I = 0; I < Instance->getGlobalMetadata().Size; ++I)
+    if (Instance->getGlobal(I) == nullptr)
+      throw std::runtime_error("incomplete instance (missing global)");
+  for (std::size_t I = 0; I < Instance->getFunctionMetadata().Size; ++I)
+    if (Instance->getFunctionPointer(I) == nullptr)
+      throw std::runtime_error("incomplete instance (missing function)");
 
   auto const &MemoryMetadata = Instance->getMemoryMetadata();
   auto const &TableMetadata = Instance->getTableMetadata();
@@ -260,9 +375,10 @@ std::unique_ptr<WebAssemblyInstance> WebAssemblyInstanceBuilder::Build() {
   for (std::size_t I = 0; I < FunctionMetadata.ESize; ++I) {
     auto Index = FunctionMetadata.Exports[I].Index;
     std::string_view Name(FunctionMetadata.Exports[I].Name);
-    auto *InstancePtr = Instance->getFunction(Index);
+    auto *InstanceClosure = Instance->getFunctionInstanceClosure(Index);
+    auto *InstancePtr = Instance->getFunctionPointer(Index);
     auto *ExpectTypeStr = FunctionMetadata.Entities[Index];
-    auto Entry = std::make_pair(InstancePtr, ExpectTypeStr);
+    auto Entry = std::make_tuple(InstanceClosure, InstancePtr, ExpectTypeStr);
     Instance->ExportedFunctions.emplace(Name, Entry);
   }
 
@@ -271,46 +387,59 @@ std::unique_ptr<WebAssemblyInstance> WebAssemblyInstanceBuilder::Build() {
 
 WebAssemblyInstance::MemoryMetadata const &
 WebAssemblyInstance::getMemoryMetadata() const {
-  return *reinterpret_cast<MemoryMetadata *>(Storage[0]);
+  return *reinterpret_cast<MemoryMetadata *>(Storage[1]);
 }
 
 WebAssemblyInstance::TableMetadata const &
 WebAssemblyInstance::getTableMetadata() const {
-  return *reinterpret_cast<TableMetadata *>(Storage[1]);
+  return *reinterpret_cast<TableMetadata *>(Storage[2]);
 }
 
 WebAssemblyInstance::GlobalMetadata const &
 WebAssemblyInstance::getGlobalMetadata() const {
-  return *reinterpret_cast<GlobalMetadata *>(Storage[2]);
+  return *reinterpret_cast<GlobalMetadata *>(Storage[3]);
 }
 
 WebAssemblyInstance::FunctionMetadata const &
 WebAssemblyInstance::getFunctionMetadata() const {
-  return *reinterpret_cast<FunctionMetadata *>(Storage[3]);
+  return *reinterpret_cast<FunctionMetadata *>(Storage[4]);
 }
 
 __sable_memory_t *&WebAssemblyInstance::getMemory(std::size_t Index) {
   assert(Index < getMemoryMetadata().Size);
-  return reinterpret_cast<__sable_memory_t *&>(Storage[4 + Index]);
+  auto Offset = INSTANCE_ENTITY_START_OFFSET + Index;
+  return reinterpret_cast<__sable_memory_t *&>(Storage[Offset]);
 }
 
 __sable_table_t *&WebAssemblyInstance::getTable(std::size_t Index) {
   assert(Index < getTableMetadata().Size);
-  auto Offset = 4 + getMemoryMetadata().Size;
-  return reinterpret_cast<__sable_table_t *&>(Storage[Offset + Index]);
+  auto Offset = INSTANCE_ENTITY_START_OFFSET + getMemoryMetadata().Size + Index;
+  return reinterpret_cast<__sable_table_t *&>(Storage[Offset]);
 }
 
 __sable_global_t *&WebAssemblyInstance::getGlobal(std::size_t Index) {
   assert(Index < getGlobalMetadata().Size);
-  auto Offset = 4 + getMemoryMetadata().Size + getTableMetadata().Size;
-  return reinterpret_cast<__sable_global_t *&>(Storage[Offset + Index]);
+  auto Offset = INSTANCE_ENTITY_START_OFFSET + getMemoryMetadata().Size +
+                getTableMetadata().Size + Index;
+  return reinterpret_cast<__sable_global_t *&>(Storage[Offset]);
 }
 
-__sable_function_t *&WebAssemblyInstance::getFunction(std::size_t Index) {
+__sable_instance_t *&
+WebAssemblyInstance::getFunctionInstanceClosure(std::size_t Index) {
   assert(Index < getFunctionMetadata().Size);
-  auto Offset = 4 + getMemoryMetadata().Size + getTableMetadata().Size +
-                getGlobalMetadata().Size;
-  return reinterpret_cast<__sable_function_t *&>(Storage[Offset + Index]);
+  auto Offset = INSTANCE_ENTITY_START_OFFSET + getMemoryMetadata().Size +
+                getTableMetadata().Size + getGlobalMetadata().Size;
+  Offset = Offset + Index * 2;
+  return reinterpret_cast<__sable_instance_t *&>(Storage[Offset]);
+}
+
+__sable_function_t *&
+WebAssemblyInstance::getFunctionPointer(std::size_t Index) {
+  assert(Index < getFunctionMetadata().Size);
+  auto Offset = INSTANCE_ENTITY_START_OFFSET + getMemoryMetadata().Size +
+                getTableMetadata().Size + getGlobalMetadata().Size;
+  Index = Offset + Index * 2 + 1;
+  return reinterpret_cast<__sable_function_t *&>(Storage[Index]);
 }
 
 void WebAssemblyInstance::replace(
@@ -323,12 +452,19 @@ void WebAssemblyInstance::replace(
   utility::unreachable();
 }
 
+WebAssemblyCallee WebAssemblyInstance::getFunction(std::uint32_t Index) {
+  auto *InstanceClosure = getFunctionInstanceClosure(Index);
+  auto *FunctionPtr = getFunctionPointer(Index);
+  auto *TypeString = getFunctionMetadata().Entities[Index];
+  return WebAssemblyCallee(InstanceClosure, FunctionPtr, TypeString);
+}
+
 WebAssemblyInstance::~WebAssemblyInstance() noexcept {
   if (Storage != nullptr) {
     for (std::size_t I = 0; I < getMemoryMetadata().Size; ++I) {
       auto *MemoryPtr = getMemory(I);
       auto *Memory = WebAssemblyMemory::fromInstancePtr(MemoryPtr);
-      Memory->removeUseSite(*this);
+      if (Memory != nullptr) Memory->removeUseSite(*this);
     }
 
     auto MemoryDefFirst = getMemoryMetadata().ISize;
@@ -337,6 +473,14 @@ WebAssemblyInstance::~WebAssemblyInstance() noexcept {
       auto *MemoryPtr = getMemory(I);
       auto *Memory = WebAssemblyMemory::fromInstancePtr(MemoryPtr);
       if (Memory != nullptr) delete Memory;
+    }
+
+    auto TableDefFirst = getTableMetadata().ISize;
+    auto TableDefLast = getTableMetadata().Size;
+    for (std::size_t I = TableDefFirst; I < TableDefLast; ++I) {
+      auto *TablePtr = getTable(I);
+      auto *Table = WebAssemblyTable::fromInstancePtr(TablePtr);
+      if (Table != nullptr) delete Table;
     }
 
     auto GlobalDefFirst = getGlobalMetadata().ISize;
@@ -351,25 +495,60 @@ WebAssemblyInstance::~WebAssemblyInstance() noexcept {
   if (DLHandler != nullptr) dlclose(DLHandler);
 }
 
-WebAssemblyMemory *WebAssemblyInstance::getMemory(std::string_view Name) {
+WebAssemblyMemory &WebAssemblyInstance::getMemory(std::string_view Name) {
+  auto *Memory = tryGetMemory(Name);
+  if (Memory == nullptr)
+    throw std::invalid_argument("cannot locate export memory");
+  return *Memory;
+}
+
+WebAssemblyTable &WebAssemblyInstance::getTable(std::string_view Name) {
+  auto *Table = tryGetTable(Name);
+  if (Table == nullptr)
+    throw std::invalid_argument("cannot locate export table");
+  return *Table;
+}
+
+WebAssemblyGlobal &WebAssemblyInstance::getGlobal(std::string_view Name) {
+  auto *Global = tryGetGlobal(Name);
+  if (Global == nullptr)
+    throw std::invalid_argument("cannot locate export global");
+  return *Global;
+}
+
+WebAssemblyCallee WebAssemblyInstance::getFunction(std::string_view Name) {
+  auto Function = tryGetFunction(Name);
+  if (!Function.has_value())
+    throw std::invalid_argument("cannot locate export function");
+  return *Function;
+}
+
+WebAssemblyMemory *WebAssemblyInstance::tryGetMemory(std::string_view Name) {
   auto SearchIter = ExportedMemories.find(Name);
   if (SearchIter == ExportedMemories.end()) return nullptr;
   return WebAssemblyMemory::fromInstancePtr(std::get<1>(*SearchIter));
 }
 
-WebAssemblyGlobal *WebAssemblyInstance::getGlobal(std::string_view Name) {
+WebAssemblyTable *WebAssemblyInstance::tryGetTable(std::string_view Name) {
+  auto SearchIter = ExportedTables.find(Name);
+  if (SearchIter == ExportedTables.end()) return nullptr;
+  return WebAssemblyTable::fromInstancePtr(std::get<1>(*SearchIter));
+}
+
+WebAssemblyGlobal *WebAssemblyInstance::tryGetGlobal(std::string_view Name) {
   auto SearchIter = ExportedGlobals.find(Name);
   if (SearchIter == ExportedGlobals.end()) return nullptr;
   return WebAssemblyGlobal::fromInstancePtr(std::get<1>(*SearchIter));
 }
 
 std::optional<WebAssemblyCallee>
-WebAssemblyInstance::getFunction(std::string_view Name) {
+WebAssemblyInstance::tryGetFunction(std::string_view Name) {
   auto SearchIter = ExportedFunctions.find(Name);
   if (SearchIter == ExportedFunctions.end()) return std::nullopt;
-  auto *ExpectTypeStr = std::get<1>(std::get<1>(*SearchIter));
-  auto *CalleePtr = std::get<0>(std::get<1>(*SearchIter));
-  return WebAssemblyCallee(asInstancePtr(), ExpectTypeStr, CalleePtr);
+  auto *ExpectTypeStr = std::get<2>(std::get<1>(*SearchIter));
+  auto *FunctionPtr = std::get<1>(std::get<1>(*SearchIter));
+  auto *InstanceClosurePtr = std::get<0>(std::get<1>(*SearchIter));
+  return WebAssemblyCallee(InstanceClosurePtr, FunctionPtr, ExpectTypeStr);
 }
 
 __sable_instance_t *WebAssemblyInstance::asInstancePtr() {

@@ -9,8 +9,6 @@
 #include <forward_list>
 #include <limits>
 
-#define NO_MAXIMUM std::numeric_limits<std::uint32_t>::max()
-
 extern "C" {
 std::uint32_t __sable_memory_size(__sable_memory_t *Memory) {
   auto *MemoryInstance = runtime::WebAssemblyMemory::fromInstancePtr(Memory);
@@ -19,7 +17,7 @@ std::uint32_t __sable_memory_size(__sable_memory_t *Memory) {
 
 void __sable_memory_guard(__sable_memory_t *Memory, std::uint32_t Offset) {
   auto *MemoryInstance = runtime::WebAssemblyMemory::fromInstancePtr(Memory);
-  if (!(Offset < MemoryInstance->getSizeInBytes()))
+  if (!(Offset <= MemoryInstance->getSizeInBytes()))
     throw runtime::exceptions::MemoryAccessOutOfBound(*MemoryInstance, Offset);
 }
 
@@ -193,7 +191,7 @@ WebAssemblyMemory::get(std::size_t Offset, std::size_t Length) const {
 
 WebAssemblyMemory *
 WebAssemblyMemory::fromInstancePtr(__sable_memory_t *InstancePtr) {
-  assert(InstancePtr != nullptr);
+  if (InstancePtr == nullptr) return nullptr;
   auto *StartAddress =
       &reinterpret_cast<std::byte *>(InstancePtr)[-getNativePageSize()];
   auto *Metadata = reinterpret_cast<MemoryMetadata *>(StartAddress);

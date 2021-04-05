@@ -4,8 +4,6 @@
 #include "../bytecode/Type.h"
 #include "../utility/Commons.h"
 
-#include <range/v3/view/transform.hpp>
-
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -22,16 +20,32 @@ void __sable_unreachable();
 std::uint32_t __sable_memory_size(__sable_memory_t *);
 void __sable_memory_guard(__sable_memory_t *, std::uint32_t Offset);
 std::uint32_t __sable_memory_grow(__sable_memory_t *, std::uint32_t Delta);
+
+void __sable_table_guard(__sable_table_t *, std::uint32_t);
+void __sable_table_check(__sable_table_t *, std::uint32_t, char const *);
+__sable_instance_t *
+__sable_table_instance_closure(__sable_table_t *, std::uint32_t Index);
+__sable_function_t *
+__sable_table_function_ptr(__sable_table_t *, std::uint32_t Index);
+void __sable_table_set(
+    __sable_table_t *, __sable_instance_t *, std::uint32_t StartPos,
+    std::uint32_t Count, std::uint32_t Indices[]);
 }
 
 namespace runtime {
 class WebAssemblyMemory;
 class WebAssemblyGlobal;
+class WebAssemblyTable;
 class WebAssemblyCallee;
 class WebAssemblyInstance;
 class WebAssemblyInstanceBuilder;
 
 namespace exceptions {
+class MalformedInstanceLibrary : public std::runtime_error {
+public:
+  MalformedInstanceLibrary(char const *What) : std::runtime_error(What) {}
+};
+
 class Unreachable : public std::runtime_error {
 public:
   Unreachable() : std::runtime_error("unreachable") {}
@@ -49,9 +63,59 @@ public:
   WebAssemblyMemory const &getSite() const { return *Site; }
   std::size_t getAttemptOffset() const { return AttemptOffset; }
 };
+
+class TableAccessOutOfBound : public std::runtime_error {
+  WebAssemblyTable const *Site;
+  std::uint32_t AttemptIndex;
+
+public:
+  TableAccessOutOfBound(
+      WebAssemblyTable const &Site_, std::uint32_t AttemptIndex_)
+      : std::runtime_error("WebAssembly table instance access out of bound"),
+        Site(std::addressof(Site_)), AttemptIndex(AttemptIndex_) {}
+  WebAssemblyTable const &getSite() const { return *Site; }
+  std::uint32_t getAttemptIndex() const { return AttemptIndex; }
+};
+
+class TableTypeMismatch : public std::runtime_error {
+  WebAssemblyTable const *Site;
+  std::uint32_t AttemptIndex;
+  bytecode::FunctionType ExpectType;
+  bytecode::FunctionType ActualType;
+
+public:
+  TableTypeMismatch(
+      WebAssemblyTable const &Site_, std::uint32_t AttemptIndex_,
+      bytecode::FunctionType ExpectType_, bytecode::FunctionType ActualType_)
+      : std::runtime_error("WebAssembly table type mismatch"),
+        Site(std::addressof(Site_)), AttemptIndex(AttemptIndex_),
+        ExpectType(std::move(ExpectType_)), ActualType(std::move(ActualType_)) {
+  }
+  WebAssemblyTable const &getSite() const { return *Site; }
+  std::uint32_t getAttemptIndex() const { return AttemptIndex; }
+  bytecode::FunctionType const &getExpectType() const { return ExpectType; }
+  bytecode::FunctionType const &getActualType() const { return ActualType; }
+};
+
+class BadTableEntry : public std::runtime_error {
+  WebAssemblyTable const *Site;
+  std::uint32_t AttemptIndex;
+
+public:
+  BadTableEntry(WebAssemblyTable const &Site_, std::uint32_t AttemptIndex_)
+      : std::runtime_error("bad WebAssembly table entry"),
+        Site(std::addressof(Site_)), AttemptIndex(AttemptIndex_) {}
+  WebAssemblyTable const &getSite() const { return *Site; }
+  std::uint32_t getAttemptIndex() const { return AttemptIndex; }
+};
 } // namespace exceptions
 
 namespace detail {
+bytecode::ValueType fromTypeChar(char TypeChar);
+char toTypeChar(bytecode::ValueType const &Type);
+bytecode::FunctionType fromTypeString(std::string_view TypeString);
+std::string toTypeString(bytecode::FunctionType const &Type);
+
 template <typename T> constexpr char type_char();
 template <> constexpr char type_char<std::int32_t>() { return 'I'; }
 template <> constexpr char type_char<std::uint32_t>() { return 'I'; }
@@ -86,9 +150,12 @@ class WebAssemblyMemory {
   void addUseSite(WebAssemblyInstance &Instance);
   void removeUseSite(WebAssemblyInstance &Instance);
 
+  static constexpr std::uint32_t NO_MAXIMUM =
+      std::numeric_limits<std::uint32_t>::max();
+
 public:
   explicit WebAssemblyMemory(std::uint32_t NumPage);
-  explicit WebAssemblyMemory(std::uint32_t NumPage, std::uint32_t MaxNumPage);
+  WebAssemblyMemory(std::uint32_t NumPage, std::uint32_t MaxNumPage);
   WebAssemblyMemory(WebAssemblyMemory const &) = delete;
   WebAssemblyMemory(WebAssemblyMemory &&) noexcept = delete;
   WebAssemblyMemory &operator=(WebAssemblyMemory const &) = delete;
@@ -105,8 +172,6 @@ public:
 
   std::uint32_t grow(std::uint32_t DeltaNumPage);
 
-  __sable_memory_t *asInstancePtr();
-
   std::byte &operator[](std::size_t Offset);
   std::byte const &operator[](std::size_t Offset) const;
   std::byte &get(std::size_t Offset);
@@ -116,6 +181,8 @@ public:
 
   static std::size_t getWebAssemblyPageSize();
   static std::size_t getNativePageSize();
+
+  __sable_memory_t *asInstancePtr();
   static WebAssemblyMemory *fromInstancePtr(__sable_memory_t *InstancePtr);
   static std::uint32_t const GrowFailed;
 };
@@ -140,9 +207,67 @@ public:
   std::int64_t const &asI64() const;
   float const &asF32() const;
   double const &asF64() const;
-  __sable_global_t *asInstancePtr();
 
+  __sable_global_t *asInstancePtr();
   static WebAssemblyGlobal *fromInstancePtr(__sable_global_t *InstancePtr);
+};
+
+class WebAssemblyTable {
+  std::uint32_t Size;
+  std::uint32_t MaxSize;
+  using Entry = std::tuple<
+      __sable_instance_t *, // Instance Closure Pointer
+      __sable_function_t *, // Function Pointer
+      std::string           // Type String
+      >;
+  std::vector<Entry> Storage;
+
+  friend void ::__sable_table_guard(__sable_table_t *, std::uint32_t);
+  friend void ::__sable_table_check(
+      __sable_table_t *, std::uint32_t, char const *);
+  friend __sable_instance_t * ::__sable_table_instance_closure(
+      __sable_table_t *, std::uint32_t);
+  friend __sable_function_t * ::__sable_table_function_ptr(
+      __sable_table_t *, std::uint32_t Index);
+  friend void ::__sable_table_set(
+      __sable_table_t *, __sable_instance_t *, std::uint32_t, std::uint32_t,
+      std::uint32_t *);
+
+  void
+  set(std::uint32_t, __sable_instance_t *, __sable_function_t *,
+      std::string_view TypeString);
+  __sable_instance_t *getInstanceClosure(std::uint32_t) const;
+  __sable_function_t *getFunctionPointer(std::uint32_t) const;
+  std::string_view getTypeString(std::uint32_t) const;
+
+  static constexpr std::uint32_t NO_MAXIMUM =
+      std::numeric_limits<std::uint32_t>::max();
+
+public:
+  explicit WebAssemblyTable(std::uint32_t NumEntries);
+  WebAssemblyTable(std::uint32_t NumEntries, std::uint32_t MaxNumEntries);
+
+  std::uint32_t getSize() const;
+  bool hasMaxSize() const;
+  std::uint32_t getMaxSize() const;
+
+  bool isNull(std::uint32_t Index) const;
+  bytecode::FunctionType getType(std::uint32_t Index) const;
+
+  WebAssemblyCallee get(std::uint32_t) const;
+
+  template <typename RetType, typename... ArgTypes>
+  void
+  set(std::uint32_t Index,
+      RetType (*FunctionPointer)(__sable_instance_t *, ArgTypes...)) {
+    auto TypeString = detail::type_str<RetType, ArgTypes...>();
+    set(Index, nullptr, FunctionPointer, TypeString);
+  }
+
+  void set(std::uint32_t, WebAssemblyCallee Callee);
+
+  __sable_table_t *asInstancePtr();
+  static WebAssemblyTable *fromInstancePtr(__sable_table_t *InstancePtr);
 };
 
 class WebAssemblyInstanceBuilder {
@@ -163,7 +288,13 @@ public:
       WebAssemblyMemory &Memory);
   WebAssemblyInstanceBuilder &import(
       std::string_view ModuleName, std::string_view EntityName,
+      WebAssemblyTable &Table);
+  WebAssemblyInstanceBuilder &import(
+      std::string_view ModuleName, std::string_view EntityName,
       WebAssemblyGlobal &Global);
+  WebAssemblyInstanceBuilder &import(
+      std::string_view ModuleName, std::string_view EntityName,
+      WebAssemblyCallee Callee);
 
   template <typename RetType, typename... ArgTypes>
   WebAssemblyInstanceBuilder &import(
@@ -179,7 +310,13 @@ public:
       WebAssemblyMemory &Memory);
   bool tryImport(
       std::string_view ModuleName, std::string_view EntityName,
+      WebAssemblyTable &Table);
+  bool tryImport(
+      std::string_view ModuleName, std::string_view EntityName,
       WebAssemblyGlobal &Global);
+  bool tryImport(
+      std::string_view ModuleName, std::string_view EntityName,
+      WebAssemblyCallee Callee);
 
   template <typename RetType, typename... ArgTypes>
   bool tryImport(
@@ -199,8 +336,12 @@ class WebAssemblyInstance {
   void **Storage = nullptr; // __sable_instance_t
   void *DLHandler = nullptr;
 
-  //                              Function Pointer      Type String
-  using FunctionEntry = std::pair<__sable_function_t *, char const *>;
+  // Exports:
+  using FunctionEntry = std::tuple<
+      __sable_instance_t *, // Function Instance Closure
+      __sable_function_t *, // Function Pointer
+      char const *          // Type String
+      >;
   std::unordered_map<std::string_view, __sable_memory_t *> ExportedMemories;
   std::unordered_map<std::string_view, __sable_table_t *> ExportedTables;
   std::unordered_map<std::string_view, __sable_global_t *> ExportedGlobals;
@@ -221,11 +362,17 @@ class WebAssemblyInstance {
   __sable_memory_t *&getMemory(std::size_t Index);
   __sable_table_t *&getTable(std::size_t Index);
   __sable_global_t *&getGlobal(std::size_t Index);
-  __sable_function_t *&getFunction(std::size_t Index);
+  __sable_instance_t *&getFunctionInstanceClosure(std::size_t Index);
+  __sable_function_t *&getFunctionPointer(std::size_t Index);
 
   WebAssemblyInstance() = default;
 
   void replace(__sable_memory_t *Old, __sable_memory_t *New);
+
+  friend void ::__sable_table_set(
+      __sable_table_t *, __sable_instance_t *, std::uint32_t, std::uint32_t,
+      std::uint32_t *);
+  WebAssemblyCallee getFunction(std::uint32_t Index);
 
 public:
   WebAssemblyInstance(WebAssemblyInstance const &) = delete;
@@ -234,9 +381,15 @@ public:
   WebAssemblyInstance &operator=(WebAssemblyInstance &&) noexcept = delete;
   ~WebAssemblyInstance() noexcept;
 
-  WebAssemblyMemory *getMemory(std::string_view Name);
-  WebAssemblyGlobal *getGlobal(std::string_view Name);
-  std::optional<WebAssemblyCallee> getFunction(std::string_view Name);
+  WebAssemblyMemory &getMemory(std::string_view Name);
+  WebAssemblyTable &getTable(std::string_view Name);
+  WebAssemblyGlobal &getGlobal(std::string_view Name);
+  WebAssemblyCallee getFunction(std::string_view Name);
+
+  WebAssemblyMemory *tryGetMemory(std::string_view Name);
+  WebAssemblyTable *tryGetTable(std::string_view Name);
+  WebAssemblyGlobal *tryGetGlobal(std::string_view Name);
+  std::optional<WebAssemblyCallee> tryGetFunction(std::string_view Name);
 
   __sable_instance_t *asInstancePtr();
   static WebAssemblyInstance *fromInstancePtr(__sable_instance_t *InstancePtr);
@@ -244,18 +397,24 @@ public:
 
 class WebAssemblyCallee {
   __sable_instance_t *Instance;
-  char const *ExpectTypeStr;
   __sable_function_t *Function;
+  char const *ExpectTypeStr;
+
+  friend class WebAssemblyInstance;
+  friend class WebAssemblyTable;
+  WebAssemblyCallee(
+      __sable_instance_t *Instance_, __sable_function_t *Function_,
+      char const *ExpectTypeStr_)
+      : Instance(Instance_), Function(Function_),
+        ExpectTypeStr(ExpectTypeStr_) {}
 
 public:
-  WebAssemblyCallee(
-      __sable_instance_t *Instance_, char const *ExpectTypeStr_,
-      __sable_function_t *Function_)
-      : Instance(Instance_), ExpectTypeStr(ExpectTypeStr_),
-        Function(Function_) {}
+  __sable_function_t *getFunctionPointer() const { return Function; }
+  __sable_instance_t *getInstanceClosurePointer() const { return Instance; }
+  char const *getTypeString() const { return ExpectTypeStr; }
 
   template <typename RetType, typename... ArgTypes>
-  RetType invoke(ArgTypes... Args) { // use copy instead of forward
+  RetType invoke(ArgTypes... Args) const { // use copy instead of forward
     using FunctionTy = RetType (*)(__sable_instance_t *, ArgTypes...);
     if (detail::type_str<RetType, ArgTypes...>() != ExpectTypeStr) {
       throw std::runtime_error("type mismatch");

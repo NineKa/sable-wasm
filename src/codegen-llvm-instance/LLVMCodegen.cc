@@ -228,14 +228,7 @@ public:
     if (Inst->hasReturnValue()) {
       auto *ReturnValue = Context[*Inst->getOperand()];
       auto ReturnTy = Context.getInferredType()[*Inst->getOperand()];
-      assert(ReturnTy.isPrimitive() || ReturnTy.isAggregate());
-      if (ReturnTy.isPrimitive()) return Builder.CreateRet(ReturnValue);
-      if (ReturnTy.isAggregate()) {
-        assert(ReturnValue->getType()->isPointerTy());
-        auto *AggregateStruct = Builder.CreateLoad(ReturnValue);
-        return Builder.CreateRet(AggregateStruct);
-      }
-      utility::unreachable();
+      return Builder.CreateRet(ReturnValue);
     }
     return Builder.CreateRetVoid();
   }
@@ -256,23 +249,41 @@ public:
     auto *Index = Context[*Inst->getOperand()];
     auto *Table = Context.getLayout().get(
         Builder, InstancePtr, *Inst->getIndirectTable());
-    std::vector<llvm::Value *> Arguments;
-    Arguments.reserve(Inst->getNumArguments() + 1);
-    Arguments.push_back(InstancePtr);
-    for (auto const *Argument : Inst->getArguments())
-      Arguments.push_back(Context[*Argument]);
     auto *BuiltinTableGuard =
         Context.getLayout().getBuiltin("__sable_table_guard");
     Builder.CreateCall(BuiltinTableGuard, {Table, Index});
-    auto *BuiltinTableGet = Context.getLayout().getBuiltin("__sable_table_get");
     auto *TypeString = Context.getLayout().getCStringPtr(
         Context.getLayout().getTypeString(Inst->getExpectType()),
         "typestr.indirect.call");
+    auto *BuiltinTableCheck =
+        Context.getLayout().getBuiltin("__sable_table_check");
+    Builder.CreateCall(BuiltinTableCheck, {Table, Index, TypeString});
+    auto *BuiltinTableFunctionPtr =
+        Context.getLayout().getBuiltin("__sable_table_function_ptr");
+    auto *BuiltinTableInstanceClosurePtr =
+        Context.getLayout().getBuiltin("__sable_table_instance_closure");
+
+    llvm::Value *CalleeInstanceClosure =
+        Builder.CreateCall(BuiltinTableInstanceClosurePtr, {Table, Index});
+    auto *CalleeFunctionPtr =
+        Builder.CreateCall(BuiltinTableFunctionPtr, {Table, Index});
+
+    auto *Null = llvm::ConstantInt::get(Context.getLayout().getPtrIntTy(), 0);
+    llvm::Value *IsNullTest = Builder.CreatePtrToInt(
+        CalleeInstanceClosure, Context.getLayout().getPtrIntTy());
+    IsNullTest = Builder.CreateICmpEQ(IsNullTest, Null);
+    CalleeInstanceClosure =
+        Builder.CreateSelect(IsNullTest, InstancePtr, CalleeInstanceClosure);
+
+    std::vector<llvm::Value *> Arguments;
+    Arguments.reserve(Inst->getNumArguments() + 1);
+    Arguments.push_back(CalleeInstanceClosure);
+    for (auto const *Argument : Inst->getArguments())
+      Arguments.push_back(Context[*Argument]);
+
     auto *CalleeTy = Context.getLayout().convertType(Inst->getExpectType());
     auto *CalleePtrTy = llvm::PointerType::getUnqual(CalleeTy);
-    llvm::Value *CalleePtr =
-        Builder.CreateCall(BuiltinTableGet, {Table, Index, TypeString});
-    CalleePtr = Builder.CreatePointerCast(CalleePtr, CalleePtrTy);
+    auto *CalleePtr = Builder.CreatePointerCast(CalleeFunctionPtr, CalleePtrTy);
     llvm::FunctionCallee Callee(CalleeTy, CalleePtr);
     return Builder.CreateCall(Callee, Arguments);
   }
@@ -593,7 +604,9 @@ public:
         Context.getLayout().getBuiltin("__sable_memory_guard");
     auto *Memory =
         Context.getLayout().get(Builder, InstancePtr, *Inst->getLinearMemory());
-    auto *Offset = Context[*Inst->getAddress()];
+    llvm::Value *Offset = Context[*Inst->getAddress()];
+    auto *GuardSize = Context.getLayout().getI32Constant(Inst->getGuardSize());
+    Offset = Builder.CreateNUWAdd(Offset, GuardSize);
     return Builder.CreateCall(BuiltinMemoryGuard, {Memory, Offset});
   }
 
@@ -681,18 +694,19 @@ public:
     // clang-format on
     auto *StructTy =
         llvm::StructType::get(Context.getTarget().getContext(), MemberTypes);
-    auto *Result = Builder.CreateAlloca(StructTy);
+    llvm::Value *Result = llvm::UndefValue::get(StructTy);
     for (auto const &[Index, Member] : ranges::views::enumerate(Members)) {
-      auto *MemberPtr = Builder.CreateStructGEP(Result, Index);
-      Builder.CreateStore(Member, MemberPtr);
+      assert(Index <= std::numeric_limits<unsigned>::max());
+      auto StructIndex = static_cast<unsigned>(Index);
+      Result = Builder.CreateInsertValue(Result, Member, {StructIndex});
     }
     return Result;
   }
 
   llvm::Value *operator()(minsts::Unpack const *Inst) {
     auto *Struct = Context[*Inst->getOperand()];
-    auto *MemberPtr = Builder.CreateStructGEP(Struct, Inst->getIndex());
-    return Builder.CreateLoad(MemberPtr);
+    auto Index = Inst->getIndex();
+    return Builder.CreateExtractValue(Struct, Index);
   }
 
   llvm::Value *operator()(minsts::Phi const *Inst) {

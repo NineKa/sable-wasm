@@ -55,18 +55,16 @@ target_link_libraries(sablewasm
         range-v3
         ${llvm_libs})
 
-add_library(sablewasm-rt
+add_library(sablewasm-rt SHARED
         src/codegen-llvm-instance/WASI.cc
         src/codegen-llvm-instance/WebAssemblyMemory.cc
         src/codegen-llvm-instance/WebAssemblyGlobal.cc
+        src/codegen-llvm-instance/WebAssemblyTable.cc
         src/codegen-llvm-instance/WebAssemblyInstance.cc)
-target_link_libraries(sablewasm-rt fmt::fmt range-v3)
-target_link_options(sablewasm-rt PRIVATE "-rdynamic")
+target_link_libraries(sablewasm-rt fmt::fmt-header-only range-v3)
 
 add_executable(sable-wasm src/Main.cc)
 target_link_libraries(sable-wasm sablewasm)
 
 add_executable(tester src/Tester.cc)
 target_link_libraries(tester sablewasm-rt)
-target_link_options(tester PRIVATE "-rdynamic")
-target_link_options(tester PRIVATE "-ldl")

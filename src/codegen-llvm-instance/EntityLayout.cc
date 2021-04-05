@@ -18,6 +18,8 @@
 
 #include <limits>
 
+#define INSTANCE_ENTITY_START_OFFSET 5
+
 namespace codegen::llvm_instance {
 
 llvm::StructType *EntityLayout::declareOpaqueTy(std::string_view Name) {
@@ -48,10 +50,12 @@ void EntityLayout::setupInstanceType() {
   auto *TableMetadataTy = createNamedStructTy("__sable_table_metadata_t");
   auto *GlobalMetadataTy = createNamedStructTy("__sable_global_metadata_t");
   auto *FunctionMetadataTy = createNamedStructTy("__sable_function_metadata_t");
+  InstanceFields.push_back(getVoidPtrTy()); // reserved
   InstanceFields.push_back(llvm::PointerType::getUnqual(MemoryMetadataTy));
   InstanceFields.push_back(llvm::PointerType::getUnqual(TableMetadataTy));
   InstanceFields.push_back(llvm::PointerType::getUnqual(GlobalMetadataTy));
   InstanceFields.push_back(llvm::PointerType::getUnqual(FunctionMetadataTy));
+  assert(InstanceFields.size() == INSTANCE_ENTITY_START_OFFSET);
 
   auto *MemoryOpaqueTy = declareOpaqueTy("__sable_memory_t");
   auto *MemoryOpaquePtrTy = llvm::PointerType::getUnqual(MemoryOpaqueTy);
@@ -74,12 +78,15 @@ void EntityLayout::setupInstanceType() {
     InstanceFields.push_back(GlobalOpaquePtrTy);
   }
 
+  auto FunctionIndex = OffsetMap.size();
   auto *FunctionOpaqueTy = declareOpaqueTy("__sable_function_t");
   auto *FunctionOpaquePtrTy = llvm::PointerType::getUnqual(FunctionOpaqueTy);
   for (auto const &Function : Source.getFunctions().asView()) {
     auto *FunctionAddress = std::addressof(Function);
-    OffsetMap.insert(std::make_pair(FunctionAddress, OffsetMap.size()));
+    OffsetMap.insert(std::make_pair(FunctionAddress, FunctionIndex));
+    InstanceFields.push_back(llvm::PointerType::getUnqual(InstanceTy));
     InstanceFields.push_back(FunctionOpaquePtrTy);
+    FunctionIndex = FunctionIndex + 2;
   }
 
   InstanceTy->setBody(InstanceFields);
@@ -150,53 +157,31 @@ void EntityLayout::setupDataSegments() {
 }
 
 void EntityLayout::setupElementSegments() {
-  auto *ErasedTy = getFunctionPtrTy();
   for (auto const &ElementSegment : Source.getElements().asView()) {
     // clang-format off
-    auto Pointers = ElementSegment.getContent()
+    auto Indices = ElementSegment.getContent()
       | ranges::views::transform([&](mir::Function const *Function) {
-          llvm::Constant * Pointer = this->operator[](*Function).definition();
-          Pointer = llvm::ConstantExpr::getBitCast(Pointer, ErasedTy);
-          return Pointer;
-        })
-      | ranges::to<std::vector<llvm::Constant *>>();
-    auto TypeStrings = ElementSegment.getContent()
-      | ranges::views::transform([&](mir::Function const *Function) {
-          return this->operator[](*Function).typeString();
+          auto Index = this->operator[](*Function).index();
+          return getI32Constant(Index);
         })
       | ranges::to<std::vector<llvm::Constant *>>();
     // clang-format on
-    auto *PointersTy = llvm::ArrayType::get(ErasedTy, Pointers.size());
-    auto *PointersConstant = llvm::ConstantArray::get(PointersTy, Pointers);
-    auto *TypeStringsConstant = llvm::ConstantArray::get(
-        llvm::ArrayType::get(getCStringPtrTy(), TypeStrings.size()),
-        TypeStrings);
-    auto *PointersGlobal = new llvm::GlobalVariable(
+    auto *IndicesTy = llvm::ArrayType::get(getI32Ty(), Indices.size());
+    auto *IndicesConstant = llvm::ConstantArray::get(IndicesTy, Indices);
+    auto *IndicesGlobal = new llvm::GlobalVariable(
         /* Parent      */ Target,
-        /* Type        */ PointersConstant->getType(),
+        /* Type        */ IndicesConstant->getType(),
         /* IsConstant  */ true,
         /* Linkage     */ llvm::GlobalVariable::LinkageTypes::PrivateLinkage,
-        /* Initializer */ PointersConstant,
-        /* Name        */ "element.ptrs");
-    auto *TypeStringsGlobal = new llvm::GlobalVariable(
-        /* Parent      */ Target,
-        /* Type        */ TypeStringsConstant->getType(),
-        /* IsConstant  */ true,
-        /* Linkage     */ llvm::GlobalVariable::LinkageTypes::PrivateLinkage,
-        /* Initializer */ TypeStringsConstant,
-        /* Name        */ "element.typestrs");
-    PointersGlobal->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
-    TypeStringsGlobal->setUnnamedAddr(
-        llvm::GlobalVariable::UnnamedAddr::Global);
-    std::array<llvm::Constant *, 2> Indices{
+        /* Initializer */ IndicesConstant,
+        /* Name        */ "element.indices");
+    IndicesGlobal->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
+    std::array<llvm::Constant *, 2> GEPIndices{
         getI32Constant(0), getI32Constant(0)};
-    auto *PointersPtr = llvm::ConstantExpr::getInBoundsGetElementPtr(
-        PointersGlobal->getValueType(), PointersGlobal, Indices);
-    auto *TypeStringsPtr = llvm::ConstantExpr::getInBoundsGetElementPtr(
-        TypeStringsGlobal->getValueType(), TypeStringsGlobal, Indices);
+    auto *OffsetsPtr = llvm::ConstantExpr::getInBoundsGetElementPtr(
+        IndicesGlobal->getValueType(), IndicesGlobal, GEPIndices);
     ElementMap.insert(std::make_pair(
-        std::addressof(ElementSegment),
-        ElementEntry(PointersPtr, TypeStringsPtr)));
+        std::addressof(ElementSegment), ElementEntry(OffsetsPtr)));
   }
 }
 
@@ -445,7 +430,8 @@ void EntityLayout::setupFunctionMetadata() {
 }
 
 void EntityLayout::setupFunctions() {
-  for (auto const &Function : Source.getFunctions().asView()) {
+  for (auto const &[Index, Function] :
+       ranges::views::enumerate(Source.getFunctions().asView())) {
     auto *TypeString = getCStringPtr(
         getTypeString(Function.getType()),
         Function.hasName() ? fmt::format("typestr.{}", Function.getName())
@@ -456,7 +442,8 @@ void EntityLayout::setupFunctions() {
         /* Name    */ llvm::StringRef(Function.getName()),
         /* Parent  */ Target);
     FunctionMap.insert(std::make_pair(
-        std::addressof(Function), FunctionEntry(Definition, TypeString)));
+        std::addressof(Function),
+        FunctionEntry(Index, Definition, TypeString)));
     if (Function.isImported()) {
       /* Setup import function forwarding */
       auto *EntryBasicBlock = llvm::BasicBlock::Create(
@@ -464,6 +451,16 @@ void EntityLayout::setupFunctions() {
           /* Name    */ "entry",
           /* Parent  */ Definition);
       llvm::IRBuilder<> Builder(EntryBasicBlock);
+      auto *InstancePtr = Definition->arg_begin();
+      llvm::Value *InstanceClosurePtr =
+          getInstanceClosurePtr(Builder, InstancePtr, Function);
+      auto *FunctionPtr = getFunctionPtr(Builder, InstancePtr, Function);
+      auto *NullPtr = llvm::ConstantInt::get(getPtrIntTy(), 0);
+      llvm::Value *NullTest =
+          Builder.CreatePtrToInt(InstanceClosurePtr, getPtrIntTy());
+      NullTest = Builder.CreateICmpEQ(NullTest, NullPtr);
+      InstanceClosurePtr =
+          Builder.CreateSelect(NullTest, InstancePtr, InstanceClosurePtr);
       // clang-format off
       auto Arguments =
         ranges::subrange(Definition->arg_begin(), Definition->arg_end())
@@ -472,13 +469,9 @@ void EntityLayout::setupFunctions() {
           })
         | ranges::to<std::vector<llvm::Value *>>();
       // clang-format on
-      auto Offset = getOffset(Function);
+      Arguments[0] = InstanceClosurePtr;
       auto *CalleeTy = convertType(Function.getType());
-      auto *CalleePtrTy = llvm::PointerType::getUnqual(CalleeTy);
-      llvm::Value *CalleePtr = Builder.CreateStructGEP(Arguments[0], Offset);
-      CalleePtr = Builder.CreateLoad(CalleePtr);
-      CalleePtr = Builder.CreateBitCast(CalleePtr, CalleePtrTy);
-      llvm::FunctionCallee Callee(CalleeTy, CalleePtr);
+      llvm::FunctionCallee Callee(CalleeTy, FunctionPtr);
       auto *Result = Builder.CreateCall(Callee, Arguments);
       if (Function.getType().isVoidResult()) {
         Builder.CreateRetVoid();
@@ -504,15 +497,6 @@ void EntityLayout::setupInitialization() {
   llvm::IRBuilder<> Builder(EntryBasicBlock);
 
   auto *InstancePtr = InitializationFn->getArg(0);
-
-  auto *MemoryMetadata = Builder.CreateStructGEP(InstancePtr, 0);
-  Builder.CreateStore(getMemoryMetadata(), MemoryMetadata);
-  auto *TableMetadata = Builder.CreateStructGEP(InstancePtr, 1);
-  Builder.CreateStore(getTableMetadata(), TableMetadata);
-  auto *GlobalMetadata = Builder.CreateStructGEP(InstancePtr, 2);
-  Builder.CreateStore(getGlobalMetadata(), GlobalMetadata);
-  auto *FunctionMetadata = Builder.CreateStructGEP(InstancePtr, 3);
-  Builder.CreateStore(getFunctionMetadata(), FunctionMetadata);
 
   for (auto const &Memory : Source.getMemories().asView()) {
     for (auto const *DataSegment : Memory.getInitializers()) {
@@ -541,26 +525,6 @@ void EntityLayout::setupInitialization() {
     }
   }
 
-  for (auto const &Table : Source.getTables().asView()) {
-    for (auto const *ElementSegment : Table.getInitializers()) {
-      auto *Pointers = this->operator[](*ElementSegment).pointers();
-      auto *TypeStrings = this->operator[](*ElementSegment).typeStrings();
-      auto *TableBase = get(Builder, InstancePtr, Table);
-      llvm::Value *Offset =
-          translateInitExpr(Builder, InstancePtr, *ElementSegment->getOffset());
-
-      auto *GuardIndex =
-          Builder.CreateAdd(Offset, getI32Constant(ElementSegment->getSize()));
-      Builder.CreateCall(
-          getBuiltin("__sable_table_guard"), {TableBase, GuardIndex});
-
-      Builder.CreateCall(
-          getBuiltin("__sable_table_set"),
-          {TableBase, Offset, getI32Constant(ElementSegment->getSize()),
-           Pointers, TypeStrings});
-    }
-  }
-
   for (auto const &MGlobal : Source.getGlobals().asView()) {
     if (MGlobal.isImported()) continue;
     auto *GlobalPtr = get(Builder, InstancePtr, MGlobal);
@@ -572,11 +536,33 @@ void EntityLayout::setupInitialization() {
   for (auto const &MFunction : Source.getFunctions().asView()) {
     if (MFunction.isImported()) continue;
     auto Offset = getOffset(MFunction);
-    llvm::Value *FunctionFieldPtr =
-        Builder.CreateStructGEP(InstancePtr, Offset);
-    llvm::Value *Initializer = this->operator[](MFunction).definition();
-    Initializer = Builder.CreateBitCast(Initializer, getFunctionPtrTy());
-    Builder.CreateStore(Initializer, FunctionFieldPtr);
+    auto *InstanceClosurePtrAddr = Builder.CreateStructGEP(InstancePtr, Offset);
+    auto *FunctionPtrAddr = Builder.CreateStructGEP(InstancePtr, Offset + 1);
+    auto *InstanceClosureInitializer = InstancePtr;
+    llvm::Value *FunctionPtrInitializer =
+        this->operator[](MFunction).definition();
+    FunctionPtrInitializer =
+        Builder.CreateBitCast(FunctionPtrInitializer, getFunctionPtrTy());
+    Builder.CreateStore(InstanceClosureInitializer, InstanceClosurePtrAddr);
+    Builder.CreateStore(FunctionPtrInitializer, FunctionPtrAddr);
+  }
+
+  for (auto const &Table : Source.getTables().asView()) {
+    for (auto const *ElementSegment : Table.getInitializers()) {
+      auto *Indices = this->operator[](*ElementSegment).indices();
+      auto *TableBase = get(Builder, InstancePtr, Table);
+      llvm::Value *Offset =
+          translateInitExpr(Builder, InstancePtr, *ElementSegment->getOffset());
+      auto *GuardIndex =
+          Builder.CreateAdd(Offset, getI32Constant(ElementSegment->getSize()));
+      Builder.CreateCall(
+          getBuiltin("__sable_table_guard"), {TableBase, GuardIndex});
+
+      Builder.CreateCall(
+          getBuiltin("__sable_table_set"),
+          {TableBase, InstancePtr, Offset,
+           getI32Constant(ElementSegment->getSize()), Indices});
+    }
   }
 
   Builder.CreateRetVoid();
@@ -621,13 +607,13 @@ void EntityLayout::setupBuiltins() {
       /* Parent  */ Target);
 
   /* void __sable_table_set(
-   *    __sable_table_t *table, std::uint32_t start, std::uint32_t size,
-   *    __sable_function_t *pointers[], char const * types[])    */
+   *    __sable_table_t *table,
+   *    __sable_instance_t *instance, std::uint32_t start, std::uint32_t size,
+   *    std::uint32_t offsets[])    */
   auto *TableSetTy = llvm::FunctionType::get(
       getVoidTy(),
-      {getTablePtrTy(), getI32Ty(), getI32Ty(),
-       llvm::PointerType::getUnqual(getFunctionPtrTy()),
-       llvm::PointerType::getUnqual(getCStringPtrTy())},
+      {getTablePtrTy(), getInstancePtrTy(), getI32Ty(), getI32Ty(),
+       llvm::PointerType::getUnqual(getI32Ty())},
       false);
   llvm::Function::Create(
       /* Type    */ TableSetTy,
@@ -635,15 +621,34 @@ void EntityLayout::setupBuiltins() {
       /* Name    */ "__sable_table_set",
       /* Parent  */ Target);
 
-  /* __sable_function_t * __sable_table_get(
-   *   __sable_table_t *table, std::uint32_t index, char const * expect_type) */
-  auto *TableGetTy = llvm::FunctionType::get(
-      getFunctionPtrTy(), {getTablePtrTy(), getI32Ty(), getCStringPtrTy()},
-      false);
+  /* void
+   * __sable_table_check(__sable_table_t *, std::uint32_t, char const *) */
+  auto *TableCheckPtr = llvm::FunctionType::get(
+      getVoidTy(), {getTablePtrTy(), getI32Ty(), getCStringPtrTy()}, false);
   llvm::Function::Create(
-      /* Type    */ TableGetTy,
+      /* Type    */ TableCheckPtr,
       /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-      /* Name    */ "__sable_table_get",
+      /* Name    */ "__sable_table_check",
+      /* Parent  */ Target);
+
+  /* __sable_function_t *
+   * __sable_table_function_ptr(__sable_table_t *table, std::uint32_t index) */
+  auto *TableFunctionPtrTy = llvm::FunctionType::get(
+      getFunctionPtrTy(), {getTablePtrTy(), getI32Ty()}, false);
+  llvm::Function::Create(
+      /* Type    */ TableFunctionPtrTy,
+      /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+      /* Name    */ "__sable_table_function_ptr",
+      /* Parent  */ Target);
+
+  /* __sable_instance_t *
+   * __sable_table_instance_closure(__sable_table_t *table, std::uint32_t) */
+  auto *TableInstanceClosureTy = llvm::FunctionType::get(
+      getInstancePtrTy(), {getTablePtrTy(), getI32Ty()}, false);
+  llvm::Function::Create(
+      /* Type    */ TableInstanceClosureTy,
+      /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+      /* Name    */ "__sable_table_instance_closure",
       /* Parent  */ Target);
 
   /* void __sable_unreachable() */
@@ -710,7 +715,7 @@ EntityLayout::convertType(bytecode::FunctionType const &Type) const {
 std::size_t EntityLayout::getOffset(mir::ASTNode const &Node) const {
   auto SearchIter = OffsetMap.find(std::addressof(Node));
   assert(SearchIter != OffsetMap.end());
-  return std::get<1>(*SearchIter) + 4;
+  return std::get<1>(*SearchIter) + INSTANCE_ENTITY_START_OFFSET;
 }
 
 llvm::Constant *EntityLayout::operator[](mir::Data const &DataSegment) const {
@@ -752,10 +757,20 @@ llvm::Value *EntityLayout::get(
   return GlobalPtr;
 }
 
-llvm::Value *EntityLayout::get(
+llvm::Value *EntityLayout::getInstanceClosurePtr(
     llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
     mir::Function const &MFunction) const {
   auto Offset = getOffset(MFunction);
+  llvm::Value *InstanceClosurePtr =
+      Builder.CreateStructGEP(InstancePtr, Offset);
+  InstanceClosurePtr = Builder.CreateLoad(InstanceClosurePtr);
+  return InstanceClosurePtr;
+}
+
+llvm::Value *EntityLayout::getFunctionPtr(
+    llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+    mir::Function const &MFunction) const {
+  auto Offset = getOffset(MFunction) + 1;
   auto *FunctionTy = convertType(MFunction.getType());
   llvm::Value *FunctionPtr = Builder.CreateStructGEP(InstancePtr, Offset);
   FunctionPtr = Builder.CreateLoad(FunctionPtr);

@@ -380,7 +380,10 @@ void Parser<ReaderImpl, DelegateImpl>::parseInstruction() {
   }
   case 0x0f: Delegate.onInstReturn(); break;
   case 0x10: Delegate.onInstCall(Reader.readFuncIDX()); break;
-  case 0x11: Delegate.onInstCallIndirect(Reader.readTypeIDX()); break;
+  case 0x11:
+    Delegate.onInstCallIndirect(Reader.readTypeIDX());
+    utility::ignore(Reader.read());
+    break;
 
   case 0x1a: Delegate.onInstDrop(); break;
   case 0x1b: Delegate.onInstSelect(); break;

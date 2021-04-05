@@ -227,9 +227,8 @@ bool WebAssemblyInstanceBuilder::tryImport(
       continue;
     auto Index = FunctionMetadata.Imports[I].Index;
     if (FunctionMetadata.Entities[Index] != Callee.getTypeString()) continue;
-    Instance->getFunctionInstanceClosure(Index) =
-        Callee.getInstanceClosurePointer();
-    Instance->getFunctionPointer(Index) = Callee.getFunctionPointer();
+    Instance->getInstanceClosure(Index) = Callee.getInstanceClosure();
+    Instance->getFunction(Index) = Callee.getFunction();
     return true;
   }
   return false;
@@ -246,8 +245,8 @@ bool WebAssemblyInstanceBuilder::tryImport(
     auto Index = FunctionMetadata.Imports[I].Index;
     if (FunctionMetadata.Entities[Index] != TypeString) continue;
     auto *CastedPtr = reinterpret_cast<__sable_function_t *>(Function);
-    Instance->getFunctionInstanceClosure(Index) = nullptr;
-    Instance->getFunctionPointer(Index) = CastedPtr;
+    Instance->getInstanceClosure(Index) = nullptr;
+    Instance->getFunction(Index) = CastedPtr;
     return true;
   }
   return false;
@@ -342,7 +341,7 @@ std::unique_ptr<WebAssemblyInstance> WebAssemblyInstanceBuilder::Build() {
     if (Instance->getGlobal(I) == nullptr)
       throw std::runtime_error("incomplete instance (missing global)");
   for (std::size_t I = 0; I < Instance->getFunctionMetadata().Size; ++I)
-    if (Instance->getFunctionPointer(I) == nullptr)
+    if (Instance->getFunction(I) == nullptr)
       throw std::runtime_error("incomplete instance (missing function)");
 
   auto const &MemoryMetadata = Instance->getMemoryMetadata();
@@ -375,8 +374,8 @@ std::unique_ptr<WebAssemblyInstance> WebAssemblyInstanceBuilder::Build() {
   for (std::size_t I = 0; I < FunctionMetadata.ESize; ++I) {
     auto Index = FunctionMetadata.Exports[I].Index;
     std::string_view Name(FunctionMetadata.Exports[I].Name);
-    auto *InstanceClosure = Instance->getFunctionInstanceClosure(Index);
-    auto *InstancePtr = Instance->getFunctionPointer(Index);
+    auto *InstanceClosure = Instance->getInstanceClosure(Index);
+    auto *InstancePtr = Instance->getFunction(Index);
     auto *ExpectTypeStr = FunctionMetadata.Entities[Index];
     auto Entry = std::make_tuple(InstanceClosure, InstancePtr, ExpectTypeStr);
     Instance->ExportedFunctions.emplace(Name, Entry);
@@ -425,7 +424,7 @@ __sable_global_t *&WebAssemblyInstance::getGlobal(std::size_t Index) {
 }
 
 __sable_instance_t *&
-WebAssemblyInstance::getFunctionInstanceClosure(std::size_t Index) {
+WebAssemblyInstance::getInstanceClosure(std::size_t Index) {
   assert(Index < getFunctionMetadata().Size);
   auto Offset = INSTANCE_ENTITY_START_OFFSET + getMemoryMetadata().Size +
                 getTableMetadata().Size + getGlobalMetadata().Size;
@@ -433,8 +432,7 @@ WebAssemblyInstance::getFunctionInstanceClosure(std::size_t Index) {
   return reinterpret_cast<__sable_instance_t *&>(Storage[Offset]);
 }
 
-__sable_function_t *&
-WebAssemblyInstance::getFunctionPointer(std::size_t Index) {
+__sable_function_t *&WebAssemblyInstance::getFunction(std::size_t Index) {
   assert(Index < getFunctionMetadata().Size);
   auto Offset = INSTANCE_ENTITY_START_OFFSET + getMemoryMetadata().Size +
                 getTableMetadata().Size + getGlobalMetadata().Size;
@@ -442,21 +440,29 @@ WebAssemblyInstance::getFunctionPointer(std::size_t Index) {
   return reinterpret_cast<__sable_function_t *&>(Storage[Index]);
 }
 
+char const *WebAssemblyInstance::getTypeString(std::size_t Index) const {
+  assert(Index < getFunctionMetadata().Size);
+  return getFunctionMetadata().Entities[Index];
+}
+
 void WebAssemblyInstance::replace(
     __sable_memory_t *Old, __sable_memory_t *New) {
+  auto HasReplaced = false;
   for (std::size_t I = 0; I < getMemoryMetadata().Size; ++I)
     if (getMemory(I) == Old) {
       getMemory(I) = New;
-      return;
+      HasReplaced = true;
+      break;
     }
-  utility::unreachable();
-}
-
-WebAssemblyCallee WebAssemblyInstance::getFunction(std::uint32_t Index) {
-  auto *InstanceClosure = getFunctionInstanceClosure(Index);
-  auto *FunctionPtr = getFunctionPointer(Index);
-  auto *TypeString = getFunctionMetadata().Entities[Index];
-  return WebAssemblyCallee(InstanceClosure, FunctionPtr, TypeString);
+  for (auto const &[Name, MemoryPtr] : ExportedMemories) {
+    if (MemoryPtr == Old) {
+      ExportedMemories[Name] = New;
+      HasReplaced = true;
+      break;
+    }
+  }
+  utility::ignore(HasReplaced);
+  assert(HasReplaced);
 }
 
 WebAssemblyInstance::~WebAssemblyInstance() noexcept {

@@ -16,3 +16,6 @@
 [submodule "lib/memory"]
 	path = lib/memory
 	url = git@github.com:foonathan/memory.git
+[submodule "lib/cxxopts"]
+	path = lib/cxxopts
+	url = git@github.com:jarro2783/cxxopts.git

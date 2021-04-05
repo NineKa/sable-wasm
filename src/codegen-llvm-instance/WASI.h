@@ -24,7 +24,15 @@ public:
 };
 } // namespace exceptions
 
-void proc_exit(__sable_instance_t *, std::int32_t ExitCode);
+// clang-format off
+void proc_exit(__sable_instance_t *, std::int32_t);
+std::int32_t fd_seek(__sable_instance_t *, std::int32_t, std::int64_t, std::int32_t, std::int32_t);
+std::int32_t fd_close(__sable_instance_t*, std::int32_t);
+std::int32_t fd_fdstat_get(__sable_instance_t *, std::int32_t, std::int32_t);
+std::int32_t fd_write(__sable_instance_t *, std::int32_t, std::int32_t, std::int32_t, std::int32_t);
+std::int32_t args_sizes_get(__sable_instance_t *, std::int32_t, std::int32_t);
+std::int32_t args_get(__sable_instance_t *, std::int32_t, std::int32_t);
+// clang-format on
 } // namespace runtime::wasi
 
 #endif

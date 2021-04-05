@@ -16,20 +16,19 @@ struct __sable_global_t;
 struct __sable_function_t;
 struct __sable_instance_t;
 
+// clang-format off
 void __sable_unreachable();
+
 std::uint32_t __sable_memory_size(__sable_memory_t *);
 void __sable_memory_guard(__sable_memory_t *, std::uint32_t Offset);
 std::uint32_t __sable_memory_grow(__sable_memory_t *, std::uint32_t Delta);
 
 void __sable_table_guard(__sable_table_t *, std::uint32_t);
 void __sable_table_check(__sable_table_t *, std::uint32_t, char const *);
-__sable_instance_t *
-__sable_table_instance_closure(__sable_table_t *, std::uint32_t Index);
-__sable_function_t *
-__sable_table_function_ptr(__sable_table_t *, std::uint32_t Index);
-void __sable_table_set(
-    __sable_table_t *, __sable_instance_t *, std::uint32_t StartPos,
-    std::uint32_t Count, std::uint32_t Indices[]);
+__sable_instance_t *__sable_table_instance_closure(__sable_table_t *, std::uint32_t Index);
+__sable_function_t *__sable_table_function_ptr(__sable_table_t *, std::uint32_t Index);
+void __sable_table_set(__sable_table_t *, __sable_instance_t *, std::uint32_t StartPos, std::uint32_t Count, std::uint32_t Indices[]);
+// clang-format on
 }
 
 namespace runtime {
@@ -222,16 +221,13 @@ class WebAssemblyTable {
       >;
   std::vector<Entry> Storage;
 
+  // clang-format off
   friend void ::__sable_table_guard(__sable_table_t *, std::uint32_t);
-  friend void ::__sable_table_check(
-      __sable_table_t *, std::uint32_t, char const *);
-  friend __sable_instance_t * ::__sable_table_instance_closure(
-      __sable_table_t *, std::uint32_t);
-  friend __sable_function_t * ::__sable_table_function_ptr(
-      __sable_table_t *, std::uint32_t Index);
-  friend void ::__sable_table_set(
-      __sable_table_t *, __sable_instance_t *, std::uint32_t, std::uint32_t,
-      std::uint32_t *);
+  friend void ::__sable_table_check(__sable_table_t *, std::uint32_t, char const *);
+  friend __sable_instance_t * ::__sable_table_instance_closure(__sable_table_t *, std::uint32_t);
+  friend __sable_function_t * ::__sable_table_function_ptr(__sable_table_t *, std::uint32_t Index);
+  friend void ::__sable_table_set(__sable_table_t *, __sable_instance_t *, std::uint32_t, std::uint32_t, std::uint32_t *);
+  // clang-format on
 
   void
   set(std::uint32_t, __sable_instance_t *, __sable_function_t *,
@@ -261,7 +257,8 @@ public:
   set(std::uint32_t Index,
       RetType (*FunctionPointer)(__sable_instance_t *, ArgTypes...)) {
     auto TypeString = detail::type_str<RetType, ArgTypes...>();
-    set(Index, nullptr, FunctionPointer, TypeString);
+    auto *ErasedPtr = reinterpret_cast<__sable_function_t *>(FunctionPointer);
+    set(Index, nullptr, ErasedPtr, TypeString);
   }
 
   void set(std::uint32_t, WebAssemblyCallee Callee);
@@ -362,17 +359,17 @@ class WebAssemblyInstance {
   __sable_memory_t *&getMemory(std::size_t Index);
   __sable_table_t *&getTable(std::size_t Index);
   __sable_global_t *&getGlobal(std::size_t Index);
-  __sable_instance_t *&getFunctionInstanceClosure(std::size_t Index);
-  __sable_function_t *&getFunctionPointer(std::size_t Index);
+  __sable_instance_t *&getInstanceClosure(std::size_t Index);
+  __sable_function_t *&getFunction(std::size_t Index);
+  char const *getTypeString(std::size_t Index) const;
 
   WebAssemblyInstance() = default;
 
   void replace(__sable_memory_t *Old, __sable_memory_t *New);
 
-  friend void ::__sable_table_set(
-      __sable_table_t *, __sable_instance_t *, std::uint32_t, std::uint32_t,
-      std::uint32_t *);
-  WebAssemblyCallee getFunction(std::uint32_t Index);
+  // clang-format off
+  friend void ::__sable_table_set(__sable_table_t *, __sable_instance_t *, std::uint32_t, std::uint32_t, std::uint32_t *);
+  // clang-format on
 
 public:
   WebAssemblyInstance(WebAssemblyInstance const &) = delete;
@@ -396,21 +393,21 @@ public:
 };
 
 class WebAssemblyCallee {
-  __sable_instance_t *Instance;
+  __sable_instance_t *InstanceClosure;
   __sable_function_t *Function;
   char const *ExpectTypeStr;
 
   friend class WebAssemblyInstance;
   friend class WebAssemblyTable;
   WebAssemblyCallee(
-      __sable_instance_t *Instance_, __sable_function_t *Function_,
+      __sable_instance_t *InstanceClosure_, __sable_function_t *Function_,
       char const *ExpectTypeStr_)
-      : Instance(Instance_), Function(Function_),
+      : InstanceClosure(InstanceClosure_), Function(Function_),
         ExpectTypeStr(ExpectTypeStr_) {}
 
 public:
-  __sable_function_t *getFunctionPointer() const { return Function; }
-  __sable_instance_t *getInstanceClosurePointer() const { return Instance; }
+  __sable_function_t *getFunction() const { return Function; }
+  __sable_instance_t *getInstanceClosure() const { return InstanceClosure; }
   char const *getTypeString() const { return ExpectTypeStr; }
 
   template <typename RetType, typename... ArgTypes>
@@ -420,7 +417,7 @@ public:
       throw std::runtime_error("type mismatch");
     }
     auto *CastedPtr = reinterpret_cast<FunctionTy>(Function);
-    return CastedPtr(Instance, Args...);
+    return CastedPtr(InstanceClosure, Args...);
   }
 };
 } // namespace runtime

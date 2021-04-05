@@ -39,8 +39,10 @@ void __sable_table_set(
   auto *Table = runtime::WebAssemblyTable::fromInstancePtr(TablePtr);
   for (std::uint32_t I = 0; I < Count; ++I) {
     auto Index = Indices[I];
-    auto Callee = Instance->getFunction(Index);
-    Table->set(StartPos + I, Callee);
+    auto *InstanceClosure = Instance->getInstanceClosure(Index);
+    auto *Function = Instance->getFunction(Index);
+    auto *TypeString = Instance->getTypeString(Index);
+    Table->set(StartPos + I, InstanceClosure, Function, TypeString);
   }
 }
 
@@ -57,16 +59,12 @@ void WebAssemblyTable::set(
 __sable_instance_t *
 WebAssemblyTable::getInstanceClosure(std::uint32_t Index) const {
   assert(Index < Storage.size());
-  if (std::get<0>(Storage[Index]) == nullptr)
-    throw exceptions::BadTableEntry(*this, Index);
   return std::get<0>(Storage[Index]);
 }
 
 __sable_function_t *
 WebAssemblyTable::getFunctionPointer(std::uint32_t Index) const {
   assert(Index < Storage.size());
-  if (std::get<0>(Storage[Index]) == nullptr)
-    throw exceptions::BadTableEntry(*this, Index);
   return std::get<1>(Storage[Index]);
 }
 
@@ -110,8 +108,8 @@ WebAssemblyCallee WebAssemblyTable::get(std::uint32_t Index) const {
 }
 
 void WebAssemblyTable::set(std::uint32_t Index, WebAssemblyCallee Callee) {
-  auto *InstanceClosure = Callee.getInstanceClosurePointer();
-  auto *FunctionPointer = Callee.getFunctionPointer();
+  auto *InstanceClosure = Callee.getInstanceClosure();
+  auto *FunctionPointer = Callee.getFunction();
   auto *TypeString = Callee.getTypeString();
   set(Index, InstanceClosure, FunctionPointer, TypeString);
 }

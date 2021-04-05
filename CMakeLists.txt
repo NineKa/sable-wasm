@@ -4,7 +4,6 @@ project(sable-wasm)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 add_compile_options(-Wno-unused-parameter -Wall -Wextra -pedantic -Werror -Wfatal-errors)
 
 add_compile_options($<$<CONFIG:RELEASE>:-flto>)
@@ -18,6 +17,7 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/lib/mio)
 add_subdirectory(${PROJECT_SOURCE_DIR}/lib/preprocessor)
 add_subdirectory(${PROJECT_SOURCE_DIR}/lib/utfcpp)
 add_subdirectory(${PROJECT_SOURCE_DIR}/lib/range-v3)
+add_subdirectory(${PROJECT_SOURCE_DIR}/lib/cxxopts)
 
 find_package(LLVM REQUIRED CONFIG)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
@@ -45,8 +45,6 @@ add_library(sablewasm
         src/parser/customsections/Name.cc
         src/codegen-llvm-instance/LLVMCodegen.cc
         src/codegen-llvm-instance/EntityLayout.cc)
-
-
 target_link_libraries(sablewasm
         fmt::fmt
         mio::mio
@@ -62,9 +60,11 @@ add_library(sablewasm-rt SHARED
         src/codegen-llvm-instance/WebAssemblyTable.cc
         src/codegen-llvm-instance/WebAssemblyInstance.cc)
 target_link_libraries(sablewasm-rt fmt::fmt-header-only range-v3)
+target_link_options(sablewasm-rt PRIVATE "-ldl")
+target_link_options(sablewasm-rt PRIVATE "-rdynamic")
 
-add_executable(sable-wasm src/Main.cc)
-target_link_libraries(sable-wasm sablewasm)
+add_executable(sable-wasm src/sable-wasm.cc)
+target_link_libraries(sable-wasm sablewasm cxxopts)
 
 add_executable(tester src/Tester.cc)
 target_link_libraries(tester sablewasm-rt)

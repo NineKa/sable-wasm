@@ -22,6 +22,8 @@ int main(int argc, char const *argv[]) {
   WASI_IMPORT("fd_fdstat_get", wasi::fd_fdstat_get);
   WASI_IMPORT("fd_fdstat_set_flags", wasi::fd_fdstat_set_flags);
   WASI_IMPORT("fd_write", wasi::fd_write);
+  WASI_IMPORT("random_get", wasi::random_get);
+  WASI_IMPORT("poll_oneoff", wasi::poll_oneoff);
   auto Instance = InstanceBuilder.Build();
 
   Instance->getFunction("_start").invoke<void>();

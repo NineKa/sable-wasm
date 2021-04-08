@@ -42,6 +42,8 @@ std::int32_t args_get(__sable_instance_t *, std::int32_t, std::int32_t);
 
 std::int32_t random_get(__sable_instance_t *, std::int32_t, std::int32_t);
 std::int32_t clock_time_get(__sable_instance_t *, std::int32_t, std::int64_t, std::int32_t);
+
+std::int32_t poll_oneoff(__sable_instance_t *, std::int32_t, std::int32_t, std::int32_t, std::int32_t) { return ERRNO_INVAL; }
 // clang-format on
 } // namespace runtime::wasi
 

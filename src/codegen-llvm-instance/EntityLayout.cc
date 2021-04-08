@@ -464,10 +464,7 @@ void EntityLayout::setupFunctions() {
       auto *InstancePtr = Definition->arg_begin();
       auto *ContextPtr = getContextPtr(Builder, InstancePtr, Function);
       auto *FunctionPtr = getFunctionPtr(Builder, InstancePtr, Function);
-      auto *NullPtr = llvm::ConstantInt::get(getPtrIntTy(), 0);
-      llvm::Value *IsNullTest =
-          Builder.CreatePtrToInt(ContextPtr, getPtrIntTy());
-      IsNullTest = Builder.CreateICmpEQ(IsNullTest, NullPtr);
+      auto *IsNullTest = Builder.CreateIsNull(ContextPtr);
       ContextPtr = Builder.CreateSelect(IsNullTest, InstancePtr, ContextPtr);
       // clang-format off
       auto Arguments =

@@ -271,10 +271,7 @@ public:
     auto *CalleeFunction =
         Builder.CreateCall(BuiltinTableFunction, {Table, Index});
 
-    auto *Null = llvm::ConstantInt::get(Context.getLayout().getPtrIntTy(), 0);
-    llvm::Value *IsNullTest = Builder.CreatePtrToInt(
-        CalleeContext, Context.getLayout().getPtrIntTy());
-    IsNullTest = Builder.CreateICmpEQ(IsNullTest, Null);
+    auto *IsNullTest = Builder.CreateIsNull(CalleeContext);
     CalleeContext =
         Builder.CreateSelect(IsNullTest, InstancePtr, CalleeContext);
 

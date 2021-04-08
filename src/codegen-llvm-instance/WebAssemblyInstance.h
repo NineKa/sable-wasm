@@ -5,6 +5,7 @@
 #include "../utility/Commons.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -23,11 +24,11 @@ std::uint32_t __sable_memory_size(__sable_memory_t *);
 void __sable_memory_guard(__sable_memory_t *, std::uint32_t Offset);
 std::uint32_t __sable_memory_grow(__sable_memory_t *, std::uint32_t Delta);
 
-void __sable_table_guard(__sable_table_t *, std::uint32_t);
-void __sable_table_check(__sable_table_t *, std::uint32_t, char const *);
-__sable_instance_t *__sable_table_instance_closure(__sable_table_t *, std::uint32_t Index);
-__sable_function_t *__sable_table_function_ptr(__sable_table_t *, std::uint32_t Index);
-void __sable_table_set(__sable_table_t *, __sable_instance_t *, std::uint32_t StartPos, std::uint32_t Count, std::uint32_t Indices[]);
+void __sable_table_guard(__sable_table_t *, std::uint32_t Index);
+void __sable_table_check(__sable_table_t *, std::uint32_t Index, char const *ExpectSignature);
+__sable_instance_t *__sable_table_context(__sable_table_t *, std::uint32_t Index);
+__sable_function_t *__sable_table_function(__sable_table_t *, std::uint32_t Index);
+void __sable_table_set(__sable_table_t *, __sable_instance_t *, std::uint32_t Offset, std::uint32_t Count, std::uint32_t Indices[]);
 // clang-format on
 }
 
@@ -96,6 +97,19 @@ public:
   bytecode::FunctionType const &getActualType() const { return ActualType; }
 };
 
+class GlobalTypeMismatch : public std::runtime_error {
+  WebAssemblyGlobal const *Site;
+  bytecode::ValueType AttemptType;
+
+public:
+  GlobalTypeMismatch(
+      WebAssemblyGlobal const &Site_, bytecode::ValueType AttemptType_)
+      : std::runtime_error("WebAssembly global type mismatch"),
+        Site(std::addressof(Site_)), AttemptType(AttemptType_) {}
+  WebAssemblyGlobal const &getSite() const { return *Site; }
+  bytecode::ValueType const &getAttemptType() const { return AttemptType; }
+};
+
 class BadTableEntry : public std::runtime_error {
   WebAssemblyTable const *Site;
   std::uint32_t AttemptIndex;
@@ -110,27 +124,46 @@ public:
 } // namespace exceptions
 
 namespace detail {
-bytecode::ValueType fromTypeChar(char TypeChar);
-char toTypeChar(bytecode::ValueType const &Type);
-bytecode::FunctionType fromTypeString(std::string_view TypeString);
-std::string toTypeString(bytecode::FunctionType const &Type);
+template <typename T> struct from_signature_parameter;
+template <typename T> struct to_signature_result;
+// clang-format off
+template <> struct from_signature_parameter<bytecode::ValueType>
+{ using type = char; };
+template <> struct from_signature_parameter<bytecode::GlobalType>
+{ using type = char; };
+template <> struct from_signature_parameter<bytecode::FunctionType>
+{ using type = std::string_view; };
+// clang-format on
+template <typename T>
+T fromSignature(typename from_signature_parameter<T>::type);
+template <>
+bytecode::ValueType fromSignature<bytecode::ValueType>(char Signature);
+template <>
+bytecode::GlobalType fromSignature<bytecode::GlobalType>(char Signature);
+template <>
+bytecode::FunctionType
+fromSignature<bytecode::FunctionType>(std::string_view Signature);
 
-template <typename T> constexpr char type_char();
-template <> constexpr char type_char<std::int32_t>() { return 'I'; }
-template <> constexpr char type_char<std::uint32_t>() { return 'I'; }
-template <> constexpr char type_char<std::int64_t>() { return 'J'; }
-template <> constexpr char type_char<std::uint64_t>() { return 'J'; }
-template <> constexpr char type_char<float>() { return 'F'; }
-template <> constexpr char type_char<double>() { return 'D'; }
+char toSignature(bytecode::ValueType const &Type);
+char toSignature(bytecode::GlobalType const &Type);
+std::string toSignature(bytecode::FunctionType const &Type);
+
+template <typename T> constexpr char signature_();
+template <> constexpr char signature_<std::int32_t>() { return 'I'; }
+template <> constexpr char signature_<std::uint32_t>() { return 'I'; }
+template <> constexpr char signature_<std::int64_t>() { return 'J'; }
+template <> constexpr char signature_<std::uint64_t>() { return 'J'; }
+template <> constexpr char signature_<float>() { return 'F'; }
+template <> constexpr char signature_<double>() { return 'D'; }
 
 template <typename RetType, typename... ArgTypes>
-inline std::string type_str() {
+inline std::string signature() {
   std::string TypeStr;
-  std::array<char, sizeof...(ArgTypes)> ParamTypes{type_char<ArgTypes>()...};
+  std::array<char, sizeof...(ArgTypes)> ParamTypes{signature_<ArgTypes>()...};
   TypeStr.append(ParamTypes.begin(), ParamTypes.end());
   TypeStr.push_back(':');
   if constexpr (!std::is_same_v<RetType, void>) {
-    char ReturnType = type_char<RetType>();
+    char ReturnType = signature_<RetType>();
     TypeStr.push_back(ReturnType);
   }
   return TypeStr;
@@ -197,6 +230,12 @@ class WebAssemblyGlobal {
 
 public:
   explicit WebAssemblyGlobal(bytecode::ValueType Type_);
+  WebAssemblyGlobal(WebAssemblyGlobal const &) = delete;
+  WebAssemblyGlobal(WebAssemblyGlobal &&) noexcept = delete;
+  WebAssemblyGlobal &operator=(WebAssemblyGlobal const &) = delete;
+  WebAssemblyGlobal &operator=(WebAssemblyGlobal &&) noexcept = delete;
+  ~WebAssemblyGlobal() noexcept = default;
+
   bytecode::ValueType const &getValueType() const;
   std::int32_t &asI32();
   std::int64_t &asI64();
@@ -214,27 +253,28 @@ public:
 class WebAssemblyTable {
   std::uint32_t Size;
   std::uint32_t MaxSize;
-  using Entry = std::tuple<
-      __sable_instance_t *, // Instance Closure Pointer
-      __sable_function_t *, // Function Pointer
-      std::string           // Type String
-      >;
-  std::vector<Entry> Storage;
+
+  struct TableEntry {
+    __sable_instance_t *ContextPtr;
+    __sable_function_t *FunctionPtr;
+    std::string Signature;
+  };
+  std::vector<TableEntry> Storage;
 
   // clang-format off
   friend void ::__sable_table_guard(__sable_table_t *, std::uint32_t);
   friend void ::__sable_table_check(__sable_table_t *, std::uint32_t, char const *);
-  friend __sable_instance_t * ::__sable_table_instance_closure(__sable_table_t *, std::uint32_t);
-  friend __sable_function_t * ::__sable_table_function_ptr(__sable_table_t *, std::uint32_t Index);
+  friend __sable_instance_t * ::__sable_table_context(__sable_table_t *, std::uint32_t);
+  friend __sable_function_t * ::__sable_table_function(__sable_table_t *, std::uint32_t);
   friend void ::__sable_table_set(__sable_table_t *, __sable_instance_t *, std::uint32_t, std::uint32_t, std::uint32_t *);
   // clang-format on
 
   void
-  set(std::uint32_t, __sable_instance_t *, __sable_function_t *,
-      std::string_view TypeString);
-  __sable_instance_t *getInstanceClosure(std::uint32_t) const;
-  __sable_function_t *getFunctionPointer(std::uint32_t) const;
-  std::string_view getTypeString(std::uint32_t) const;
+  set(std::uint32_t, __sable_instance_t *ContextPtr,
+      __sable_function_t *FunctionPtr, std::string_view Signature);
+  __sable_instance_t *getContextPtr(std::uint32_t) const;
+  __sable_function_t *getFunctionPtr(std::uint32_t) const;
+  std::string_view getSignature(std::uint32_t) const;
 
   static constexpr std::uint32_t NO_MAXIMUM =
       std::numeric_limits<std::uint32_t>::max();
@@ -242,6 +282,11 @@ class WebAssemblyTable {
 public:
   explicit WebAssemblyTable(std::uint32_t NumEntries);
   WebAssemblyTable(std::uint32_t NumEntries, std::uint32_t MaxNumEntries);
+  WebAssemblyTable(WebAssemblyTable const &) = delete;
+  WebAssemblyTable(WebAssemblyTable &&) noexcept = delete;
+  WebAssemblyTable &operator=(WebAssemblyTable const &) = delete;
+  WebAssemblyTable &operator=(WebAssemblyTable &&) noexcept = delete;
+  ~WebAssemblyTable() noexcept = default;
 
   std::uint32_t getSize() const;
   bool hasMaxSize() const;
@@ -255,10 +300,10 @@ public:
   template <typename RetType, typename... ArgTypes>
   void
   set(std::uint32_t Index,
-      RetType (*FunctionPointer)(__sable_instance_t *, ArgTypes...)) {
-    auto TypeString = detail::type_str<RetType, ArgTypes...>();
-    auto *ErasedPtr = reinterpret_cast<__sable_function_t *>(FunctionPointer);
-    set(Index, nullptr, ErasedPtr, TypeString);
+      RetType (*FunctionPtr)(__sable_instance_t *, ArgTypes...)) {
+    auto Signature = detail::signature<RetType, ArgTypes...>();
+    auto *TypeErasedPtr = reinterpret_cast<__sable_function_t *>(FunctionPtr);
+    set(Index, nullptr, TypeErasedPtr, Signature);
   }
 
   void set(std::uint32_t, WebAssemblyCallee Callee);
@@ -272,14 +317,22 @@ class WebAssemblyInstanceBuilder {
 
   WebAssemblyInstanceBuilder &import(
       std::string_view ModuleName, std::string_view EntityName,
-      std::string_view TypeString, std::intptr_t Function);
+      std::string_view Signature, std::intptr_t Function);
 
   bool tryImport(
       std::string_view ModuleName, std::string_view EntityName,
-      std::string_view TypeString, std::intptr_t Function);
+      std::string_view Signature, std::intptr_t Function);
 
 public:
-  explicit WebAssemblyInstanceBuilder(char const *Path);
+  explicit WebAssemblyInstanceBuilder(std::filesystem::path const &Path);
+  WebAssemblyInstanceBuilder(WebAssemblyInstanceBuilder const &) = delete;
+  WebAssemblyInstanceBuilder(WebAssemblyInstanceBuilder &&) noexcept = delete;
+  WebAssemblyInstanceBuilder &
+  operator=(WebAssemblyInstanceBuilder const &) = delete;
+  WebAssemblyInstanceBuilder &
+  operator=(WebAssemblyInstanceBuilder &&) noexcept = delete;
+  ~WebAssemblyInstanceBuilder() noexcept = default;
+
   WebAssemblyInstanceBuilder &import(
       std::string_view ModuleName, std::string_view EntityName,
       WebAssemblyMemory &Memory);
@@ -296,10 +349,10 @@ public:
   template <typename RetType, typename... ArgTypes>
   WebAssemblyInstanceBuilder &import(
       std::string_view ModuleName, std::string_view EntityName,
-      RetType (*Function)(__sable_instance_t *, ArgTypes...)) {
-    auto TypeString = detail::type_str<RetType, ArgTypes...>();
-    auto TypeErasedPtr = reinterpret_cast<std::intptr_t>(Function);
-    return import(ModuleName, EntityName, TypeString, TypeErasedPtr);
+      RetType (*FunctionPtr)(__sable_instance_t *, ArgTypes...)) {
+    auto Signature = detail::signature<RetType, ArgTypes...>();
+    auto TypeErasedPtr = reinterpret_cast<std::intptr_t>(FunctionPtr);
+    return import(ModuleName, EntityName, Signature, TypeErasedPtr);
   }
 
   bool tryImport(
@@ -318,10 +371,10 @@ public:
   template <typename RetType, typename... ArgTypes>
   bool tryImport(
       std::string_view ModuleName, std::string_view EntityName,
-      RetType (*Function)(__sable_instance_t *, ArgTypes...)) {
-    auto TypeString = detail::type_str<RetType, ArgTypes...>();
-    auto TypeErasedPtr = reinterpret_cast<std::intptr_t>(Function);
-    return tryImport(ModuleName, EntityName, TypeString, TypeErasedPtr);
+      RetType (*FunctionPtr)(__sable_instance_t *, ArgTypes...)) {
+    auto Signature = detail::signature<RetType, ArgTypes...>();
+    auto TypeErasedPtr = reinterpret_cast<std::intptr_t>(FunctionPtr);
+    return tryImport(ModuleName, EntityName, Signature, TypeErasedPtr);
   }
 
   std::unique_ptr<WebAssemblyInstance> Build();
@@ -334,11 +387,11 @@ class WebAssemblyInstance {
   void *DLHandler = nullptr;
 
   // Exports:
-  using FunctionEntry = std::tuple<
-      __sable_instance_t *, // Function Instance Closure
-      __sable_function_t *, // Function Pointer
-      char const *          // Type String
-      >;
+  struct FunctionEntry {
+    __sable_instance_t *ContextPtr;
+    __sable_function_t *FunctionPtr;
+    char const *Signature;
+  };
   std::unordered_map<std::string_view, __sable_memory_t *> ExportedMemories;
   std::unordered_map<std::string_view, __sable_table_t *> ExportedTables;
   std::unordered_map<std::string_view, __sable_global_t *> ExportedGlobals;
@@ -359,9 +412,9 @@ class WebAssemblyInstance {
   __sable_memory_t *&getMemory(std::size_t Index);
   __sable_table_t *&getTable(std::size_t Index);
   __sable_global_t *&getGlobal(std::size_t Index);
-  __sable_instance_t *&getInstanceClosure(std::size_t Index);
-  __sable_function_t *&getFunction(std::size_t Index);
-  char const *getTypeString(std::size_t Index) const;
+  __sable_instance_t *&getContextPtr(std::size_t Index);
+  __sable_function_t *&getFunctionPtr(std::size_t Index);
+  char const *getSignature(std::size_t Index) const;
 
   WebAssemblyInstance() = default;
 
@@ -393,31 +446,31 @@ public:
 };
 
 class WebAssemblyCallee {
-  __sable_instance_t *InstanceClosure;
-  __sable_function_t *Function;
-  char const *ExpectTypeStr;
+  __sable_instance_t *ContextPtr;
+  __sable_function_t *FunctionPtr;
+  char const *Signature;
 
   friend class WebAssemblyInstance;
   friend class WebAssemblyTable;
   WebAssemblyCallee(
-      __sable_instance_t *InstanceClosure_, __sable_function_t *Function_,
-      char const *ExpectTypeStr_)
-      : InstanceClosure(InstanceClosure_), Function(Function_),
-        ExpectTypeStr(ExpectTypeStr_) {}
+      __sable_instance_t *ContextPtr_, __sable_function_t *FunctionPtr_,
+      char const *Signature_)
+      : ContextPtr(ContextPtr_), FunctionPtr(FunctionPtr_),
+        Signature(Signature_) {}
 
 public:
-  __sable_function_t *getFunction() const { return Function; }
-  __sable_instance_t *getInstanceClosure() const { return InstanceClosure; }
-  char const *getTypeString() const { return ExpectTypeStr; }
+  __sable_function_t *getFunctionPtr() const { return FunctionPtr; }
+  __sable_instance_t *getContextPtr() const { return ContextPtr; }
+  char const *getSignature() const { return Signature; }
 
   template <typename RetType, typename... ArgTypes>
   RetType invoke(ArgTypes... Args) const { // use copy instead of forward
     using FunctionTy = RetType (*)(__sable_instance_t *, ArgTypes...);
-    if (detail::type_str<RetType, ArgTypes...>() != ExpectTypeStr) {
+    if (detail::signature<RetType, ArgTypes...>() != Signature) {
       throw std::runtime_error("type mismatch");
     }
-    auto *CastedPtr = reinterpret_cast<FunctionTy>(Function);
-    return CastedPtr(InstanceClosure, Args...);
+    auto *CastedPtr = reinterpret_cast<FunctionTy>(FunctionPtr);
+    return CastedPtr(ContextPtr, Args...);
   }
 };
 } // namespace runtime

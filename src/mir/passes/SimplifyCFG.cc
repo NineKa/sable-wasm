@@ -26,6 +26,7 @@ bool SimplifyCFGPass::simplifyTrivialBranch(mir::BasicBlock &BasicBlock) {
       assert(*OutwardFlow.begin() == std::addressof(BasicBlock));
       PreviousBlock.pop_back();
       PreviousBlock.splice(PreviousBlock.end(), BasicBlock);
+      BasicBlock.replaceAllUseWith(std::addressof(PreviousBlock));
       BasicBlock.eraseFromParent();
       return true;
     }

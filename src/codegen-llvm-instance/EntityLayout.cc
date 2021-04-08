@@ -18,7 +18,7 @@
 
 #include <limits>
 
-#define INSTANCE_ENTITY_START_OFFSET 5
+#define INSTANCE_ENTITY_START_OFFSET 4
 
 namespace codegen::llvm_instance {
 
@@ -50,7 +50,6 @@ void EntityLayout::setupInstanceType() {
   auto *TableMetadataTy = createNamedStructTy("__sable_table_metadata_t");
   auto *GlobalMetadataTy = createNamedStructTy("__sable_global_metadata_t");
   auto *FunctionMetadataTy = createNamedStructTy("__sable_function_metadata_t");
-  InstanceFields.push_back(getVoidPtrTy()); // reserved
   InstanceFields.push_back(llvm::PointerType::getUnqual(MemoryMetadataTy));
   InstanceFields.push_back(llvm::PointerType::getUnqual(TableMetadataTy));
   InstanceFields.push_back(llvm::PointerType::getUnqual(GlobalMetadataTy));
@@ -93,7 +92,6 @@ void EntityLayout::setupInstanceType() {
 }
 
 namespace {
-namespace detail {
 struct InitExprTranslationVisitor :
     mir::InitExprVisitorBase<InitExprTranslationVisitor, llvm::Value *> {
   llvm::IRBuilder<> &Builder;
@@ -103,6 +101,7 @@ struct InitExprTranslationVisitor :
       EntityLayout &ELayout_, llvm::IRBuilder<> &Builder_,
       llvm::Value *InstancePtr_)
       : Builder(Builder_), InstancePtr(InstancePtr_), ELayout(ELayout_) {}
+
   llvm::Value *operator()(mir::initializer::Constant const *InitExpr) {
     using VKind = bytecode::ValueTypeKind;
     switch (InitExpr->getValueType().getKind()) {
@@ -113,6 +112,7 @@ struct InitExprTranslationVisitor :
     default: utility::unreachable();
     }
   }
+
   llvm::Value *operator()(mir::initializer::GlobalGet const *InitExpr) {
     auto *TargetGlobal = InitExpr->getGlobalValue();
     auto *GlobalPtr = ELayout.get(Builder, InstancePtr, *TargetGlobal);
@@ -120,13 +120,12 @@ struct InitExprTranslationVisitor :
     return GlobalValue;
   }
 };
-} // namespace detail
 } // namespace
 
 llvm::Value *EntityLayout::translateInitExpr(
     llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
     mir::InitializerExpr const &Expr) {
-  detail::InitExprTranslationVisitor Visitor(*this, Builder, InstancePtr);
+  InitExprTranslationVisitor Visitor(*this, Builder, InstancePtr);
   return Visitor.visit(std::addressof(Expr));
 }
 
@@ -148,8 +147,8 @@ void EntityLayout::setupDataSegments() {
         /* Name        */ "data");
     DataGlobal->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     DataGlobal->setAlignment(llvm::Align(1));
-    std::array<llvm::Constant *, 2> Indices{
-        getI32Constant(0), getI32Constant(0)};
+    auto *Zero = getI32Constant(0);
+    std::array<llvm::Constant *, 2> Indices{Zero, Zero};
     auto *DataPtr = llvm::ConstantExpr::getInBoundsGetElementPtr(
         DataGlobal->getValueType(), DataGlobal, Indices);
     DataMap.insert(std::make_pair(std::addressof(DataSegment), DataPtr));
@@ -174,18 +173,18 @@ void EntityLayout::setupElementSegments() {
         /* IsConstant  */ true,
         /* Linkage     */ llvm::GlobalVariable::LinkageTypes::PrivateLinkage,
         /* Initializer */ IndicesConstant,
-        /* Name        */ "element.indices");
+        /* Name        */ "element");
     IndicesGlobal->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
-    std::array<llvm::Constant *, 2> GEPIndices{
-        getI32Constant(0), getI32Constant(0)};
+    auto *Zero = getI32Constant(0);
+    std::array<llvm::Constant *, 2> GEPIndices{Zero, Zero};
     auto *OffsetsPtr = llvm::ConstantExpr::getInBoundsGetElementPtr(
         IndicesGlobal->getValueType(), IndicesGlobal, GEPIndices);
-    ElementMap.insert(std::make_pair(
-        std::addressof(ElementSegment), ElementEntry(OffsetsPtr)));
+    ElementMap.insert(
+        std::make_pair(std::addressof(ElementSegment), OffsetsPtr));
   }
 }
 
-llvm::GlobalVariable *EntityLayout::setupArrayGlobal(
+llvm::GlobalVariable *EntityLayout::createArrayGlobal(
     llvm::Type *ElementType, std::span<llvm::Constant *const> Elements) {
   auto *ElementsConstant = llvm::ConstantArray::get(
       llvm::ArrayType::get(ElementType, Elements.size()),
@@ -199,12 +198,12 @@ llvm::GlobalVariable *EntityLayout::setupArrayGlobal(
   return ElementsGlobal;
 }
 
-llvm::GlobalVariable *EntityLayout::setupMetadata(
+llvm::GlobalVariable *EntityLayout::createMetadata(
     std::string_view Prefix, std::uint32_t Size, std::uint32_t ImportSize,
-    std::uint32_t ExportSize, llvm::GlobalVariable *Entities,
+    std::uint32_t ExportSize, llvm::GlobalVariable *Signatures,
     llvm::GlobalVariable *Imports, llvm::GlobalVariable *Exports) {
-  Entities->setName(fmt::format("{}.entities", Prefix));
-  Entities->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
+  Signatures->setName(fmt::format("{}.signatures", Prefix));
+  Signatures->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
   Imports->setName(fmt::format("{}.imports", Prefix));
   Imports->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
   Exports->setName(fmt::format("{}.exports", Prefix));
@@ -216,7 +215,7 @@ llvm::GlobalVariable *EntityLayout::setupMetadata(
       {/* Size       */ getI32Ty(),
        /* ImportSize */ getI32Ty(),
        /* ExportSize */ getI32Ty(),
-       /* Entities   */ Entities->getType(),
+       /* Signatures */ Signatures->getType(),
        /* Imports    */ Imports->getType(),
        /* Exports    */ Exports->getType()});
 
@@ -224,9 +223,10 @@ llvm::GlobalVariable *EntityLayout::setupMetadata(
       MetadataTy, {/* Size       */ getI32Constant(Size),
                    /* ImportSize */ getI32Constant(ImportSize),
                    /* ExportSize */ getI32Constant(ExportSize),
-                   /* Entities   */ Entities,
+                   /* Signatures */ Signatures,
                    /* Imports    */ Imports,
                    /* Exports    */ Exports});
+
   return new llvm::GlobalVariable(
       /* Parent      */ Target,
       /* Type        */ MetadataTy,
@@ -239,12 +239,15 @@ llvm::GlobalVariable *EntityLayout::setupMetadata(
 void EntityLayout::setupMemoryMetadata() {
   auto &Context = Target.getContext();
 
-  auto *EntityTy = llvm::StructType::get(Context, {getI32Ty(), getI32Ty()});
+  auto *SignatureTy = llvm::StructType::get(
+      Context, {/* Min */ getI32Ty(), /* Max */ getI32Ty()});
   auto *ImportTy = llvm::StructType::get(
-      Context, {getI32Ty(), getCStringPtrTy(), getCStringPtrTy()});
-  auto *ExportTy =
-      llvm::StructType::get(Context, {getI32Ty(), getCStringPtrTy()});
-  std::vector<llvm::Constant *> Entities;
+      Context, {/* Index */ getI32Ty(), /* ModuleName */ getCStringPtrTy(),
+                /* EntityName */ getCStringPtrTy()});
+  auto *ExportTy = llvm::StructType::get(
+      Context, {/* Index */ getI32Ty(), /* Name */ getCStringPtrTy()});
+
+  std::vector<llvm::Constant *> Signatures;
   std::vector<llvm::Constant *> Imports;
   std::vector<llvm::Constant *> Exports;
 
@@ -253,10 +256,11 @@ void EntityLayout::setupMemoryMetadata() {
     auto Max = Memory.getType().hasMax()
                    ? Memory.getType().getMax()
                    : std::numeric_limits<std::uint32_t>::max();
-    auto *EntityConstant = llvm::ConstantStruct::get(
-        EntityTy, {getI32Constant(Min), getI32Constant(Max)});
-    Entities.push_back(EntityConstant);
+    auto *SignatureConstant = llvm::ConstantStruct::get(
+        SignatureTy, {getI32Constant(Min), getI32Constant(Max)});
+    Signatures.push_back(SignatureConstant);
   }
+
   for (auto const &[Index, Memory] :
        ranges::views::enumerate(Source.getMemories().asView())) {
     if (!Memory.isImported()) continue;
@@ -266,6 +270,7 @@ void EntityLayout::setupMemoryMetadata() {
         ImportTy, {getI32Constant(Index), ModuleName, EntityName});
     Imports.push_back(ImportConstant);
   }
+
   for (auto const &[Index, Memory] :
        ranges::views::enumerate(Source.getMemories().asView())) {
     if (!Memory.isExported()) continue;
@@ -275,23 +280,26 @@ void EntityLayout::setupMemoryMetadata() {
     Exports.push_back(ExportConstant);
   }
 
-  setupMetadata(
+  createMetadata(
       "__sable_memory_metadata",
-      /* Sizes    */ Entities.size(), Imports.size(), Exports.size(),
-      /* Entities */ setupArrayGlobal(EntityTy, Entities),
-      /* Imports  */ setupArrayGlobal(ImportTy, Imports),
-      /* Exports  */ setupArrayGlobal(ExportTy, Exports));
+      /* Sizes      */ Signatures.size(), Imports.size(), Exports.size(),
+      /* Signatures */ createArrayGlobal(SignatureTy, Signatures),
+      /* Imports    */ createArrayGlobal(ImportTy, Imports),
+      /* Exports    */ createArrayGlobal(ExportTy, Exports));
 }
 
 void EntityLayout::setupTableMetadata() {
   auto &Context = Target.getContext();
 
-  auto *EntityTy = llvm::StructType::get(Context, {getI32Ty(), getI32Ty()});
+  auto *SignatureTy = llvm::StructType::get(
+      Context, {/* Min */ getI32Ty(), /* Max */ getI32Ty()});
   auto *ImportTy = llvm::StructType::get(
-      Context, {getI32Ty(), getCStringPtrTy(), getCStringPtrTy()});
-  auto *ExportTy =
-      llvm::StructType::get(Context, {getI32Ty(), getCStringPtrTy()});
-  std::vector<llvm::Constant *> Entities;
+      Context, {/* Index */ getI32Ty(), /* ModuleName */ getCStringPtrTy(),
+                /* EntityName */ getCStringPtrTy()});
+  auto *ExportTy = llvm::StructType::get(
+      Context, {/* Index */ getI32Ty(), /* Name */ getCStringPtrTy()});
+
+  std::vector<llvm::Constant *> Signatures;
   std::vector<llvm::Constant *> Imports;
   std::vector<llvm::Constant *> Exports;
 
@@ -300,10 +308,11 @@ void EntityLayout::setupTableMetadata() {
     auto Max = Table.getType().hasMax()
                    ? Table.getType().getMin()
                    : std::numeric_limits<std::uint32_t>::max();
-    auto *EntityConstant = llvm::ConstantStruct::get(
-        EntityTy, {getI32Constant(Min), getI32Constant(Max)});
-    Entities.push_back(EntityConstant);
+    auto *SignatureConstant = llvm::ConstantStruct::get(
+        SignatureTy, {getI32Constant(Min), getI32Constant(Max)});
+    Signatures.push_back(SignatureConstant);
   }
+
   for (auto const &[Index, Table] :
        ranges::views::enumerate(Source.getTables().asView())) {
     if (!Table.isImported()) continue;
@@ -313,6 +322,7 @@ void EntityLayout::setupTableMetadata() {
         ImportTy, {getI32Constant(Index), ModuleName, EntityName});
     Imports.push_back(ImportConstant);
   }
+
   for (auto const &[Index, Table] :
        ranges::views::enumerate(Source.getTables().asView())) {
     if (!Table.isExported()) continue;
@@ -322,38 +332,32 @@ void EntityLayout::setupTableMetadata() {
     Exports.push_back(ExportConstant);
   }
 
-  setupMetadata(
+  createMetadata(
       "__sable_table_metadata",
-      /* Sizes    */ Entities.size(), Imports.size(), Exports.size(),
-      /* Entities */ setupArrayGlobal(EntityTy, Entities),
-      /* Imports  */ setupArrayGlobal(ImportTy, Imports),
-      /* Exports  */ setupArrayGlobal(ExportTy, Exports));
+      /* Sizes      */ Signatures.size(), Imports.size(), Exports.size(),
+      /* Signatures */ createArrayGlobal(SignatureTy, Signatures),
+      /* Imports    */ createArrayGlobal(ImportTy, Imports),
+      /* Exports    */ createArrayGlobal(ExportTy, Exports));
 }
 
 void EntityLayout::setupGlobalMetadata() {
   auto &Context = Target.getContext();
 
   auto *ImportTy = llvm::StructType::get(
-      Context, {getI32Ty(), getCStringPtrTy(), getCStringPtrTy()});
-  auto *ExportTy =
-      llvm::StructType::get(Context, {getI32Ty(), getCStringPtrTy()});
-  std::string EntitiesString;
+      Context, {/* Index */ getI32Ty(), /* ModuleName */ getCStringPtrTy(),
+                /* EntityName */ getCStringPtrTy()});
+  auto *ExportTy = llvm::StructType::get(
+      Context, {/* Index */ getI32Ty(), /* Name */ getCStringPtrTy()});
+
+  std::string Signatures;
   std::vector<llvm::Constant *> Imports;
   std::vector<llvm::Constant *> Exports;
 
   for (auto const &Global : Source.getGlobals().asView()) {
-    char TypeChar = getTypeChar(Global.getType().getType());
-    switch (Global.getType().getMutability()) {
-    case bytecode::MutabilityKind::Var:
-      TypeChar = static_cast<char>(tolower(TypeChar));
-      break;
-    case bytecode::MutabilityKind::Const:
-      TypeChar = static_cast<char>(toupper(TypeChar));
-      break;
-    default: utility::unreachable();
-    }
-    EntitiesString.push_back(TypeChar);
+    auto Signature = getSignature(Global.getType());
+    Signatures.push_back(Signature);
   }
+
   for (auto const &[Index, Global] :
        ranges::views::enumerate(Source.getGlobals().asView())) {
     if (!Global.isImported()) continue;
@@ -363,6 +367,7 @@ void EntityLayout::setupGlobalMetadata() {
         ImportTy, {getI32Constant(Index), ModuleName, EntityName});
     Imports.push_back(ImportConstant);
   }
+
   for (auto const &[Index, Global] :
        ranges::views::enumerate(Source.getGlobals().asView())) {
     if (!Global.isExported()) continue;
@@ -372,37 +377,41 @@ void EntityLayout::setupGlobalMetadata() {
     Exports.push_back(ExportConstant);
   }
 
-  llvm::Constant *EntitiesConstant =
-      llvm::ConstantDataArray::getString(Context, EntitiesString, false);
-  auto *Entities = new llvm::GlobalVariable(
+  llvm::Constant *SignaturesConstant =
+      llvm::ConstantDataArray::getString(Context, Signatures, false);
+
+  auto *SignaturesGlobal = new llvm::GlobalVariable(
       /* Parent      */ Target,
-      /* Type        */ EntitiesConstant->getType(),
+      /* Type        */ SignaturesConstant->getType(),
       /* IsConstant  */ true,
       /* Linkage     */ llvm::GlobalVariable::LinkageTypes::PrivateLinkage,
-      /* Initializer */ EntitiesConstant);
+      /* Initializer */ SignaturesConstant);
 
-  setupMetadata(
+  createMetadata(
       "__sable_global_metadata",
-      /* Sizes    */ EntitiesString.size(), Imports.size(), Exports.size(),
-      /* Entities */ Entities,
-      /* Imports  */ setupArrayGlobal(ImportTy, Imports),
-      /* Exports  */ setupArrayGlobal(ExportTy, Exports));
+      /* Sizes      */ Signatures.size(), Imports.size(), Exports.size(),
+      /* Signatures */ SignaturesGlobal,
+      /* Imports    */ createArrayGlobal(ImportTy, Imports),
+      /* Exports    */ createArrayGlobal(ExportTy, Exports));
 }
 
 void EntityLayout::setupFunctionMetadata() {
   auto &Context = Target.getContext();
 
-  auto *EntityTy = getCStringPtrTy();
+  auto *SignatureTy = getCStringPtrTy();
   auto *ImportTy = llvm::StructType::get(
-      Context, {getI32Ty(), getCStringPtrTy(), getCStringPtrTy()});
-  auto *ExportTy =
-      llvm::StructType::get(Context, {getI32Ty(), getCStringPtrTy()});
-  std::vector<llvm::Constant *> Entities;
+      Context, {/* Index */ getI32Ty(), /* ModuleName */ getCStringPtrTy(),
+                /* EntityName */ getCStringPtrTy()});
+  auto *ExportTy = llvm::StructType::get(
+      Context, {/* Index */ getI32Ty(), /* Name */ getCStringPtrTy()});
+
+  std::vector<llvm::Constant *> Signatures;
   std::vector<llvm::Constant *> Imports;
   std::vector<llvm::Constant *> Exports;
 
   for (auto const &Function : Source.getFunctions().asView())
-    Entities.push_back(this->operator[](Function).typeString());
+    Signatures.push_back(this->operator[](Function).signature());
+
   for (auto const &[Index, Function] :
        ranges::views::enumerate(Source.getFunctions().asView())) {
     if (!Function.isImported()) continue;
@@ -412,6 +421,7 @@ void EntityLayout::setupFunctionMetadata() {
         ImportTy, {getI32Constant(Index), ModuleName, EntityName});
     Imports.push_back(ImportConstant);
   }
+
   for (auto const &[Index, Function] :
        ranges::views::enumerate(Source.getFunctions().asView())) {
     if (!Function.isExported()) continue;
@@ -421,21 +431,21 @@ void EntityLayout::setupFunctionMetadata() {
     Exports.push_back(ExportConstant);
   }
 
-  setupMetadata(
+  createMetadata(
       "__sable_function_metadata",
-      /* Sizes    */ Entities.size(), Imports.size(), Exports.size(),
-      /* Entities */ setupArrayGlobal(EntityTy, Entities),
-      /* Imports  */ setupArrayGlobal(ImportTy, Imports),
-      /* Exports  */ setupArrayGlobal(ExportTy, Exports));
+      /* Sizes    */ Signatures.size(), Imports.size(), Exports.size(),
+      /* Entities */ createArrayGlobal(SignatureTy, Signatures),
+      /* Imports  */ createArrayGlobal(ImportTy, Imports),
+      /* Exports  */ createArrayGlobal(ExportTy, Exports));
 }
 
 void EntityLayout::setupFunctions() {
   for (auto const &[Index, Function] :
        ranges::views::enumerate(Source.getFunctions().asView())) {
-    auto *TypeString = getCStringPtr(
-        getTypeString(Function.getType()),
-        Function.hasName() ? fmt::format("typestr.{}", Function.getName())
-                           : "typestr");
+    auto *SignatureStr = getCStringPtr(
+        getSignature(Function.getType()),
+        Function.hasName() ? fmt::format("signature.{}", Function.getName())
+                           : "signature");
     auto *Definition = llvm::Function::Create(
         /* Type    */ convertType(Function.getType()),
         /* Linkage */ llvm::GlobalVariable::PrivateLinkage,
@@ -443,7 +453,7 @@ void EntityLayout::setupFunctions() {
         /* Parent  */ Target);
     FunctionMap.insert(std::make_pair(
         std::addressof(Function),
-        FunctionEntry(Index, Definition, TypeString)));
+        FunctionEntry(Index, Definition, SignatureStr)));
     if (Function.isImported()) {
       /* Setup import function forwarding */
       auto *EntryBasicBlock = llvm::BasicBlock::Create(
@@ -452,15 +462,13 @@ void EntityLayout::setupFunctions() {
           /* Parent  */ Definition);
       llvm::IRBuilder<> Builder(EntryBasicBlock);
       auto *InstancePtr = Definition->arg_begin();
-      llvm::Value *InstanceClosurePtr =
-          getInstanceClosurePtr(Builder, InstancePtr, Function);
+      auto *ContextPtr = getContextPtr(Builder, InstancePtr, Function);
       auto *FunctionPtr = getFunctionPtr(Builder, InstancePtr, Function);
       auto *NullPtr = llvm::ConstantInt::get(getPtrIntTy(), 0);
-      llvm::Value *NullTest =
-          Builder.CreatePtrToInt(InstanceClosurePtr, getPtrIntTy());
-      NullTest = Builder.CreateICmpEQ(NullTest, NullPtr);
-      InstanceClosurePtr =
-          Builder.CreateSelect(NullTest, InstancePtr, InstanceClosurePtr);
+      llvm::Value *IsNullTest =
+          Builder.CreatePtrToInt(ContextPtr, getPtrIntTy());
+      IsNullTest = Builder.CreateICmpEQ(IsNullTest, NullPtr);
+      ContextPtr = Builder.CreateSelect(IsNullTest, InstancePtr, ContextPtr);
       // clang-format off
       auto Arguments =
         ranges::subrange(Definition->arg_begin(), Definition->arg_end())
@@ -469,52 +477,55 @@ void EntityLayout::setupFunctions() {
           })
         | ranges::to<std::vector<llvm::Value *>>();
       // clang-format on
-      Arguments[0] = InstanceClosurePtr;
+      Arguments[0] = ContextPtr;
       auto *CalleeTy = convertType(Function.getType());
       llvm::FunctionCallee Callee(CalleeTy, FunctionPtr);
-      auto *Result = Builder.CreateCall(Callee, Arguments);
+      auto *ForwardResult = Builder.CreateCall(Callee, Arguments);
       if (Function.getType().isVoidResult()) {
         Builder.CreateRetVoid();
       } else {
-        Builder.CreateRet(Result);
+        Builder.CreateRet(ForwardResult);
       }
     }
   }
 }
 
-void EntityLayout::setupInitialization() {
+void EntityLayout::setupInitializer() {
   auto &Context = Target.getContext();
-  auto *InitializationTy =
-      llvm::FunctionType::get(getVoidTy(), {getInstancePtrTy()}, false);
 
-  auto *InitializationFn = llvm::Function::Create(
-      /* Type    */ InitializationTy,
+  auto *InitializerTy =
+      llvm::FunctionType::get(getVoidTy(), {getInstancePtrTy()}, false);
+  auto *InitializerFn = llvm::Function::Create(
+      /* Type    */ InitializerTy,
       /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
       /* Name    */ "__sable_initialize",
       /* Parent  */ Target);
+
   auto *EntryBasicBlock =
-      llvm::BasicBlock::Create(Context, "entry", InitializationFn);
+      llvm::BasicBlock::Create(Context, "entry", InitializerFn);
   llvm::IRBuilder<> Builder(EntryBasicBlock);
 
-  auto *InstancePtr = InitializationFn->getArg(0);
+  auto *InstancePtr = InitializerFn->getArg(0);
 
   for (auto const &Memory : Source.getMemories().asView()) {
     for (auto const *DataSegment : Memory.getInitializers()) {
       auto *Data = this->operator[](*DataSegment);
-      auto *MemoryBase = get(Builder, InstancePtr, Memory);
+      auto *MemoryInstance = get(Builder, InstancePtr, Memory);
       llvm::Value *Offset =
           translateInitExpr(Builder, InstancePtr, *DataSegment->getOffset());
 
-      auto *GuardAddress =
-          Builder.CreateAdd(Offset, getI32Constant(DataSegment->getSize()));
-      Builder.CreateCall(
-          getBuiltin("__sable_memory_guard"), {MemoryBase, GuardAddress});
+      if (!Options.SkipMemBoundaryCheck) {
+        auto *GuardAddress =
+            Builder.CreateAdd(Offset, getI32Constant(DataSegment->getSize()));
+        Builder.CreateCall(
+            getBuiltin("__sable_memory_guard"), {MemoryInstance, GuardAddress});
+      }
 
       Offset = Builder.CreateZExtOrTrunc(Offset, getPtrIntTy());
-      llvm::Value *Dest = Builder.CreatePtrToInt(MemoryBase, getPtrIntTy());
+      llvm::Value *Dest = Builder.CreatePtrToInt(MemoryInstance, getPtrIntTy());
       Dest = Builder.CreateAdd(Dest, Offset);
       Dest = Builder.CreateIntToPtr(Dest, Builder.getInt8PtrTy());
-      auto *Length = Builder.getInt32(DataSegment->getSize());
+      auto *Length = getI32Constant(DataSegment->getSize());
       auto *IsVolatile = Builder.getFalse();
       auto *Intrinsic = llvm::Intrinsic::getDeclaration(
           std::addressof(Target), llvm::Intrinsic::memcpy,
@@ -525,42 +536,43 @@ void EntityLayout::setupInitialization() {
     }
   }
 
-  for (auto const &MGlobal : Source.getGlobals().asView()) {
-    if (MGlobal.isImported()) continue;
-    auto *GlobalPtr = get(Builder, InstancePtr, MGlobal);
+  for (auto const &Global : Source.getGlobals().asView()) {
+    if (Global.isImported()) continue;
+    auto *GlobalInstance = get(Builder, InstancePtr, Global);
     auto *Initializer =
-        translateInitExpr(Builder, InstancePtr, *MGlobal.getInitializer());
-    Builder.CreateStore(Initializer, GlobalPtr);
+        translateInitExpr(Builder, InstancePtr, *Global.getInitializer());
+    Builder.CreateStore(Initializer, GlobalInstance);
   }
 
-  for (auto const &MFunction : Source.getFunctions().asView()) {
-    if (MFunction.isImported()) continue;
-    auto Offset = getOffset(MFunction);
-    auto *InstanceClosurePtrAddr = Builder.CreateStructGEP(InstancePtr, Offset);
+  for (auto const &Function : Source.getFunctions().asView()) {
+    if (Function.isImported()) continue;
+    auto Offset = getOffset(Function);
+    auto *ContextPtrAddr = Builder.CreateStructGEP(InstancePtr, Offset);
     auto *FunctionPtrAddr = Builder.CreateStructGEP(InstancePtr, Offset + 1);
-    auto *InstanceClosureInitializer = InstancePtr;
-    llvm::Value *FunctionPtrInitializer =
-        this->operator[](MFunction).definition();
-    FunctionPtrInitializer =
-        Builder.CreateBitCast(FunctionPtrInitializer, getFunctionPtrTy());
-    Builder.CreateStore(InstanceClosureInitializer, InstanceClosurePtrAddr);
+    auto *ContextPtrInitializer = InstancePtr;
+    auto *FunctionPtrInitializer = Builder.CreatePointerCast(
+        this->operator[](Function).definition(), getFunctionPtrTy());
+    Builder.CreateStore(ContextPtrInitializer, ContextPtrAddr);
     Builder.CreateStore(FunctionPtrInitializer, FunctionPtrAddr);
   }
 
   for (auto const &Table : Source.getTables().asView()) {
     for (auto const *ElementSegment : Table.getInitializers()) {
-      auto *Indices = this->operator[](*ElementSegment).indices();
-      auto *TableBase = get(Builder, InstancePtr, Table);
+      auto *Indices = this->operator[](*ElementSegment);
+      auto *TableInstance = get(Builder, InstancePtr, Table);
       llvm::Value *Offset =
           translateInitExpr(Builder, InstancePtr, *ElementSegment->getOffset());
-      auto *GuardIndex =
-          Builder.CreateAdd(Offset, getI32Constant(ElementSegment->getSize()));
-      Builder.CreateCall(
-          getBuiltin("__sable_table_guard"), {TableBase, GuardIndex});
+
+      if (!Options.SkipTblBoundaryCheck) {
+        auto *GuardIndex = Builder.CreateAdd(
+            Offset, getI32Constant(ElementSegment->getSize()));
+        Builder.CreateCall(
+            getBuiltin("__sable_table_guard"), {TableInstance, GuardIndex});
+      }
 
       Builder.CreateCall(
           getBuiltin("__sable_table_set"),
-          {TableBase, InstancePtr, Offset,
+          {TableInstance, InstancePtr, Offset,
            getI32Constant(ElementSegment->getSize()), Indices});
     }
   }
@@ -569,99 +581,113 @@ void EntityLayout::setupInitialization() {
 }
 
 void EntityLayout::setupBuiltins() {
-  /* void __sable_memory_guard(__sable_memory_t * mem, std::uint32_t address) */
-  auto *MemoryGuardTy = llvm::FunctionType::get(
-      getVoidTy(), {getMemoryPtrTy(), getI32Ty()}, false);
-  llvm::Function::Create(
-      /* Type    */ MemoryGuardTy,
-      /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-      /* Name    */ "__sable_memory_guard",
-      /* Parent  */ Target);
+  if (!Options.SkipMemBoundaryCheck) {
+    auto *MemoryGuardFnTy = llvm::FunctionType::get(
+        getVoidTy(),
+        {/* __sable_memory_t *memory */ getMemoryPtrTy(),
+         /* std::uint32_t    offset  */ getI32Ty()},
+        false);
+    llvm::Function::Create(
+        /* Type    */ MemoryGuardFnTy,
+        /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+        /* Name    */ "__sable_memory_guard",
+        /* Parent  */ Target);
+  }
 
-  /* std::uint32_t
-   * __sable_memory_grow(__sable_memory_t * mem, std::uint32_t delta) */
-  auto *MemoryGrowTy = llvm::FunctionType::get(
-      getI32Ty(), {getMemoryPtrTy(), getI32Ty()}, false);
+  auto *MemoryGrowFnTy = llvm::FunctionType::get(
+      /* std::uint32_t       num_page_after_grow */ getI32Ty(),
+      {/* __sable_memory_t   *memory             */ getMemoryPtrTy(),
+       /* std::uint32_t      num_page_delta      */ getI32Ty()},
+      false);
   llvm::Function::Create(
-      /* Type    */ MemoryGrowTy,
+      /* Type    */ MemoryGrowFnTy,
       /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
       /* Name    */ "__sable_memory_grow",
       /* Parent  */ Target);
 
-  /* std::uint32_t __sable_memory_size(__sable_memory_t * mem) */
-  auto *MemorySizeTy =
-      llvm::FunctionType::get(getI32Ty(), {getMemoryPtrTy()}, false);
+  auto *MemorySizeFnTy = llvm::FunctionType::get(
+      /* std::uint32_t     num_page */ getI32Ty(),
+      {/* __sable_memory_t *memory  */ getMemoryPtrTy()}, false);
   llvm::Function::Create(
-      /* Type    */ MemorySizeTy,
+      /* Type    */ MemorySizeFnTy,
       /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
       /* Name    */ "__sable_memory_size",
       /* Parent  */ Target);
 
-  /* void __sable_table_guard(__sable_table_t *table, std::uint32_t index) */
-  auto *TableGuardTy = llvm::FunctionType::get(
-      getVoidTy(), {getTablePtrTy(), getI32Ty()}, false);
-  llvm::Function::Create(
-      /* Type    */ TableGuardTy,
-      /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-      /* Name    */ "__sable_table_guard",
-      /* Parent  */ Target);
+  if (!Options.SkipTblBoundaryCheck) {
+    auto *TableGuardFnTy = llvm::FunctionType::get(
+        getVoidTy(),
+        {/* __sable_table_t *table */ getTablePtrTy(),
+         /* std::uint32_t   index  */ getI32Ty()},
+        false);
+    llvm::Function::Create(
+        /* Type    */ TableGuardFnTy,
+        /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+        /* Name    */ "__sable_table_guard",
+        /* Parent  */ Target);
+  }
 
-  /* void __sable_table_set(
-   *    __sable_table_t *table,
-   *    __sable_instance_t *instance, std::uint32_t start, std::uint32_t size,
-   *    std::uint32_t offsets[])    */
-  auto *TableSetTy = llvm::FunctionType::get(
+  auto *I32PtrTy = llvm::PointerType::getUnqual(getI32Ty());
+  auto *TableSetFnTy = llvm::FunctionType::get(
       getVoidTy(),
-      {getTablePtrTy(), getInstancePtrTy(), getI32Ty(), getI32Ty(),
-       llvm::PointerType::getUnqual(getI32Ty())},
+      {/* __sable_table_t    *table    */ getTablePtrTy(),
+       /* __sable_instance_t *instance */ getInstancePtrTy(),
+       /* std::uint32        offset    */ getI32Ty(),
+       /* std::uint32        count     */ getI32Ty(),
+       /* std::uint32        *indices  */ I32PtrTy},
       false);
   llvm::Function::Create(
-      /* Type    */ TableSetTy,
+      /* Type    */ TableSetFnTy,
       /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
       /* Name    */ "__sable_table_set",
       /* Parent  */ Target);
 
-  /* void
-   * __sable_table_check(__sable_table_t *, std::uint32_t, char const *) */
-  auto *TableCheckPtr = llvm::FunctionType::get(
-      getVoidTy(), {getTablePtrTy(), getI32Ty(), getCStringPtrTy()}, false);
+  auto *TableCheckFnTy = llvm::FunctionType::get(
+      getVoidTy(),
+      {/* __sable_table_t *table            */ getTablePtrTy(),
+       /* std::uint32_t   index             */ getI32Ty(),
+       /* char const      *expect_signature */ getCStringPtrTy()},
+      false);
   llvm::Function::Create(
-      /* Type    */ TableCheckPtr,
+      /* Type    */ TableCheckFnTy,
       /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
       /* Name    */ "__sable_table_check",
       /* Parent  */ Target);
 
-  /* __sable_function_t *
-   * __sable_table_function_ptr(__sable_table_t *table, std::uint32_t index) */
-  auto *TableFunctionPtrTy = llvm::FunctionType::get(
-      getFunctionPtrTy(), {getTablePtrTy(), getI32Ty()}, false);
+  auto *TableFunctionFnTy = llvm::FunctionType::get(
+      /* __sable_function_t *function_ptr */ getFunctionPtrTy(),
+      {/* __sable_table_t   *table        */ getTablePtrTy(),
+       /* std::uint32_t     index         */ getI32Ty()},
+      false);
   llvm::Function::Create(
-      /* Type    */ TableFunctionPtrTy,
+      /* Type    */ TableFunctionFnTy,
       /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-      /* Name    */ "__sable_table_function_ptr",
+      /* Name    */ "__sable_table_function",
       /* Parent  */ Target);
 
-  /* __sable_instance_t *
-   * __sable_table_instance_closure(__sable_table_t *table, std::uint32_t) */
-  auto *TableInstanceClosureTy = llvm::FunctionType::get(
-      getInstancePtrTy(), {getTablePtrTy(), getI32Ty()}, false);
+  auto *TableContextFnTy = llvm::FunctionType::get(
+      /* __sable_instance_t *instance */ getInstancePtrTy(),
+      {/* __sable_table_t   *table    */ getTablePtrTy(),
+       /* std::uint32_t     index     */ getI32Ty()},
+      false);
   llvm::Function::Create(
-      /* Type    */ TableInstanceClosureTy,
+      /* Type    */ TableContextFnTy,
       /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-      /* Name    */ "__sable_table_instance_closure",
+      /* Name    */ "__sable_table_context",
       /* Parent  */ Target);
 
-  /* void __sable_unreachable() */
-  auto *UnreachableTy = llvm::FunctionType::get(getVoidTy(), {}, false);
+  auto *UnreachableFnTy = llvm::FunctionType::get(getVoidTy(), {}, false);
   llvm::Function::Create(
-      /* Type    */ UnreachableTy,
+      /* Type    */ UnreachableFnTy,
       /* Linkage */ llvm::GlobalValue::LinkageTypes::ExternalLinkage,
       /* Name    */ "__sable_unreachable",
       /* Parent  */ Target);
 }
 
-EntityLayout::EntityLayout(mir::Module const &Source_, llvm::Module &Target_)
-    : Source(Source_), Target(Target_) {
+EntityLayout::EntityLayout(
+    mir::Module const &Source_, llvm::Module &Target_,
+    TranslationOptions Options_)
+    : Source(Source_), Target(Target_), Options(Options_) {
   setupInstanceType();
   setupBuiltins();
   setupFunctions();
@@ -671,7 +697,7 @@ EntityLayout::EntityLayout(mir::Module const &Source_, llvm::Module &Target_)
   setupTableMetadata();
   setupGlobalMetadata();
   setupFunctionMetadata();
-  setupInitialization();
+  setupInitializer();
 }
 
 llvm::Type *EntityLayout::convertType(bytecode::ValueType const &Type) const {
@@ -712,6 +738,10 @@ EntityLayout::convertType(bytecode::FunctionType const &Type) const {
   utility::unreachable();
 }
 
+TranslationOptions const &EntityLayout::getTranslationOptions() const {
+  return Options;
+}
+
 std::size_t EntityLayout::getOffset(mir::ASTNode const &Node) const {
   auto SearchIter = OffsetMap.find(std::addressof(Node));
   assert(SearchIter != OffsetMap.end());
@@ -731,7 +761,7 @@ EntityLayout::operator[](mir::Function const &Function) const {
   return std::get<1>(*SearchIter);
 }
 
-EntityLayout::ElementEntry const &
+llvm::Constant *
 EntityLayout::operator[](mir::Element const &ElementSegment) const {
   auto SearchIter = ElementMap.find(std::addressof(ElementSegment));
   assert(SearchIter != ElementMap.end());
@@ -746,38 +776,37 @@ llvm::Function *EntityLayout::getBuiltin(std::string_view Name) const {
 
 llvm::Value *EntityLayout::get(
     llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-    mir::Global const &MGlobal) const {
-  auto Offset = getOffset(MGlobal);
-  auto GlobalValueType = MGlobal.getType().getType();
+    mir::Global const &Global) const {
+  auto Offset = getOffset(Global);
+  auto GlobalValueType = Global.getType().getType();
   auto *CastedToTy = llvm::PointerType::getUnqual(convertType(GlobalValueType));
-  llvm::Value *GlobalPtr = Builder.CreateStructGEP(InstancePtr, Offset);
-  GlobalPtr = Builder.CreateLoad(GlobalPtr);
-  GlobalPtr = Builder.CreateBitCast(GlobalPtr, CastedToTy);
-  if (MGlobal.hasName()) GlobalPtr->setName(llvm::StringRef(MGlobal.getName()));
-  return GlobalPtr;
+  llvm::Value *GlobalInstance = Builder.CreateStructGEP(InstancePtr, Offset);
+  GlobalInstance = Builder.CreateLoad(GlobalInstance);
+  GlobalInstance = Builder.CreatePointerCast(GlobalInstance, CastedToTy);
+  if (Global.hasName())
+    GlobalInstance->setName(llvm::StringRef(Global.getName()));
+  return GlobalInstance;
 }
 
-llvm::Value *EntityLayout::getInstanceClosurePtr(
+llvm::Value *EntityLayout::getContextPtr(
     llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-    mir::Function const &MFunction) const {
-  auto Offset = getOffset(MFunction);
-  llvm::Value *InstanceClosurePtr =
-      Builder.CreateStructGEP(InstancePtr, Offset);
-  InstanceClosurePtr = Builder.CreateLoad(InstanceClosurePtr);
-  return InstanceClosurePtr;
+    mir::Function const &Function) const {
+  auto Offset = getOffset(Function);
+  auto *ContextPtrAddr = Builder.CreateStructGEP(InstancePtr, Offset);
+  return Builder.CreateLoad(ContextPtrAddr);
 }
 
 llvm::Value *EntityLayout::getFunctionPtr(
     llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-    mir::Function const &MFunction) const {
-  auto Offset = getOffset(MFunction) + 1;
-  auto *FunctionTy = convertType(MFunction.getType());
+    mir::Function const &Function) const {
+  auto Offset = getOffset(Function) + 1;
+  auto *FunctionTy = convertType(Function.getType());
+  auto *FunctionPtrTy = llvm::PointerType::getUnqual(FunctionTy);
   llvm::Value *FunctionPtr = Builder.CreateStructGEP(InstancePtr, Offset);
   FunctionPtr = Builder.CreateLoad(FunctionPtr);
-  FunctionPtr = Builder.CreateBitCast(
-      FunctionPtr, llvm::PointerType::getUnqual(FunctionTy));
-  if (MFunction.hasName())
-    FunctionPtr->setName(llvm::StringRef(MFunction.getName()));
+  FunctionPtr = Builder.CreatePointerCast(FunctionPtr, FunctionPtrTy);
+  if (Function.hasName())
+    FunctionPtr->setName(llvm::StringRef(Function.getName()));
   return FunctionPtr;
 }
 
@@ -801,7 +830,7 @@ llvm::Value *EntityLayout::get(
   return TablePtr;
 }
 
-char EntityLayout::getTypeChar(bytecode::ValueType const &Type) const {
+char EntityLayout::getSignature(bytecode::ValueType const &Type) const {
   switch (Type.getKind()) {
   case bytecode::ValueTypeKind::I32: return 'I';
   case bytecode::ValueTypeKind::I64: return 'J';
@@ -811,15 +840,26 @@ char EntityLayout::getTypeChar(bytecode::ValueType const &Type) const {
   }
 }
 
+char EntityLayout::getSignature(bytecode::GlobalType const &Type) const {
+  auto const &ValueType = Type.getType();
+  switch (Type.getMutability()) {
+  case bytecode::MutabilityKind::Const:
+    return static_cast<char>(std::toupper(getSignature(ValueType)));
+  case bytecode::MutabilityKind::Var:
+    return static_cast<char>(std::tolower(getSignature(ValueType)));
+  default: utility::unreachable();
+  }
+}
+
 std::string
-EntityLayout::getTypeString(bytecode::FunctionType const &Type) const {
+EntityLayout::getSignature(bytecode::FunctionType const &Type) const {
   std::string Result;
   Result.reserve(Type.getNumParameter() + Type.getNumResult() + 1);
   for (auto const &ValueType : Type.getParamTypes())
-    Result.push_back(getTypeChar(ValueType));
+    Result.push_back(getSignature(ValueType));
   Result.push_back(':');
   for (auto const &ValueType : Type.getResultTypes())
-    Result.push_back(getTypeChar(ValueType));
+    Result.push_back(getSignature(ValueType));
   return Result;
 }
 

@@ -62,11 +62,11 @@ public:
     TypeInferPass.finalize();
     TypePassResult = TypeInferPass.getResult();
 
-    auto *EntryBlock = llvm::BasicBlock::Create(
+    auto *LocalsBB = llvm::BasicBlock::Create(
         /* Context */ Target.getContext(),
-        /* Name    */ "pre_entry",
+        /* Name    */ "locals",
         /* Parent  */ std::addressof(Target));
-    llvm::IRBuilder<> Builder(EntryBlock);
+    llvm::IRBuilder<> Builder(LocalsBB);
     for (auto const &[Index, Local] :
          ranges::views::enumerate(Source.getLocals().asView())) {
       auto *LLVMLocal =
@@ -84,9 +84,10 @@ public:
       BasicBlockMap.emplace(std::addressof(BasicBlock), Entry);
     }
 
-    auto *FirstBB = std::addressof(Source.getEntryBasicBlock());
-    auto *FirstLLVMBB = std::get<0>(std::get<1>(*BasicBlockMap.find(FirstBB)));
-    Builder.CreateBr(FirstLLVMBB);
+    auto *EntryMIRBB = std::addressof(Source.getEntryBasicBlock());
+    auto [EntryLLVMBBFirst, EntryLLVMBBLast] = this->operator[](*EntryMIRBB);
+    utility::ignore(EntryLLVMBBLast);
+    Builder.CreateBr(EntryLLVMBBFirst);
   }
 
   llvm::Value *operator[](mir::Instruction const &Instruction) const {
@@ -249,41 +250,43 @@ public:
     auto *Index = Context[*Inst->getOperand()];
     auto *Table = Context.getLayout().get(
         Builder, InstancePtr, *Inst->getIndirectTable());
-    auto *BuiltinTableGuard =
-        Context.getLayout().getBuiltin("__sable_table_guard");
-    Builder.CreateCall(BuiltinTableGuard, {Table, Index});
-    auto *TypeString = Context.getLayout().getCStringPtr(
-        Context.getLayout().getTypeString(Inst->getExpectType()),
-        "typestr.indirect.call");
+    if (!Context.getLayout().getTranslationOptions().SkipTblBoundaryCheck) {
+      auto *BuiltinTableGuard =
+          Context.getLayout().getBuiltin("__sable_table_guard");
+      Builder.CreateCall(BuiltinTableGuard, {Table, Index});
+    }
+    auto *ExpectSignature = Context.getLayout().getCStringPtr(
+        Context.getLayout().getSignature(Inst->getExpectType()),
+        "indirect.call.signature");
     auto *BuiltinTableCheck =
         Context.getLayout().getBuiltin("__sable_table_check");
-    Builder.CreateCall(BuiltinTableCheck, {Table, Index, TypeString});
-    auto *BuiltinTableFunctionPtr =
-        Context.getLayout().getBuiltin("__sable_table_function_ptr");
-    auto *BuiltinTableInstanceClosurePtr =
-        Context.getLayout().getBuiltin("__sable_table_instance_closure");
+    Builder.CreateCall(BuiltinTableCheck, {Table, Index, ExpectSignature});
+    auto *BuiltinTableFunction =
+        Context.getLayout().getBuiltin("__sable_table_function");
+    auto *BuiltinTableContext =
+        Context.getLayout().getBuiltin("__sable_table_context");
 
-    llvm::Value *CalleeInstanceClosure =
-        Builder.CreateCall(BuiltinTableInstanceClosurePtr, {Table, Index});
-    auto *CalleeFunctionPtr =
-        Builder.CreateCall(BuiltinTableFunctionPtr, {Table, Index});
+    llvm::Value *CalleeContext =
+        Builder.CreateCall(BuiltinTableContext, {Table, Index});
+    auto *CalleeFunction =
+        Builder.CreateCall(BuiltinTableFunction, {Table, Index});
 
     auto *Null = llvm::ConstantInt::get(Context.getLayout().getPtrIntTy(), 0);
     llvm::Value *IsNullTest = Builder.CreatePtrToInt(
-        CalleeInstanceClosure, Context.getLayout().getPtrIntTy());
+        CalleeContext, Context.getLayout().getPtrIntTy());
     IsNullTest = Builder.CreateICmpEQ(IsNullTest, Null);
-    CalleeInstanceClosure =
-        Builder.CreateSelect(IsNullTest, InstancePtr, CalleeInstanceClosure);
+    CalleeContext =
+        Builder.CreateSelect(IsNullTest, InstancePtr, CalleeContext);
 
     std::vector<llvm::Value *> Arguments;
     Arguments.reserve(Inst->getNumArguments() + 1);
-    Arguments.push_back(CalleeInstanceClosure);
+    Arguments.push_back(CalleeContext);
     for (auto const *Argument : Inst->getArguments())
       Arguments.push_back(Context[*Argument]);
 
     auto *CalleeTy = Context.getLayout().convertType(Inst->getExpectType());
     auto *CalleePtrTy = llvm::PointerType::getUnqual(CalleeTy);
-    auto *CalleePtr = Builder.CreatePointerCast(CalleeFunctionPtr, CalleePtrTy);
+    auto *CalleePtr = Builder.CreatePointerCast(CalleeFunction, CalleePtrTy);
     llvm::FunctionCallee Callee(CalleeTy, CalleePtr);
     return Builder.CreateCall(Callee, Arguments);
   }
@@ -557,7 +560,8 @@ public:
       auto *LoadPtrTy = llvm::PointerType::getUnqual(LoadTy);
       Address = Builder.CreateIntToPtr(Address, LoadPtrTy);
       auto *LoadInst = Builder.CreateLoad(Address);
-      LoadInst->setAlignment(llvm::Align(1));
+      if (!Context.getLayout().getTranslationOptions().AssumeMemRWAligned)
+        LoadInst->setAlignment(llvm::Align(1));
       Result = LoadInst;
     } else {
       assert(Inst->getType().isI32() || Inst->getType().isI64());
@@ -568,7 +572,8 @@ public:
       auto *LoadPtrTy = llvm::PointerType::getUnqual(LoadTy);
       Address = Builder.CreateIntToPtr(Address, LoadPtrTy);
       auto *LoadInst = Builder.CreateLoad(Address);
-      LoadInst->setAlignment(llvm::Align(1));
+      if (!Context.getLayout().getTranslationOptions().AssumeMemRWAligned)
+        LoadInst->setAlignment(llvm::Align(1));
       Result = LoadInst;
       if (ExpectLoadTy != LoadTy)
         Result = Builder.CreateZExt(Result, ExpectLoadTy);
@@ -594,11 +599,14 @@ public:
     auto *StorePtrTy = llvm::PointerType::getUnqual(StoreTy);
     Address = Builder.CreateIntToPtr(Address, StorePtrTy);
     auto *Result = Builder.CreateStore(Value, Address);
-    Result->setAlignment(llvm::Align(1));
+    if (!Context.getLayout().getTranslationOptions().AssumeMemRWAligned)
+      Result->setAlignment(llvm::Align(1));
     return Result;
   }
 
   llvm::Value *operator()(minsts::MemoryGuard const *Inst) {
+    if (Context.getLayout().getTranslationOptions().SkipMemBoundaryCheck)
+      return nullptr;
     auto *InstancePtr = Context.getInstancePtr();
     auto *BuiltinMemoryGuard =
         Context.getLayout().getBuiltin("__sable_memory_guard");
@@ -765,12 +773,13 @@ void FunctionTranslationTask::perform() {
 }
 
 ModuleTranslationTask::ModuleTranslationTask(
-    mir::Module const &Source_, llvm::Module &Target_)
+    mir::Module const &Source_, llvm::Module &Target_,
+    TranslationOptions Options_)
     : Layout(nullptr), Source(std::addressof(Source_)),
-      Target(std::addressof(Target_)) {}
+      Target(std::addressof(Target_)), Options(Options_) {}
 
 void ModuleTranslationTask::perform() {
-  Layout = std::make_unique<EntityLayout>(*Source, *Target);
+  Layout = std::make_unique<EntityLayout>(*Source, *Target, Options);
   for (auto const &Function : Source->getFunctions().asView()) {
     if (Function.isDeclaration()) continue;
     auto &TargetFunction = *Layout->operator[](Function).definition();

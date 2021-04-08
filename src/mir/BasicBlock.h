@@ -87,6 +87,8 @@ public:
 
   Instruction *getTerminatingInst();
 
+  void replaceAllUseWith(BasicBlock *ReplaceValue) const;
+
   void eraseFromParent();
   Function *getParent() const;
   static llvm::ilist<Instruction> BasicBlock::*getSublistAccess(Instruction *);

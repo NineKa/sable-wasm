@@ -5,6 +5,7 @@
 
 #include <range/v3/algorithm/sort.hpp>
 #include <range/v3/algorithm/unique.hpp>
+#include <range/v3/view/filter.hpp>
 
 namespace mir {
 BasicBlock::BasicBlock() : ASTNode(ASTNodeKind::BasicBlock), Parent(nullptr) {}
@@ -157,10 +158,21 @@ Instruction *BasicBlock::getTerminatingInst() {
   return nullptr;
 }
 
-void BasicBlock::eraseFromParent() {
-  auto &Parent = *getParent();
-  Parent.getBasicBlocks().erase(this);
+void BasicBlock::replaceAllUseWith(BasicBlock *ReplaceValue) const {
+  // clang-format off
+  auto ReplaceQueue = getUsedSites()
+  | ranges::views::filter([](auto const *Node) {
+      return is_a<mir::Instruction>(Node);
+    })
+  | ranges::to<std::vector<mir::ASTNode *>>();
+  // clang-format on
+  for (auto *Node : ReplaceQueue) {
+    auto *CastedPtr = dyn_cast<Instruction>(Node);
+    CastedPtr->replace(this, ReplaceValue);
+  }
 }
+
+void BasicBlock::eraseFromParent() { Parent->getBasicBlocks().erase(this); }
 
 // clang-format off
 Function *BasicBlock::getParent() const { return Parent; }

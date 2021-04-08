@@ -145,12 +145,19 @@ public:
     if (isHeapAllocated()) { delete asPointer(); }
   }
 
-  operator Instruction *() const { return asPointer(); }
-  Instruction *operator->() const { return asPointer(); }
+  operator Instruction const *() const { return asPointer(); }
+  operator Instruction *() { return asPointer(); }
+  Instruction const *operator->() const { return asPointer(); }
+  Instruction *operator->() { return asPointer(); }
 
-  Instruction *asPointer() const {
+  Instruction *asPointer() {
     auto UnmaskedPtr = InstPtr & ~(std::intptr_t(0x01));
     return reinterpret_cast<Instruction *>(UnmaskedPtr); // NOLINT
+  }
+
+  Instruction const *asPointer() const {
+    auto UnmaskedPtr = InstPtr & ~(std::intptr_t(0x01));
+    return reinterpret_cast<Instruction const *>(UnmaskedPtr); // NOLINT
   }
 
   bool isNull() const { return InstPtr == getIntPtrNull(); }

@@ -182,7 +182,11 @@ public:
     return View.subspan(StartPos, EndPos - StartPos);
   }
 
-  void pop() { Stack.pop_back(); }
+  void pop() {
+    assert(Stack.back() <= Storage.size());
+    while (Stack.back() < Storage.size()) Storage.pop_back();
+    Stack.pop_back();
+  }
 
   template <ranges::input_range T> void push(T const &LabelExpects) {
     Stack.push_back(Storage.size());

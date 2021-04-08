@@ -1,5 +1,8 @@
 #include "MIRCodegen.h"
 
+#include "passes/Pass.h"
+#include "passes/SimplifyCFG.h"
+
 #include <range/v3/view/transform.hpp>
 
 namespace mir::bytecode_codegen {
@@ -927,6 +930,10 @@ void FunctionTranslationTask::perform() {
   Visitor.labels().pop();
   // expect all labels are consumed, ensured by validation hopefully
   assert(Visitor.labels().empty());
+
+  // Function is not valid until we remove dead phi nodes and bb.
+  mir::passes::SimpleFunctionPassDriver<mir::passes::SimplifyCFGPass> Pass;
+  Pass(Context->target());
 }
 
 /////////////////////////// ModuleTranslationTask //////////////////////////////

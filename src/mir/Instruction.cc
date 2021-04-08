@@ -129,13 +129,13 @@ bool Instruction::classof(ASTNode const *Node) {
 
 void Instruction::eraseFromParent() { Parent->erase(this); }
 
-void Instruction::replaceAllUseWith(Instruction *ReplaceValue) {
+void Instruction::replaceAllUseWith(Instruction *ReplaceValue) const {
   // clang-format off
   auto ReplaceQueue = getUsedSites() 
     | ranges::views::filter([](auto const *Node) {
         return is_a<mir::Instruction>(Node);
-      }) 
-    | ranges::to<std::vector<ASTNode *>>();
+      })
+    | ranges::to<std::vector<mir::ASTNode *>>();
   // clang-format on
   for (auto *Node : ReplaceQueue) {
     auto *CastedPtr = dyn_cast<Instruction>(Node);

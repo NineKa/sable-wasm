@@ -1,0 +1,13 @@
+Name,Native Time,Native MOps,SableWasm Time,SableWasm MOps,WasmTime Time,WasmTime MOps,Wasmer(Cranelift) Time,Wasmer(Cranelift) MOps,Wasmer(LLVM) Time,Wasmer(LLVM) MOps
+BT  ,7.47       ,1033.32    ,6.30          ,1224.31       ,8.56         ,901.77       ,20.35                 ,379.28                ,11.65            ,662.69
+CG  ,0.68       ,619.32     ,0.82          ,510.73        ,0.78         ,537.64       ,2.13                  ,197.69                ,1.10             ,382.13
+EP  ,4.07       ,16.47      ,3.83          ,17.50         ,4.49         ,14.94        ,5.19                  ,12.92                 ,7.03             ,9.55
+FT  ,0.64       ,582.99     ,0.79          ,469.42        ,0.70         ,534.46       ,1.89                  ,196.80                ,0.88             ,422.08
+IS  ,0.04       ,295.35     ,N/A           ,N/A           ,N/A          ,N/A          ,N/A                   ,N/A                   ,N/A              ,N/A
+LU  ,19.75      ,914.61     ,13.19         ,1369.44       ,22.59        ,799.43       ,48.36                 ,373.44                ,33.53            ,538.69
+MG  ,0.81       ,749.61     ,0.66          ,924.77        ,1.15         ,529.72       ,3.96                  ,153.75                ,1.37             ,443.47
+SP  ,19.02      ,745.33     ,13.36         ,1061.17       ,25.96        ,546.09       ,74.51                 ,190.23                ,33.99            ,416.98
+
+# IS: memory access out of bound on SableWasm, Wasmtime, Wasmer (wasi-sdk or clang bug?)
+# Wamer Version : wasmer 1.0.2
+# Wasmtime Version : wasmtime 0.25.0

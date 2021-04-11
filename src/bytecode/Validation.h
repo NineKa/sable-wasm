@@ -56,7 +56,13 @@ public:
         ISites(ranges::to<std::vector<InstructionPtr const *>>(ISites_)) {}
   EntitySiteKind getEntitySiteKind() const { return ESiteKind; }
   std::size_t getEntitySiteIndex() const { return ESiteIndex; }
-  auto getInstSites() const { return ranges::views::all(ISites); }
+
+  auto getInstSites() const {
+    auto InstSitesBegin = ISites.begin();
+    auto InstSitesEnd = ISites.end();
+    return ranges::make_subrange(InstSitesBegin, InstSitesEnd);
+  }
+
   virtual void signal() = 0;
 };
 
@@ -115,7 +121,8 @@ public:
   X(MORE_THAN_ONE_TABLE       , "at most one table is allowed"              )  \
   X(MORE_THAN_ONE_MEMORY      , "at most one memory is allowed"             )  \
   X(NON_UNIQUE_EXPORT_NAME    , "export name is not unique"                 )  \
-  X(ILLEGAL_IF_BLOCK_TYPE_TAG , "if without else cannot have type signature")
+  X(ILLEGAL_IF_BLOCK_TYPE_TAG , "if without else cannot have type signature")  \
+  X(SIMD_INVALID_LANE_ID      , "simd instruction refers to invalid lane"   )
 // clang-format on
 
 enum class MalformedErrorKind {

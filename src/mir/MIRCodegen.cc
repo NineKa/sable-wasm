@@ -904,6 +904,11 @@ public:
   EXTEND(binsts::I64Extend32S, 32)
   // clang-format on
 #undef EXTEND
+
+  // TODO: SIMD Translation Pending
+  template <bytecode::instruction T> void operator()(T const *) {
+    utility::unreachable();
+  }
 };
 
 FunctionTranslationTask::FunctionTranslationTask(

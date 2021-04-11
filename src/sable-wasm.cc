@@ -160,6 +160,8 @@ void process(
     panic(fmt::format("{}", Error));
   }
 
+  if (ArgOptions["validate"].as<bool>()) return;
+
   mir::Module MIRModule;
   mir::bytecode_codegen::ModuleTranslationTask BytecodeToMIRTranslationTask(
       BytecodeModule, MIRModule, Name);
@@ -221,6 +223,8 @@ int main(int argc, char const *argv[]) {
   ("o,out"                , "output file name"                                 ,
    cxxopts::value<std::string>()->default_value("a.out"))
   ("opt"                  , "run optimization passes"                          ,
+   cxxopts::value<bool>()->default_value("false"))
+  ("validate"             , "validate module",
    cxxopts::value<bool>()->default_value("false"))
   ("emit-mir"             , "emit Sable middle IR (*.mir)"                     ,
    cxxopts::value<bool>()->default_value("false"))

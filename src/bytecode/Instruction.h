@@ -3,6 +3,7 @@
 
 #include "../utility/Commons.h"
 #include "Type.h"
+#include "V128Value.h"
 
 #include <boost/preprocessor.hpp>
 #include <fmt/format.h>
@@ -27,7 +28,9 @@ enum class InstCategory {
   /* sign-extension operators (merged WG-03-11) */
   SignExtensionOps,
   /* nontrapping float-to-int conversions (merged WG-03-11) */
-  NontrappingFloatToIntConvs
+  NontrappingFloatToIntConvs,
+  /* SIMD v128 */
+  SIMD128
 };
 
 class TaggedInstPtr;
@@ -59,6 +62,9 @@ enum class TypeIDX   : std::uint32_t {};
 
 struct BlockResultUnit {};
 using BlockResultType = std::variant<ValueType, TypeIDX, BlockResultUnit>;
+
+enum class SIMDLaneID : std::uint8_t {};
+template <unsigned Size> using SIMDLaneIDVector = std::array<SIMDLaneID, Size>;
 
 template <typename T> struct inst_trait;
 

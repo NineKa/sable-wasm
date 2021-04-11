@@ -199,6 +199,7 @@ bytecode::ValueType WASMReader<ReaderImpl>::readValueType() {
   case 0x7e: return bytecode::valuetypes::I64;
   case 0x7d: return bytecode::valuetypes::F32;
   case 0x7c: return bytecode::valuetypes::F64;
+  case 0x7b: return bytecode::valuetypes::V128;
   default:
     throw ParserError(
         fmt::format("unknown value type byte 0x{:02x}", ValueTypeByte));

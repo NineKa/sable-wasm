@@ -15,7 +15,7 @@
 #include <vector>
 
 namespace bytecode {
-enum class ValueTypeKind : unsigned char { I32, I64, F32, F64 };
+enum class ValueTypeKind : unsigned char { I32, I64, F32, F64, V128 };
 
 class ValueType {
   ValueTypeKind Kind;
@@ -27,6 +27,7 @@ public:
   bool isI64() const { return Kind == ValueTypeKind::I64; }
   bool isF32() const { return Kind == ValueTypeKind::F32; }
   bool isF64() const { return Kind == ValueTypeKind::F64; }
+  bool isV128() const { return Kind == ValueTypeKind::V128; }
 
   bool operator==(ValueType const &Other) const = default;
 };
@@ -36,6 +37,7 @@ inline constexpr ValueType I32(ValueTypeKind::I32);
 inline constexpr ValueType I64(ValueTypeKind::I64);
 inline constexpr ValueType F32(ValueTypeKind::F32);
 inline constexpr ValueType F64(ValueTypeKind::F64);
+inline constexpr ValueType V128(ValueTypeKind::V128);
 } // namespace valuetypes
 
 class FunctionType {
@@ -140,6 +142,7 @@ template <> struct fmt::formatter<bytecode::ValueType, char> {
     case Kind::I64: return format_to(CTX.out(), "i64");
     case Kind::F32: return format_to(CTX.out(), "f32");
     case Kind::F64: return format_to(CTX.out(), "f64");
+    case Kind::V128: return format_to(CTX.out(), "v128");
     default: utility::unreachable();
     }
   }

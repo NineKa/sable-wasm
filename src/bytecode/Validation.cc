@@ -28,7 +28,8 @@ bool validate(ValueType const &Type) {
   case ValueTypeKind::I32:
   case ValueTypeKind::I64:
   case ValueTypeKind::F32:
-  case ValueTypeKind::F64: return true;
+  case ValueTypeKind::F64:
+  case ValueTypeKind::V128: return true;
   default: return false;
   }
 }
@@ -496,7 +497,237 @@ public:
   ON(I64Extend8S      , (1, (I64)), (1, (I64))) // [i64] -> [i64]
   ON(I64Extend16S     , (1, (I64)), (1, (I64))) // [i64] -> [i64]
   ON(I64Extend32S     , (1, (I64)), (1, (I64))) // [i64] -> [i64]
-// clang-format on
+  /* SIMD Instructions */
+  ON(V128Const                , (0, (          )), (1, (V128))) 
+  ON(I8x16Splat               , (1, (I32       )), (1, (V128))) 
+  ON(I16x8Splat               , (1, (I32       )), (1, (V128))) 
+  ON(I32x4Splat               , (1, (I32       )), (1, (V128))) 
+  ON(I64x2Splat               , (1, (I64       )), (1, (V128))) 
+  ON(F32x4Splat               , (1, (F32       )), (1, (V128))) 
+  ON(F64x2Splat               , (1, (F64       )), (1, (V128))) 
+
+  ON(V128BitSelect            , (3, (V128, V128, V128)), (1, (V128)))
+  ON(I8x16Shuffle             , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16Swizzle             , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4DotI16x8S           , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8Q15MulRSatS         , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16Popcnt              , (1, (V128      )), (1, (V128)))
+
+  ON(I8x16Add                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8Add                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4Add                 , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2Add                 , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16Sub                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8Sub                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4Sub                 , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2Sub                 , (2, (V128, V128)), (1, (V128)))
+
+  ON(I16x8Mul                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4Mul                 , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2Mul                 , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16Neg                 , (1, (V128      )), (1, (V128)))
+  ON(I16x8Neg                 , (1, (V128      )), (1, (V128)))
+  ON(I32x4Neg                 , (1, (V128      )), (1, (V128)))
+  ON(I64x2Neg                 , (1, (V128      )), (1, (V128)))
+
+  ON(I16x8ExtMulLowI8x16S     , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8ExtMulHighI8x16S    , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8ExtMulLowI8x16U     , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8ExtMulHighI8x16U    , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4ExtMulLowI16x8S     , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4ExtMulHighI16x8S    , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4ExtMulLowI16x8U     , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4ExtMulHighI16x8U    , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2ExtMulLowI32x4S     , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2ExtMulHighI32x4S    , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2ExtMulLowI32x4U     , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2ExtMulHighI32x4U    , (2, (V128, V128)), (1, (V128)))
+
+  ON(I16x8ExtAddPairwiseI8x16S, (1, (V128      )), (1, (V128)))
+  ON(I16x8ExtAddPairwiseI8x16U, (1, (V128      )), (1, (V128)))
+  ON(I32x4ExtAddPairwiseI16x8S, (1, (V128      )), (1, (V128)))
+  ON(I32x4ExtAddPairwiseI16x8U, (1, (V128      )), (1, (V128)))
+
+  ON(I8x16AddSatS             , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16AddSatU             , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8AddSatS             , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8AddSatU             , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16SubSatS             , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16SubSatU             , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8SubSatS             , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8SubSatU             , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16MinS                , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16MinU                , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8MinS                , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8MinU                , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4MinS                , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4MinU                , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16MaxS                , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16MaxU                , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8MaxS                , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8MaxU                , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4MaxS                , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4MaxU                , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16AvgrU               , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8AvgrU               , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16Abs                 , (1, (V128      )), (1, (V128)))
+  ON(I16x8Abs                 , (1, (V128      )), (1, (V128)))
+  ON(I32x4Abs                 , (1, (V128      )), (1, (V128)))
+  ON(I64x2Abs                 , (1, (V128      )), (1, (V128)))
+
+  ON(I8x16Shl                 , (2, (V128, I32 )), (1, (V128)))
+  ON(I16x8Shl                 , (2, (V128, I32 )), (1, (V128)))
+  ON(I32x4Shl                 , (2, (V128, I32 )), (1, (V128)))
+  ON(I64x2Shl                 , (2, (V128, I32 )), (1, (V128)))
+
+  ON(I8x16ShrS                , (2, (V128, I32 )), (1, (V128)))
+  ON(I8x16ShrU                , (2, (V128, I32 )), (1, (V128)))
+  ON(I16x8ShrS                , (2, (V128, I32 )), (1, (V128)))
+  ON(I16x8ShrU                , (2, (V128, I32 )), (1, (V128)))
+  ON(I32x4ShrS                , (2, (V128, I32 )), (1, (V128)))
+  ON(I32x4ShrU                , (2, (V128, I32 )), (1, (V128)))
+  ON(I64x2ShrS                , (2, (V128, I32 )), (1, (V128)))
+  ON(I64x2ShrU                , (2, (V128, I32 )), (1, (V128)))
+
+  ON(V128And                  , (2, (V128, V128)), (1, (V128)))
+  ON(V128Or                   , (2, (V128, V128)), (1, (V128)))
+  ON(V128Xor                  , (2, (V128, V128)), (1, (V128)))
+  ON(V128Not                  , (2, (V128, V128)), (1, (V128)))
+  ON(V128AndNot               , (2, (V128, V128)), (1, (V128)))
+
+  ON(V128AnyTrue              , (1, (V128      )), (1, (V128)))
+  ON(I8x16AllTrue             , (1, (V128      )), (1, (V128)))
+  ON(I16x8AllTrue             , (1, (V128      )), (1, (V128)))
+  ON(I32x4AllTrue             , (1, (V128      )), (1, (V128)))
+  ON(I64x2AllTrue             , (1, (V128      )), (1, (V128)))
+
+  ON(I8x16Bitmask             , (1, (V128      )), (1, (I32 )))
+  ON(I16x8Bitmask             , (1, (V128      )), (1, (I32 )))
+  ON(I32x4Bitmask             , (1, (V128      )), (1, (I32 )))
+  ON(I64x2Bitmask             , (1, (V128      )), (1, (I32 )))
+
+  ON(I8x16Eq                  , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8Eq                  , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4Eq                  , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2Eq                  , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Eq                  , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Eq                  , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16Ne                  , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8Ne                  , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4Ne                  , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2Ne                  , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Ne                  , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Ne                  , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16LtS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16LtU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8LtS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8LtU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4LtS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4LtU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2LtS                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Lt                  , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Lt                  , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16LeS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16LeU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8LeS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8LeU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4LeS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4LeU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2LeS                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Le                  , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Le                  , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16GtS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16GtU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8GtS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8GtU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4GtS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4GtU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2GtS                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Gt                  , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Gt                  , (2, (V128, V128)), (1, (V128)))
+
+  ON(I8x16GeS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16GeU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8GeS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8GeU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4GeS                 , (2, (V128, V128)), (1, (V128)))
+  ON(I32x4GeU                 , (2, (V128, V128)), (1, (V128)))
+  ON(I64x2GeS                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Ge                  , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Ge                  , (2, (V128, V128)), (1, (V128)))
+
+  ON(F32x4Neg                 , (1, (V128      )), (1, (V128)))
+  ON(F64x2Neg                 , (1, (V128      )), (1, (V128)))
+  ON(F32x4Abs                 , (1, (V128      )), (1, (V128)))
+  ON(F64x2Abs                 , (1, (V128      )), (1, (V128)))
+  ON(F32x4Sqrt                , (1, (V128      )), (1, (V128)))
+  ON(F64x2Sqrt                , (1, (V128      )), (1, (V128)))
+  ON(F32x4Ceil                , (1, (V128      )), (1, (V128)))
+  ON(F64x2Ceil                , (1, (V128      )), (1, (V128)))
+  ON(F32x4Floor               , (1, (V128      )), (1, (V128)))
+  ON(F64x2Floor               , (1, (V128      )), (1, (V128)))
+  ON(F32x4Trunc               , (1, (V128      )), (1, (V128)))
+  ON(F64x2Trunc               , (1, (V128      )), (1, (V128)))
+  ON(F32x4Nearest             , (1, (V128      )), (1, (V128)))
+  ON(F64x2Nearest             , (1, (V128      )), (1, (V128)))
+
+  ON(F32x4Add                 , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Add                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Sub                 , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Sub                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Div                 , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Div                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Mul                 , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Mul                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Min                 , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Min                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4Max                 , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2Max                 , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4PMin                , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2PMin                , (2, (V128, V128)), (1, (V128)))
+  ON(F32x4PMax                , (2, (V128, V128)), (1, (V128)))
+  ON(F64x2PMax                , (2, (V128, V128)), (1, (V128)))
+
+  ON(F32x4ConvertI32x4S       , (1, (V128      )), (1, (V128)))
+  ON(F32x4ConvertI32x4U       , (1, (V128      )), (1, (V128)))
+  ON(F64x2ConvertLowI32x4S    , (1, (V128      )), (1, (V128)))
+  ON(F64x2ConvertLowI32x4U    , (1, (V128      )), (1, (V128)))
+  ON(I32x4TruncSatF32x4S      , (1, (V128      )), (1, (V128)))
+  ON(I32x4TruncSatF32x4U      , (1, (V128      )), (1, (V128)))
+  ON(I32x4TruncSatF64x2SZero  , (1, (V128      )), (1, (V128)))
+  ON(I32x4TruncSatF64x2UZero  , (1, (V128      )), (1, (V128)))
+  ON(F32x4DemoteF64x2Zero     , (1, (V128      )), (1, (V128)))
+  ON(F64x2PromoteLowF32x4     , (1, (V128      )), (1, (V128)))
+  ON(I8x16NarrowI16x8S        , (2, (V128, V128)), (1, (V128)))
+  ON(I8x16NarrowI16x8U        , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8NarrowI32x4S        , (2, (V128, V128)), (1, (V128)))
+  ON(I16x8NarrowI32x4U        , (2, (V128, V128)), (1, (V128)))
+
+  ON(I16x8ExtendLowI8x16S     , (1, (V128      )), (1, (V128)))
+  ON(I16x8ExtendHighI8x16S    , (1, (V128      )), (1, (V128)))
+  ON(I16x8ExtendLowI8x16U     , (1, (V128      )), (1, (V128)))
+  ON(I16x8ExtendHighI8x16U    , (1, (V128      )), (1, (V128)))
+  ON(I32x4ExtendLowI16x8S     , (1, (V128      )), (1, (V128)))
+  ON(I32x4ExtendHighI16x8S    , (1, (V128      )), (1, (V128)))
+  ON(I32x4ExtendLowI16x8U     , (1, (V128      )), (1, (V128)))
+  ON(I32x4ExtendHighI16x8U    , (1, (V128      )), (1, (V128)))
+  ON(I64x2ExtendLowI32x4S     , (1, (V128      )), (1, (V128)))
+  ON(I64x2ExtendHighI32x4S    , (1, (V128      )), (1, (V128)))
+  ON(I64x2ExtendLowI32x4U     , (1, (V128      )), (1, (V128)))
+  ON(I64x2ExtendHighI32x4U    , (1, (V128      )), (1, (V128)))
+
+  // clang-format on
 #undef ON
 #define ON(Name, Width, ParamTypes, ResultTypes)                               \
   ErrorPtr operator()(Name const *Inst) {                                      \
@@ -517,30 +748,109 @@ public:
     return nullptr;                                                            \
   }
   // clang-format off
-  ON(I32Load   , 32, (1, (I32     )), (1, (I32)))
-  ON(I64Load   , 64, (1, (I32     )), (1, (I64)))
-  ON(F32Load   , 32, (1, (I32     )), (1, (F32)))
-  ON(F64Load   , 64, (1, (I32     )), (1, (F64)))
-  ON(I32Load8S ,  8, (1, (I32     )), (1, (I32)))
-  ON(I32Load8U ,  8, (1, (I32     )), (1, (I32)))
-  ON(I32Load16S, 16, (1, (I32     )), (1, (I32)))
-  ON(I32Load16U, 16, (1, (I32     )), (1, (I32)))
-  ON(I64Load8S ,  8, (1, (I32     )), (1, (I64)))
-  ON(I64Load8U ,  8, (1, (I32     )), (1, (I64)))
-  ON(I64Load16S, 16, (1, (I32     )), (1, (I64)))
-  ON(I64Load16U, 16, (1, (I32     )), (1, (I64)))
-  ON(I64Load32S, 32, (1, (I32     )), (1, (I64)))
-  ON(I64Load32U, 32, (1, (I32     )), (1, (I64)))
-  ON(I32Store  , 32, (2, (I32, I32)), (0, (   )))
-  ON(I64Store  , 64, (2, (I32, I64)), (0, (   )))
-  ON(F32Store  , 32, (2, (I32, F32)), (0, (   )))
-  ON(F64Store  , 64, (2, (I32, F64)), (0, (   )))
-  ON(I32Store8 ,  8, (2, (I32, I32)), (0, (   )))
-  ON(I32Store16, 16, (2, (I32, I32)), (0, (   )))
-  ON(I64Store8 ,  8, (2, (I32, I64)), (0, (   )))
-  ON(I64Store16, 16, (2, (I32, I64)), (0, (   )))
-  ON(I64Store32, 32, (2, (I32, I64)), (0, (   )))
-// clang-format on
+  ON(I32Load        ,  32, (1, (I32       )), (1, (I32 )))
+  ON(I64Load        ,  64, (1, (I32       )), (1, (I64 )))
+  ON(F32Load        ,  32, (1, (I32       )), (1, (F32 )))
+  ON(F64Load        ,  64, (1, (I32       )), (1, (F64 )))
+  ON(I32Load8S      ,   8, (1, (I32       )), (1, (I32 )))
+  ON(I32Load8U      ,   8, (1, (I32       )), (1, (I32 )))
+  ON(I32Load16S     ,  16, (1, (I32       )), (1, (I32 )))
+  ON(I32Load16U     ,  16, (1, (I32       )), (1, (I32 )))
+  ON(I64Load8S      ,   8, (1, (I32       )), (1, (I64 )))
+  ON(I64Load8U      ,   8, (1, (I32       )), (1, (I64 )))
+  ON(I64Load16S     ,  16, (1, (I32       )), (1, (I64 )))
+  ON(I64Load16U     ,  16, (1, (I32       )), (1, (I64 )))
+  ON(I64Load32S     ,  32, (1, (I32       )), (1, (I64 )))
+  ON(I64Load32U     ,  32, (1, (I32       )), (1, (I64 )))
+  ON(I32Store       ,  32, (2, (I32 , I32 )), (0, (    )))
+  ON(I64Store       ,  64, (2, (I32 , I64 )), (0, (    )))
+  ON(F32Store       ,  32, (2, (I32 , F32 )), (0, (    )))
+  ON(F64Store       ,  64, (2, (I32 , F64 )), (0, (    )))
+  ON(I32Store8      ,   8, (2, (I32 , I32 )), (0, (    )))
+  ON(I32Store16     ,  16, (2, (I32 , I32 )), (0, (    )))
+  ON(I64Store8      ,   8, (2, (I32 , I64 )), (0, (    )))
+  ON(I64Store16     ,  16, (2, (I32 , I64 )), (0, (    )))
+  ON(I64Store32     ,  32, (2, (I32 , I64 )), (0, (    )))
+  ON(V128Load       , 128, (1, (I32       )), (1, (V128)))
+  ON(V128Load32Zero ,  32, (1, (I32       )), (1, (V128)))
+  ON(V128Load64Zero ,  64, (1, (I32       )), (1, (V128)))
+  ON(V128Load8Splat ,   8, (1, (I32       )), (1, (V128)))
+  ON(V128Load16Splat,  16, (1, (I32       )), (1, (V128)))
+  ON(V128Load32Splat,  32, (1, (I32       )), (1, (V128)))
+  ON(V128Load64Splat,  64, (1, (I32       )), (1, (V128)))
+  ON(V128Load8x8S   ,   8, (1, (I32       )), (0, (V128)))
+  ON(V128Load8x8U   ,   8, (1, (I32       )), (0, (V128)))
+  ON(V128Load16x4S  ,  16, (1, (I32       )), (1, (V128)))
+  ON(V128Load16x4U  ,  16, (1, (I32       )), (1, (V128)))
+  ON(V128Load32x2S  ,  32, (1, (I32       )), (1, (V128)))
+  ON(V128Load32x2U  ,  32, (1, (I32       )), (1, (V128)))
+  ON(V128Store      , 128, (1, (I32 , V128)), (0, (    )))
+  // clang-format on
+#undef ON
+#define ON(Name, Width, ParamTypes, ResultTypes)                               \
+  ErrorPtr operator()(Name const *Inst) {                                      \
+    unsigned MaxLaneIndex = 128 / Width;                                       \
+    if (!(static_cast<unsigned>(Inst->Index) < MaxLaneIndex))                  \
+      return Trace.BuildError(MalformedErrorKind::SIMD_INVALID_LANE_ID);       \
+    auto Parameters = BuildTypesArray(                                         \
+        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ParamTypes)));               \
+    auto Results = BuildTypesArray(                                            \
+        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ResultTypes)));              \
+    if (!TypeStack(Parameters, Results)) {                                     \
+      auto Epsilon = TypeStack.getEpsilon();                                   \
+      auto Actuals = TypeStack.recover(Parameters.size());                     \
+      return Trace.BuildError(Epsilon, Parameters, Actuals);                   \
+    }                                                                          \
+    return nullptr;                                                            \
+  }
+  // clang-format off
+  ON(I8x16ExtractLaneS,  8, (1, (V128      )), (1, (I32 ))) // [v128] -> [i32 ]
+  ON(I8x16ExtractLaneU,  8, (1, (V128      )), (1, (I32 ))) // [v128] -> [i32 ]
+  ON(I16x8ExtractLaneS, 16, (1, (V128      )), (1, (I32 ))) // [v128] -> [i32 ]
+  ON(I16x8ExtractLaneU, 16, (1, (V128      )), (1, (I32 ))) // [v128] -> [i32 ]
+  ON(I32x4ExtractLane , 32, (1, (V128      )), (1, (I32 ))) // [v128] -> [i32 ]
+  ON(I64x2ExtractLane , 64, (1, (V128      )), (1, (I64 ))) // [v128] -> [i64 ]
+  ON(F32x4ExtractLane , 32, (1, (V128      )), (1, (F32 ))) // [v128] -> [f32 ]
+  ON(F64x2ExtractLane , 64, (1, (V128      )), (1, (F64 ))) // [v128] -> [f64 ]
+  ON(I8x16ReplaceLane ,  8, (2, (V128, I32 )), (1, (V128)))
+  ON(I16x8ReplaceLane , 16, (2, (V128, I32 )), (1, (V128)))
+  ON(I32x4ReplaceLane , 32, (2, (V128, I32 )), (1, (V128)))
+  ON(I64x2ReplaceLane , 64, (2, (V128, I64 )), (1, (V128)))
+  ON(F32x4ReplaceLane , 32, (2, (V128, F32 )), (1, (V128)))
+  ON(F64x2ReplaceLane , 64, (2, (V128, F64 )), (1, (V128)))
+  // clang-format on
+#undef ON
+#define ON(Name, Width, ParamTypes, ResultTypes)                               \
+  ErrorPtr operator()(Name const *Inst) {                                      \
+    unsigned MaxLaneIndex = 128 / Width;                                       \
+    if (!(static_cast<unsigned>(Inst->Index) < MaxLaneIndex))                  \
+      return Trace.BuildError(MalformedErrorKind::SIMD_INVALID_LANE_ID);       \
+    auto Memory = Context.memories()[static_cast<MemIDX>(0)];                  \
+    if (!Memory.has_value())                                                   \
+      return Trace.BuildError(MalformedErrorKind::MEM_INDEX_OUT_OF_BOUND);     \
+    if (!(Inst->Align <= std::countr_zero(static_cast<unsigned>(Width)) + 1))  \
+      return Trace.BuildError(MalformedErrorKind::INVALID_ALIGN);              \
+    auto Parameters = BuildTypesArray(                                         \
+        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ParamTypes)));               \
+    auto Results = BuildTypesArray(                                            \
+        BOOST_PP_LIST_ENUM(BOOST_PP_ARRAY_TO_LIST(ResultTypes)));              \
+    if (!TypeStack(Parameters, Results)) {                                     \
+      auto Epsilon = TypeStack.getEpsilon();                                   \
+      auto Actuals = TypeStack.recover(Parameters.size());                     \
+      return Trace.BuildError(Epsilon, Parameters, Actuals);                   \
+    }                                                                          \
+    return nullptr;                                                            \
+  }
+  // clang-format off
+  ON(V128Load8Lane  ,  8, (1, (I32, V128)), (1, (V128)))
+  ON(V128Load16Lane , 16, (1, (I32, V128)), (1, (V128)))
+  ON(V128Load32Lane , 32, (1, (I32, V128)), (1, (V128)))
+  ON(V128Load64Lane , 64, (1, (I32, V128)), (1, (V128)))
+  ON(V128Store8Lane ,  8, (1, (I32, V128)), (0, (    )))
+  ON(V128Store16Lane, 16, (1, (I32, V128)), (0, (    )))
+  ON(V128Store32Lane, 32, (1, (I32, V128)), (0, (    )))
+  ON(V128Store64Lane, 64, (1, (I32, V128)), (0, (    )))
+  // clang-format on
 #undef ON
 
   ErrorPtr operator()(Unreachable const *);

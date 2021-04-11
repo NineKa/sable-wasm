@@ -286,6 +286,254 @@ EVENT(onInstI64TruncSatF32S  )() { addInst<I64TruncSatF32S  >(); }
 EVENT(onInstI64TruncSatF32U  )() { addInst<I64TruncSatF32U  >(); }
 EVENT(onInstI64TruncSatF64S  )() { addInst<I64TruncSatF64S  >(); }
 EVENT(onInstI64TruncSatF64U  )() { addInst<I64TruncSatF64U  >(); }
+
+EVENT(onInstV128Load         )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load       >(Align, Offset);         }
+EVENT(onInstV128Load8x8S     )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load8x8S   >(Align, Offset);         }
+EVENT(onInstV128Load8x8U     )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load8x8U   >(Align, Offset);         }
+EVENT(onInstV128Load16x4S    )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load16x4S  >(Align, Offset);         }
+EVENT(onInstV128Load16x4U    )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load16x4U  >(Align, Offset);         }
+EVENT(onInstV128Load32x2S    )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load32x2S  >(Align, Offset);         }
+EVENT(onInstV128Load32x2U    )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load32x2U  >(Align, Offset);         }
+EVENT(onInstV128Load8Splat   )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load8Splat >(Align, Offset);         }
+EVENT(onInstV128Load16Splat  )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load16Splat>(Align, Offset);         }
+EVENT(onInstV128Load32Splat  )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load32Splat>(Align, Offset);         }
+EVENT(onInstV128Load64Splat  )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load64Splat>(Align, Offset);         }
+EVENT(onInstV128Load32Zero   )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load32Zero >(Align, Offset);         }
+EVENT(onInstV128Load64Zero   )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Load64Zero >(Align, Offset);         }
+EVENT(onInstV128Load8Lane    )(std::uint32_t Align, std::uint32_t Offset, bytecode::SIMDLaneID LaneID) { addInst<V128Load8Lane  >(Align, Offset, LaneID); }
+EVENT(onInstV128Load16Lane   )(std::uint32_t Align, std::uint32_t Offset, bytecode::SIMDLaneID LaneID) { addInst<V128Load16Lane >(Align, Offset, LaneID); }
+EVENT(onInstV128Load32Lane   )(std::uint32_t Align, std::uint32_t Offset, bytecode::SIMDLaneID LaneID) { addInst<V128Load32Lane >(Align, Offset, LaneID); }
+EVENT(onInstV128Load64Lane   )(std::uint32_t Align, std::uint32_t Offset, bytecode::SIMDLaneID LaneID) { addInst<V128Load64Lane >(Align, Offset, LaneID); }
+EVENT(onInstV128Store        )(std::uint32_t Align, std::uint32_t Offset) { addInst<V128Store      >(Align, Offset);         }
+EVENT(onInstV128Store8Lane   )(std::uint32_t Align, std::uint32_t Offset, bytecode::SIMDLaneID LaneID) { addInst<V128Store8Lane >(Align, Offset, LaneID); }
+EVENT(onInstV128Store16Lane  )(std::uint32_t Align, std::uint32_t Offset, bytecode::SIMDLaneID LaneID) { addInst<V128Store16Lane>(Align, Offset, LaneID); }
+EVENT(onInstV128Store32Lane  )(std::uint32_t Align, std::uint32_t Offset, bytecode::SIMDLaneID LaneID) { addInst<V128Store32Lane>(Align, Offset, LaneID); }
+EVENT(onInstV128Store64Lane  )(std::uint32_t Align, std::uint32_t Offset, bytecode::SIMDLaneID LaneID) { addInst<V128Store64Lane>(Align, Offset, LaneID); }
+
+EVENT(onInstV128Const        )(bytecode::V128Value Value             ) { addInst<V128Const>(Value);      }
+EVENT(onInstI8x16Shuffle     )(bytecode::SIMDLaneIDVector<16> Indices) { addInst<I8x16Shuffle>(Indices); }
+EVENT(onInstI8x16Swizzle     )() { addInst<I8x16Swizzle>(); }
+EVENT(onInstI8x16Splat       )() { addInst<I8x16Splat  >(); }
+EVENT(onInstI16x8Splat       )() { addInst<I16x8Splat  >(); }
+EVENT(onInstI32x4Splat       )() { addInst<I32x4Splat  >(); }
+EVENT(onInstI64x2Splat       )() { addInst<I64x2Splat  >(); }
+EVENT(onInstF32x4Splat       )() { addInst<F32x4Splat  >(); }
+EVENT(onInstF64x2Splat       )() { addInst<F64x2Splat  >(); }
+EVENT(onInstI8x16ExtractLaneS)(bytecode::SIMDLaneID LaneID) { addInst<I8x16ExtractLaneS>(LaneID); }
+EVENT(onInstI8x16ExtractLaneU)(bytecode::SIMDLaneID LaneID) { addInst<I8x16ExtractLaneU>(LaneID); }
+EVENT(onInstI8x16ReplaceLane )(bytecode::SIMDLaneID LaneID) { addInst<I8x16ReplaceLane >(LaneID); }
+EVENT(onInstI16x8ExtractLaneS)(bytecode::SIMDLaneID LaneID) { addInst<I16x8ExtractLaneS>(LaneID); }
+EVENT(onInstI16x8ExtractLaneU)(bytecode::SIMDLaneID LaneID) { addInst<I16x8ExtractLaneU>(LaneID); }
+EVENT(onInstI16x8ReplaceLane )(bytecode::SIMDLaneID LaneID) { addInst<I16x8ReplaceLane >(LaneID); }
+EVENT(onInstI32x4ExtractLane )(bytecode::SIMDLaneID LaneID) { addInst<I32x4ExtractLane >(LaneID); }
+EVENT(onInstI32x4ReplaceLane )(bytecode::SIMDLaneID LaneID) { addInst<I32x4ReplaceLane >(LaneID); }
+EVENT(onInstI64x2ExtractLane )(bytecode::SIMDLaneID LaneID) { addInst<I64x2ExtractLane >(LaneID); }
+EVENT(onInstI64x2ReplaceLane )(bytecode::SIMDLaneID LaneID) { addInst<I64x2ReplaceLane >(LaneID); }
+EVENT(onInstF32x4ExtractLane )(bytecode::SIMDLaneID LaneID) { addInst<F32x4ExtractLane >(LaneID); }
+EVENT(onInstF32x4ReplaceLane )(bytecode::SIMDLaneID LaneID) { addInst<F32x4ReplaceLane >(LaneID); }
+EVENT(onInstF64x2ExtractLane )(bytecode::SIMDLaneID LaneID) { addInst<F64x2ExtractLane >(LaneID); }
+EVENT(onInstF64x2ReplaceLane )(bytecode::SIMDLaneID LaneID) { addInst<F64x2ReplaceLane >(LaneID); }
+
+EVENT(onInstV128Not          )() { addInst<V128Not      >(); }
+EVENT(onInstV128And          )() { addInst<V128And      >(); }
+EVENT(onInstV128AndNot       )() { addInst<V128AndNot   >(); }
+EVENT(onInstV128Or           )() { addInst<V128Or       >(); }
+EVENT(onInstV128Xor          )() { addInst<V128Xor      >(); }
+EVENT(onInstV128BitSelect    )() { addInst<V128BitSelect>(); }
+EVENT(onInstV128AnyTrue      )() { addInst<V128AnyTrue  >(); }
+
+EVENT(onInstI8x16Eq                  )() { addInst<I8x16Eq                >(); }
+EVENT(onInstI8x16Ne                  )() { addInst<I8x16Ne                >(); }
+EVENT(onInstI8x16LtS                 )() { addInst<I8x16LtS               >(); }
+EVENT(onInstI8x16LtU                 )() { addInst<I8x16LtU               >(); }
+EVENT(onInstI8x16GtS                 )() { addInst<I8x16GtS               >(); }
+EVENT(onInstI8x16GtU                 )() { addInst<I8x16GtU               >(); }
+EVENT(onInstI8x16LeS                 )() { addInst<I8x16LeS               >(); }
+EVENT(onInstI8x16LeU                 )() { addInst<I8x16LeU               >(); }
+EVENT(onInstI8x16GeS                 )() { addInst<I8x16GeS               >(); }
+EVENT(onInstI8x16GeU                 )() { addInst<I8x16GeU               >(); }
+EVENT(onInstI8x16Abs                 )() { addInst<I8x16Abs               >(); }
+EVENT(onInstI8x16Neg                 )() { addInst<I8x16Neg               >(); }
+EVENT(onInstI8x16AllTrue             )() { addInst<I8x16AllTrue           >(); }
+EVENT(onInstI8x16Bitmask             )() { addInst<I8x16Bitmask           >(); }
+EVENT(onInstI8x16NarrowI16x8S        )() { addInst<I8x16NarrowI16x8S      >(); }
+EVENT(onInstI8x16NarrowI16x8U        )() { addInst<I8x16NarrowI16x8U      >(); }
+EVENT(onInstI8x16Shl                 )() { addInst<I8x16Shl               >(); }
+EVENT(onInstI8x16ShrS                )() { addInst<I8x16ShrS              >(); }
+EVENT(onInstI8x16ShrU                )() { addInst<I8x16ShrU              >(); }
+EVENT(onInstI8x16Add                 )() { addInst<I8x16Add               >(); }
+EVENT(onInstI8x16AddSatS             )() { addInst<I8x16AddSatS           >(); }
+EVENT(onInstI8x16AddSatU             )() { addInst<I8x16AddSatU           >(); }
+EVENT(onInstI8x16Sub                 )() { addInst<I8x16Sub               >(); }
+EVENT(onInstI8x16SubSatS             )() { addInst<I8x16SubSatS           >(); }
+EVENT(onInstI8x16SubSatU             )() { addInst<I8x16SubSatU           >(); }
+EVENT(onInstI8x16MinS                )() { addInst<I8x16MinS              >(); }
+EVENT(onInstI8x16MinU                )() { addInst<I8x16MinU              >(); }
+EVENT(onInstI8x16MaxS                )() { addInst<I8x16MaxS              >(); }
+EVENT(onInstI8x16MaxU                )() { addInst<I8x16MaxU              >(); }
+EVENT(onInstI8x16AvgrU               )() { addInst<I8x16AvgrU             >(); }
+EVENT(onInstI8x16Popcnt              )() { addInst<I8x16Popcnt            >(); }
+
+EVENT(onInstI16x8Eq                  )() { addInst<I16x8Eq                >(); }
+EVENT(onInstI16x8Ne                  )() { addInst<I16x8Ne                >(); }
+EVENT(onInstI16x8LtS                 )() { addInst<I16x8LtS               >(); }
+EVENT(onInstI16x8LtU                 )() { addInst<I16x8LtU               >(); }
+EVENT(onInstI16x8GtS                 )() { addInst<I16x8GtS               >(); }
+EVENT(onInstI16x8GtU                 )() { addInst<I16x8GtU               >(); }
+EVENT(onInstI16x8LeS                 )() { addInst<I16x8LeS               >(); }
+EVENT(onInstI16x8LeU                 )() { addInst<I16x8LeU               >(); }
+EVENT(onInstI16x8GeS                 )() { addInst<I16x8GeS               >(); }
+EVENT(onInstI16x8GeU                 )() { addInst<I16x8GeU               >(); }
+EVENT(onInstI16x8Abs                 )() { addInst<I16x8Abs               >(); }
+EVENT(onInstI16x8Neg                 )() { addInst<I16x8Neg               >(); }
+EVENT(onInstI16x8AllTrue             )() { addInst<I16x8AllTrue           >(); }
+EVENT(onInstI16x8Bitmask             )() { addInst<I16x8Bitmask           >(); }
+EVENT(onInstI16x8NarrowI32x4S        )() { addInst<I16x8NarrowI32x4S      >(); }
+EVENT(onInstI16x8NarrowI32x4U        )() { addInst<I16x8NarrowI32x4U      >(); }
+EVENT(onInstI16x8ExtendLowI8x16S     )() { addInst<I16x8ExtendLowI8x16S   >(); }
+EVENT(onInstI16x8ExtendHighI8x16S    )() { addInst<I16x8ExtendHighI8x16S  >(); }
+EVENT(onInstI16x8ExtendLowI8x16U     )() { addInst<I16x8ExtendLowI8x16U   >(); }
+EVENT(onInstI16x8ExtendHighI8x16U    )() { addInst<I16x8ExtendHighI8x16U  >(); }
+EVENT(onInstI16x8Shl                 )() { addInst<I16x8Shl               >(); }
+EVENT(onInstI16x8ShrS                )() { addInst<I16x8ShrS              >(); }
+EVENT(onInstI16x8ShrU                )() { addInst<I16x8ShrU              >(); }
+EVENT(onInstI16x8Add                 )() { addInst<I16x8Add               >(); }
+EVENT(onInstI16x8AddSatS             )() { addInst<I16x8AddSatS           >(); }
+EVENT(onInstI16x8AddSatU             )() { addInst<I16x8AddSatU           >(); }
+EVENT(onInstI16x8Sub                 )() { addInst<I16x8Sub               >(); }
+EVENT(onInstI16x8SubSatS             )() { addInst<I16x8SubSatS           >(); }
+EVENT(onInstI16x8SubSatU             )() { addInst<I16x8SubSatU           >(); }
+EVENT(onInstI16x8Mul                 )() { addInst<I16x8Mul               >(); }
+EVENT(onInstI16x8MinS                )() { addInst<I16x8MinS              >(); }
+EVENT(onInstI16x8MinU                )() { addInst<I16x8MinU              >(); }
+EVENT(onInstI16x8MaxS                )() { addInst<I16x8MaxS              >(); }
+EVENT(onInstI16x8MaxU                )() { addInst<I16x8MaxU              >(); }
+EVENT(onInstI16x8AvgrU               )() { addInst<I16x8AvgrU             >(); }
+EVENT(onInstI16x8Q15MulRSatS         )() { addInst<I16x8Q15MulRSatS       >(); }
+
+EVENT(onInstI32x4Eq                  )() { addInst<I32x4Eq                >(); }
+EVENT(onInstI32x4Ne                  )() { addInst<I32x4Ne                >(); }
+EVENT(onInstI32x4LtS                 )() { addInst<I32x4LtS               >(); }
+EVENT(onInstI32x4LtU                 )() { addInst<I32x4LtU               >(); }
+EVENT(onInstI32x4GtS                 )() { addInst<I32x4GtS               >(); }
+EVENT(onInstI32x4GtU                 )() { addInst<I32x4GtU               >(); }
+EVENT(onInstI32x4LeS                 )() { addInst<I32x4LeS               >(); }
+EVENT(onInstI32x4LeU                 )() { addInst<I32x4LeU               >(); }
+EVENT(onInstI32x4GeS                 )() { addInst<I32x4GeS               >(); }
+EVENT(onInstI32x4GeU                 )() { addInst<I32x4GeU               >(); }
+EVENT(onInstI32x4Abs                 )() { addInst<I32x4Abs               >(); }
+EVENT(onInstI32x4Neg                 )() { addInst<I32x4Neg               >(); }
+EVENT(onInstI32x4AllTrue             )() { addInst<I32x4AllTrue           >(); }
+EVENT(onInstI32x4Bitmask             )() { addInst<I32x4Bitmask           >(); }
+EVENT(onInstI32x4ExtendLowI16x8S     )() { addInst<I32x4ExtendLowI16x8S   >(); }
+EVENT(onInstI32x4ExtendHighI16x8S    )() { addInst<I32x4ExtendHighI16x8S  >(); }
+EVENT(onInstI32x4ExtendLowI16x8U     )() { addInst<I32x4ExtendLowI16x8U   >(); }
+EVENT(onInstI32x4ExtendHighI16x8U    )() { addInst<I32x4ExtendHighI16x8U  >(); }
+EVENT(onInstI32x4Shl                 )() { addInst<I32x4Shl               >(); }
+EVENT(onInstI32x4ShrS                )() { addInst<I32x4ShrS              >(); }
+EVENT(onInstI32x4ShrU                )() { addInst<I32x4ShrU              >(); }
+EVENT(onInstI32x4Add                 )() { addInst<I32x4Add               >(); }
+EVENT(onInstI32x4Sub                 )() { addInst<I32x4Sub               >(); }
+EVENT(onInstI32x4Mul                 )() { addInst<I32x4Mul               >(); }
+EVENT(onInstI32x4MinS                )() { addInst<I32x4MinS              >(); }
+EVENT(onInstI32x4MinU                )() { addInst<I32x4MinU              >(); }
+EVENT(onInstI32x4MaxS                )() { addInst<I32x4MaxS              >(); }
+EVENT(onInstI32x4MaxU                )() { addInst<I32x4MaxU              >(); }
+EVENT(onInstI32x4DotI16x8S           )() { addInst<I32x4DotI16x8S         >(); }
+
+EVENT(onInstI64x2Eq                  )() { addInst<I64x2Eq                >(); }
+EVENT(onInstI64x2Ne                  )() { addInst<I64x2Ne                >(); }
+EVENT(onInstI64x2LtS                 )() { addInst<I64x2LtS               >(); }
+EVENT(onInstI64x2GtS                 )() { addInst<I64x2GtS               >(); }
+EVENT(onInstI64x2LeS                 )() { addInst<I64x2LeS               >(); }
+EVENT(onInstI64x2GeS                 )() { addInst<I64x2GeS               >(); }
+EVENT(onInstI64x2AllTrue             )() { addInst<I64x2AllTrue           >(); }
+EVENT(onInstI64x2Abs                 )() { addInst<I64x2Abs               >(); }
+EVENT(onInstI64x2Neg                 )() { addInst<I64x2Neg               >(); }
+EVENT(onInstI64x2Bitmask             )() { addInst<I64x2Bitmask           >(); }
+EVENT(onInstI64x2ExtendLowI32x4S     )() { addInst<I64x2ExtendLowI32x4S   >(); }
+EVENT(onInstI64x2ExtendHighI32x4S    )() { addInst<I64x2ExtendHighI32x4S  >(); }
+EVENT(onInstI64x2ExtendLowI32x4U     )() { addInst<I64x2ExtendLowI32x4U   >(); }
+EVENT(onInstI64x2ExtendHighI32x4U    )() { addInst<I64x2ExtendHighI32x4U  >(); }
+EVENT(onInstI64x2Shl                 )() { addInst<I64x2Shl               >(); }
+EVENT(onInstI64x2ShrS                )() { addInst<I64x2ShrS              >(); }
+EVENT(onInstI64x2ShrU                )() { addInst<I64x2ShrU              >(); }
+EVENT(onInstI64x2Add                 )() { addInst<I64x2Add               >(); }
+EVENT(onInstI64x2Sub                 )() { addInst<I64x2Sub               >(); }
+EVENT(onInstI64x2Mul                 )() { addInst<I64x2Mul               >(); }
+
+EVENT(onInstF32x4Eq                  )() { addInst<F32x4Eq                >(); }
+EVENT(onInstF32x4Ne                  )() { addInst<F32x4Ne                >(); }
+EVENT(onInstF32x4Lt                  )() { addInst<F32x4Lt                >(); }
+EVENT(onInstF32x4Gt                  )() { addInst<F32x4Gt                >(); }
+EVENT(onInstF32x4Le                  )() { addInst<F32x4Le                >(); }
+EVENT(onInstF32x4Ge                  )() { addInst<F32x4Ge                >(); }
+EVENT(onInstF32x4Ceil                )() { addInst<F32x4Ceil              >(); }
+EVENT(onInstF32x4Floor               )() { addInst<F32x4Floor             >(); }
+EVENT(onInstF32x4Trunc               )() { addInst<F32x4Trunc             >(); }
+EVENT(onInstF32x4Nearest             )() { addInst<F32x4Nearest           >(); }
+EVENT(onInstF32x4Abs                 )() { addInst<F32x4Abs               >(); }
+EVENT(onInstF32x4Neg                 )() { addInst<F32x4Neg               >(); }
+EVENT(onInstF32x4Sqrt                )() { addInst<F32x4Sqrt              >(); }
+EVENT(onInstF32x4Add                 )() { addInst<F32x4Add               >(); }
+EVENT(onInstF32x4Sub                 )() { addInst<F32x4Sub               >(); }
+EVENT(onInstF32x4Mul                 )() { addInst<F32x4Mul               >(); }
+EVENT(onInstF32x4Div                 )() { addInst<F32x4Div               >(); }
+EVENT(onInstF32x4Min                 )() { addInst<F32x4Min               >(); }
+EVENT(onInstF32x4Max                 )() { addInst<F32x4Max               >(); }
+EVENT(onInstF32x4PMin                )() { addInst<F32x4PMin              >(); }
+EVENT(onInstF32x4PMax                )() { addInst<F32x4PMax              >(); }
+
+EVENT(onInstF64x2Eq                  )() { addInst<F64x2Eq                >(); }
+EVENT(onInstF64x2Ne                  )() { addInst<F64x2Ne                >(); }
+EVENT(onInstF64x2Lt                  )() { addInst<F64x2Lt                >(); }
+EVENT(onInstF64x2Gt                  )() { addInst<F64x2Gt                >(); }
+EVENT(onInstF64x2Le                  )() { addInst<F64x2Le                >(); }
+EVENT(onInstF64x2Ge                  )() { addInst<F64x2Ge                >(); }
+EVENT(onInstF64x2Ceil                )() { addInst<F64x2Ceil              >(); }
+EVENT(onInstF64x2Floor               )() { addInst<F64x2Floor             >(); }
+EVENT(onInstF64x2Trunc               )() { addInst<F64x2Trunc             >(); }
+EVENT(onInstF64x2Nearest             )() { addInst<F64x2Nearest           >(); }
+EVENT(onInstF64x2Abs                 )() { addInst<F64x2Abs               >(); }
+EVENT(onInstF64x2Neg                 )() { addInst<F64x2Neg               >(); }
+EVENT(onInstF64x2Sqrt                )() { addInst<F64x2Sqrt              >(); }
+EVENT(onInstF64x2Add                 )() { addInst<F64x2Add               >(); }
+EVENT(onInstF64x2Sub                 )() { addInst<F64x2Sub               >(); }
+EVENT(onInstF64x2Mul                 )() { addInst<F64x2Mul               >(); }
+EVENT(onInstF64x2Div                 )() { addInst<F64x2Div               >(); }
+EVENT(onInstF64x2Min                 )() { addInst<F64x2Min               >(); }
+EVENT(onInstF64x2Max                 )() { addInst<F64x2Max               >(); }
+EVENT(onInstF64x2PMin                )() { addInst<F64x2PMin              >(); }
+EVENT(onInstF64x2PMax                )() { addInst<F64x2PMax              >(); }
+
+EVENT(onInstI32x4TruncSatF32x4S      )() { addInst<I32x4TruncSatF32x4S    >(); }
+EVENT(onInstI32x4TruncSatF32x4U      )() { addInst<I32x4TruncSatF32x4U    >(); }
+EVENT(onInstF32x4ConvertI32x4S       )() { addInst<F32x4ConvertI32x4S     >(); }
+EVENT(onInstF32x4ConvertI32x4U       )() { addInst<F32x4ConvertI32x4U     >(); }
+EVENT(onInstF64x2ConvertLowI32x4S    )() { addInst<F64x2ConvertLowI32x4S  >(); }
+EVENT(onInstF64x2ConvertLowI32x4U    )() { addInst<F64x2ConvertLowI32x4U  >(); }
+EVENT(onInstI32x4TruncSatF64x2SZero  )() { addInst<I32x4TruncSatF64x2SZero>(); }
+EVENT(onInstI32x4TruncSatF64x2UZero  )() { addInst<I32x4TruncSatF64x2UZero>(); }
+EVENT(onInstF32x4DemoteF64x2Zero     )() { addInst<F32x4DemoteF64x2Zero   >(); }
+EVENT(onInstF64x2PromoteLowF32x4     )() { addInst<F64x2PromoteLowF32x4   >(); }
+
+EVENT(onInstI16x8ExtMulLowI8x16S     )() { addInst<I16x8ExtMulLowI8x16S     >(); }
+EVENT(onInstI16x8ExtMulHighI8x16S    )() { addInst<I16x8ExtMulHighI8x16S    >(); }
+EVENT(onInstI16x8ExtMulLowI8x16U     )() { addInst<I16x8ExtMulLowI8x16U     >(); }
+EVENT(onInstI16x8ExtMulHighI8x16U    )() { addInst<I16x8ExtMulHighI8x16U    >(); }
+EVENT(onInstI32x4ExtMulLowI16x8S     )() { addInst<I32x4ExtMulLowI16x8S     >(); }
+EVENT(onInstI32x4ExtMulHighI16x8S    )() { addInst<I32x4ExtMulHighI16x8S    >(); }
+EVENT(onInstI32x4ExtMulLowI16x8U     )() { addInst<I32x4ExtMulLowI16x8U     >(); }
+EVENT(onInstI32x4ExtMulHighI16x8U    )() { addInst<I32x4ExtMulHighI16x8U    >(); }
+EVENT(onInstI64x2ExtMulLowI32x4S     )() { addInst<I64x2ExtMulLowI32x4S     >(); }
+EVENT(onInstI64x2ExtMulHighI32x4S    )() { addInst<I64x2ExtMulHighI32x4S    >(); }
+EVENT(onInstI64x2ExtMulLowI32x4U     )() { addInst<I64x2ExtMulLowI32x4U     >(); }
+EVENT(onInstI64x2ExtMulHighI32x4U    )() { addInst<I64x2ExtMulHighI32x4U    >(); }
+EVENT(onInstI16x8ExtAddPairwiseI8x16S)() { addInst<I16x8ExtAddPairwiseI8x16S>(); }
+EVENT(onInstI16x8ExtAddPairwiseI8x16U)() { addInst<I16x8ExtAddPairwiseI8x16U>(); }
+EVENT(onInstI32x4ExtAddPairwiseI16x8S)() { addInst<I32x4ExtAddPairwiseI16x8S>(); }
+EVENT(onInstI32x4ExtAddPairwiseI16x8U)() { addInst<I32x4ExtAddPairwiseI16x8U>(); }
+
 // clang-format on
 #undef EVENT
 } // namespace parser

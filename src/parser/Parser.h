@@ -4,6 +4,8 @@
 #include "../utility/Commons.h"
 #include "Delegate.h"
 #include "Reader.h"
+#include "SIMD128Parser.tcc"
+#include "SaturationArithmeticParser.tcc"
 
 #include <range/v3/algorithm/copy.hpp>
 #include <range/v3/algorithm/fill_n.hpp>
@@ -615,22 +617,15 @@ void Parser<ReaderImpl, DelegateImpl>::parseInstruction() {
   case 0xc3: Delegate.onInstI64Extend16S(); break;
   case 0xc4: Delegate.onInstI64Extend32S(); break;
 
-  case 0xfc: {
-    auto SubclassByte = Reader.read();
-    switch (static_cast<unsigned>(SubclassByte)) {
-    case 0x00: Delegate.onInstI32TruncSatF32S(); break;
-    case 0x01: Delegate.onInstI32TruncSatF32U(); break;
-    case 0x02: Delegate.onInstI32TruncSatF64S(); break;
-    case 0x03: Delegate.onInstI32TruncSatF64U(); break;
-    case 0x04: Delegate.onInstI64TruncSatF32S(); break;
-    case 0x05: Delegate.onInstI64TruncSatF32U(); break;
-    case 0x06: Delegate.onInstI64TruncSatF64S(); break;
-    case 0x07: Delegate.onInstI64TruncSatF64U(); break;
-    default:
-      throw ParserError(fmt::format(
-          "unknown saturation arithmetic instruction 0xfc 0x{:02x}",
-          SubclassByte));
-    }
+  case static_cast<unsigned>(SaturationArithmeticParserBase::Prefix): {
+    SaturationArithmeticParser ExtensionParser(Delegate);
+    ExtensionParser(Reader);
+    break;
+  }
+
+  case static_cast<unsigned>(SIMDParserBase::Prefix): {
+    SIMDParser ExtensionParser(Delegate);
+    ExtensionParser(Reader);
     break;
   }
 

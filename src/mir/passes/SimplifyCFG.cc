@@ -1,5 +1,7 @@
 #include "SimplifyCFG.h"
 
+#include <range/v3/view/filter.hpp>
+
 namespace mir::passes {
 
 bool SimplifyCFGPass::simplifyTrivialPhi(mir::BasicBlock &BasicBlock) {
@@ -35,7 +37,21 @@ bool SimplifyCFGPass::simplifyTrivialBranch(mir::BasicBlock &BasicBlock) {
 }
 
 bool SimplifyCFGPass::deadBasicBlockElem(mir::BasicBlock &BasicBlock) {
-  if (!BasicBlock.isEntryBlock() && BasicBlock.hasNoUsedSites()) {
+  if (!BasicBlock.isEntryBlock() && BasicBlock.hasNoInwardFlow()) {
+    for (auto *SuccessorBB : BasicBlock.getOutwardFlow())
+      for (auto &Instruction : *SuccessorBB) {
+        if (!mir::is_a<mir::instructions::Phi>(Instruction)) continue;
+        auto &PhiNode = mir::dyn_cast<mir::instructions::Phi>(Instruction);
+        using VectorT =
+            std::vector<std::pair<mir::Instruction *, mir::BasicBlock *>>;
+        // clang-format off
+        auto Candidates = PhiNode.getCandidates()
+          | ranges::views::filter([&](auto const &CandidatePair) {
+              return std::get<1>(CandidatePair) != std::addressof(BasicBlock);
+            })
+          | ranges::to<VectorT>();
+        PhiNode.setCandidates(Candidates);
+      }
     BasicBlock.eraseFromParent();
     return true;
   }

@@ -107,8 +107,8 @@ std::int32_t args_sizes_get(
     __sable_instance_t *InstancePtr, std::int32_t NumArgAddress,
     std::int32_t BufSizeAddress) {
   auto *LinearMemory = getImplicitLinearMemory(InstancePtr);
-  write<wasi_intptr_t>(LinearMemory, NumArgAddress, 0);
-  write<wasi_intptr_t>(LinearMemory, BufSizeAddress, 0);
+  write<wasi_size_t>(LinearMemory, NumArgAddress, 0);
+  write<wasi_size_t>(LinearMemory, BufSizeAddress, 0);
   return ERRNO_SUCCESS;
 }
 

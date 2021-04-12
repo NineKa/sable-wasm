@@ -129,9 +129,8 @@ public:
     auto CastedIndex = static_cast<std::size_t>(Index_);
     if (CastedIndex < ranges::size(Parameters)) return Parameters[CastedIndex];
     CastedIndex = CastedIndex - ranges::size(Parameters);
-    if (CastedIndex < ranges::size(Entity->Locals))
-      return Entity->Locals[CastedIndex];
-    utility::unreachable();
+    assert(CastedIndex < ranges::size(Entity->Locals));
+    return Entity->Locals[CastedIndex];
   }
 
   std::optional<ValueType> get(LocalIDX const &Index_) const {

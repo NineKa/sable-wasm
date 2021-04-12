@@ -428,14 +428,14 @@ public:
   }
 
   Iterator operator()(instructions::Branch const *Inst) {
-    if (Inst->isConditional()) {
+    switch (Inst->getBranchKind()) {
+    case instructions::BranchKind::Conditional:
       return this->operator()(std::addressof(Inst->asConditional()));
-    } else if (Inst->isUnconditional()) {
+    case instructions::BranchKind::Unconditional:
       return this->operator()(std::addressof(Inst->asUnconditional()));
-    } else if (Inst->isSwitch()) {
+    case instructions::BranchKind::Switch:
       return this->operator()(std::addressof(Inst->asSwitch()));
-    } else {
-      utility::unreachable();
+    default: utility::unreachable();
     }
   }
 

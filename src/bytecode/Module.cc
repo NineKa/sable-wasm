@@ -29,8 +29,9 @@ ModuleView::ModuleView(Module const &M_)
       GlobalView.Type = std::addressof(std::get<GlobalType>(Import.Descriptor));
       GlobalView.Index = static_cast<GlobalIDX>(Storage->Globals.size());
       Storage->Globals.push_back(GlobalView);
-    } else
+    } else {
       utility::unreachable();
+    }
   }
   Storage->NumImportedFunctions = Storage->Functions.size();
   Storage->NumImportedGlobals = Storage->Globals.size();
@@ -89,8 +90,9 @@ ModuleView::ModuleView(Module const &M_)
       assert(CastedIndex < Storage->Globals.size());
       auto &GlobalView = Storage->Globals[CastedIndex];
       GlobalView.Export = std::addressof(Export);
-    } else
+    } else {
       utility::unreachable();
+    }
   }
 }
 

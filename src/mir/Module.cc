@@ -76,7 +76,6 @@ Module *Element::getParent() const { return Parent; }
 void Element::replace(ASTNode const *Old, ASTNode *New) noexcept {
   for (std::size_t I = 0; I < getSize(); ++I)
     if (getEntry(I) == Old) setEntry(I, dyn_cast<Function>(New));
-  utility::unreachable();
 }
 
 bool Element::classof(ASTNode const *Node) {

@@ -109,7 +109,7 @@ public:
     using namespace initializer;
     switch (Expr->getInitializerExprKind()) {
     case InitExprKind::Constant: return castAndCall<Constant>(Expr);
-    case InitializerExprKind::GlobalGet: return castAndCall<GlobalGet>(Expr);
+    case InitExprKind::GlobalGet: return castAndCall<GlobalGet>(Expr);
     default: utility::unreachable();
     }
   }

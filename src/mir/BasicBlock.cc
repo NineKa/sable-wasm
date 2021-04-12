@@ -152,18 +152,16 @@ struct OutwardFlowVisitor :
   }
 
   ResultType operator()(instructions::Branch const *Inst) {
-    ResultType Out;
-    if (Inst->isUnconditional()) {
+    switch (Inst->getBranchKind()) {
+    case instructions::BranchKind::Unconditional:
       return this->operator()(std::addressof(Inst->asUnconditional()));
-    } else if (Inst->isConditional()) {
+    case instructions::BranchKind::Conditional:
       return this->operator()(std::addressof(Inst->asConditional()));
-    } else if (Inst->isSwitch()) {
+    case instructions::BranchKind::Switch:
       return this->operator()(std::addressof(Inst->asSwitch()));
-    } else {
-      utility::unreachable();
+    default: utility::unreachable();
     }
-    return Out;
-  };
+  }
 
   template <mir::instruction T> ResultType operator()(T const *) {
     utility::unreachable();

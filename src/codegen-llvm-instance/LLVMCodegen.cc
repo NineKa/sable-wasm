@@ -219,14 +219,14 @@ public:
   }
 
   llvm::Value *operator()(minsts::Branch const *Inst) {
-    if (Inst->isConditional()) {
+    switch (Inst->getBranchKind) {
+    case minsts::BranchKind::Conditional:
       return this->operator()(std::addressof(Inst->asConditional()));
-    } else if (Inst->isUnconditional()) {
+    case minsts::BranchKind::Unconditional:
       return this->operator()(std::addressof(Inst->asUnconditional()));
-    } else if (Inst->isSwitch()) {
+    case minsts::BranchKind::Switch:
       return this->operator()(std::addressof(Inst->asSwitch()));
-    } else {
-      utility::unreachable();
+    default: utility::unreachable();
     }
   }
 

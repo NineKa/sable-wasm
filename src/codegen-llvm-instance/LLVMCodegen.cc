@@ -219,7 +219,7 @@ public:
   }
 
   llvm::Value *operator()(minsts::Branch const *Inst) {
-    switch (Inst->getBranchKind) {
+    switch (Inst->getBranchKind()) {
     case minsts::BranchKind::Conditional:
       return this->operator()(std::addressof(Inst->asConditional()));
     case minsts::BranchKind::Unconditional:

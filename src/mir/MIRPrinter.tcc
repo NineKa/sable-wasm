@@ -116,8 +116,7 @@ inline bool isVoidReturnInst(Instruction const &Inst) {
   case InstructionKind::LocalSet:
   case InstructionKind::GlobalSet:
   case InstructionKind::MemoryGuard:
-  case InstructionKind::Branch:
-  case InstructionKind::BranchTable: return true;
+  case InstructionKind::Branch: return true;
   default: return false;
   }
 }
@@ -409,24 +408,35 @@ public:
     return (Writer << "unreachable").iterator();
   }
 
-  Iterator operator()(instructions::Branch const *Inst) {
-    if (Inst->isConditional()) {
-      Writer << "br.cond " << Inst->getCondition() << ' ' << Inst->getTarget()
-             << ' ' << Inst->getFalseTarget();
-    } else {
-      assert(Inst->isUnconditional());
-      Writer << "br " << Inst->getTarget();
+  Iterator operator()(instructions::branch::Conditional const *Inst) {
+    Writer << "br.cond " << Inst->getOperand() << ' ' << Inst->getTrue() << ' '
+           << Inst->getFalse();
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::branch::Unconditional const *Inst) {
+    Writer << "br " << Inst->getTarget();
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::branch::Switch const *Inst) {
+    Writer << "br.table " << Inst->getDefaultTarget();
+    for (std::size_t I = 0; I < Inst->getNumTargets(); ++I) {
+      Writer << ' ' << I << ':' << Inst->getTarget(I);
     }
     return Writer.iterator();
   }
 
-  Iterator operator()(instructions::BranchTable const *Inst) {
-    Writer << "br.table " << Inst->getDefaultTarget();
-    auto Targets = Inst->getTargets();
-    for (std::size_t I = 0; I < Targets.size(); ++I) {
-      Writer << ' ' << I << ':' << Targets[I];
+  Iterator operator()(instructions::Branch const *Inst) {
+    if (Inst->isConditional()) {
+      return this->operator()(std::addressof(Inst->asConditional()));
+    } else if (Inst->isUnconditional()) {
+      return this->operator()(std::addressof(Inst->asUnconditional()));
+    } else if (Inst->isSwitch()) {
+      return this->operator()(std::addressof(Inst->asSwitch()));
+    } else {
+      utility::unreachable();
     }
-    return Writer.iterator();
   }
 
   Iterator operator()(instructions::Return const *Inst) {

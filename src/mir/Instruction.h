@@ -2,6 +2,7 @@
 #define SABLE_INCLUDE_GUARD_MIR_IR
 
 #include "../bytecode/Type.h"
+#include "../bytecode/V128Value.h"
 #include "ASTNode.h"
 
 #include <llvm/ADT/ilist.h>
@@ -55,6 +56,7 @@ public:
   bool isPrimitiveI64() const;
   bool isPrimitiveF32() const;
   bool isPrimitiveF64() const;
+  bool isPrimitiveV128() const;
   bool isIntegral() const;
   bool isFloatingPoint() const;
 
@@ -66,10 +68,21 @@ public:
   bool operator==(Type const &Other) const;
 };
 
+enum class SIMD128ElementKind { I8, I16, I32, I64, F32, F64 };
+class SIMD128Type {
+  SIMD128ElementKind ElementKind;
+
+public:
+  explicit SIMD128Type(SIMD128ElementKind ElementKind_);
+  SIMD128ElementKind getElementKind() const;
+  unsigned getNumLane() const;
+  unsigned getLaneWidthInBits() const;
+  unsigned getLaneWidthInBytes() const;
+};
+
 enum class InstructionKind : std::uint8_t {
   Unreachable,
   Branch,
-  BranchTable,
   Return,
   Call,
   CallIndirect,
@@ -92,7 +105,20 @@ enum class InstructionKind : std::uint8_t {
   Extend,
   Pack,
   Unpack,
-  Phi
+  Phi,
+  Intrinsic, /* Abstract Base for All Intrinsic Instruction */
+  /* SIMD128 Extension */
+  SIMD128Splat,
+  SIMD128UnaryOp,
+  SIMD128BinaryOp,
+  SIMD128IntUnaryOp,
+  SIMD128IntBinaryOp,
+  SIMD128FPUnaryOp,
+  SIMD128FPBinaryOp,
+  SIMD128Extend,
+  SIMD128Narrow,
+  SIMD128ExtractLane,
+  SIMD128ReplaceLane,
 };
 
 class Instruction :
@@ -171,62 +197,136 @@ public:
 };
 
 //////////////////////////////////// Branch ////////////////////////////////////
+enum class BranchKind { Unconditional, Conditional, Switch };
+
+namespace branch {
+class Unconditional;
+class Conditional;
+class Switch;
+} // namespace branch
+
 class Branch : public Instruction {
-  Instruction *Condition;
-  BasicBlock *Target;
-  BasicBlock *FalseTarget;
+  BranchKind Kind;
 
 public:
-  Branch(
-      Instruction *Condition_, BasicBlock *TargetTrue_,
-      BasicBlock *TargetFalse_);
-  explicit Branch(BasicBlock *Target_);
+  explicit Branch(BranchKind Kind_);
   Branch(Branch const &) = delete;
   Branch(Branch &&) noexcept = delete;
   Branch &operator=(Branch const &) = delete;
   Branch &operator=(Branch &&) noexcept = delete;
   ~Branch() noexcept override;
+
+  BranchKind getBranchKind() const;
+
   bool isConditional() const;
   bool isUnconditional() const;
-  Instruction *getCondition() const;
-  void setCondition(Instruction *Condition_);
-  BasicBlock *getTarget() const;
-  void setTarget(BasicBlock *Target_);
-  BasicBlock *getFalseTarget() const;
-  void setFalseTarget(BasicBlock *FalseTarget_);
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
+  bool isSwitch() const;
+
+  branch::Unconditional &asUnconditional();
+  branch::Conditional &asConditional();
+  branch::Switch &asSwitch();
+
+  branch::Unconditional const &asUnconditional() const;
+  branch::Conditional const &asConditional() const;
+  branch::Switch const &asSwitch() const;
+
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
 
-///////////////////////////////// BranchTable //////////////////////////////////
-class BranchTable : public Instruction {
-  Instruction *Operand;
-  BasicBlock *DefaultTarget;
-  std::vector<BasicBlock *> Targets;
+namespace branch {
+class Unconditional : public Branch {
+  mir::BasicBlock *Target;
 
 public:
-  BranchTable(
-      Instruction *Operand_, BasicBlock *DefaultTarget_,
-      std::span<BasicBlock *const> Targets_);
-  BranchTable(BranchTable const &) = delete;
-  BranchTable(BranchTable &&) noexcept = delete;
-  BranchTable &operator=(BranchTable const &) = delete;
-  BranchTable &operator=(BranchTable &&) noexcept = delete;
-  ~BranchTable() noexcept override;
-  Instruction *getOperand() const;
-  void setOperand(Instruction *Operand_);
-  BasicBlock *getDefaultTarget() const;
-  void setDefaultTarget(BasicBlock *DefaultTarget_);
-  std::size_t getNumTargets() const;
-  BasicBlock *getTarget(std::size_t Index) const;
-  std::span<BasicBlock *const> getTargets() const;
-  void setTarget(std::size_t Index, BasicBlock *Target);
-  void setTargets(std::span<BasicBlock *const> Targets_);
+  explicit Unconditional(mir::BasicBlock *Target_);
+  Unconditional(Unconditional const &) = delete;
+  Unconditional(Unconditional &&) noexcept = delete;
+  Unconditional &operator=(Unconditional const &) = delete;
+  Unconditional &operator=(Unconditional &&) noexcept = delete;
+  ~Unconditional() noexcept override;
+
+  mir::BasicBlock *getTarget() const;
+  void setTarget(mir::BasicBlock *Target_);
+
   void replace(ASTNode const *Old, ASTNode *New) noexcept override;
+  static bool classof(Branch const *Inst);
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
+
+class Conditional : public Branch {
+  mir::Instruction *Operand;
+  mir::BasicBlock *True;
+  mir::BasicBlock *False;
+
+public:
+  Conditional(
+      mir::Instruction *Operand_, mir::BasicBlock *True_,
+      mir::BasicBlock *False_);
+  Conditional(Conditional const &) = delete;
+  Conditional(Conditional &&) noexcept = delete;
+  Conditional &operator=(Conditional const &) = delete;
+  Conditional &operator=(Conditional &&) noexcept = delete;
+  ~Conditional() noexcept override;
+
+  mir::Instruction *getOperand() const;
+  void setOperand(mir::Instruction *Operand_);
+  mir::BasicBlock *getTrue() const;
+  void setTrue(mir::BasicBlock *True_);
+  mir::BasicBlock *getFalse() const;
+  void setFalse(mir::BasicBlock *False_);
+
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
+  static bool classof(Branch const *Inst);
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
+};
+
+class Switch : public Branch {
+  mir::Instruction *Operand;
+  mir::BasicBlock *DefaultTarget;
+  std::vector<mir::BasicBlock *> Targets;
+
+public:
+  Switch(
+      mir::Instruction *Operand_, mir::BasicBlock *DefaultTarget_,
+      std::span<mir::BasicBlock *const> Targets_);
+  Switch(Switch const &) = delete;
+  Switch(Switch &&) noexcept = delete;
+  Switch &operator=(Switch const &) = delete;
+  Switch &operator=(Switch &&) noexcept = delete;
+  ~Switch() noexcept override;
+
+  mir::Instruction *getOperand() const;
+  void setOperand(mir::Instruction *Operand_);
+
+  mir::BasicBlock *getDefaultTarget() const;
+  void setDefaultTarget(mir::BasicBlock *DefaultTarget_);
+
+  auto getTargets() {
+    auto Begin = ranges::begin(Targets);
+    auto End = ranges::end(Targets);
+    return ranges::make_subrange(Begin, End);
+  }
+
+  auto getTargets() const {
+    auto Begin = ranges::begin(Targets);
+    auto End = ranges::end(Targets);
+    return ranges::make_subrange(Begin, End);
+  }
+
+  std::size_t getNumTargets() const;
+  mir::BasicBlock *getTarget(std::size_t Index) const;
+  void setTarget(std::size_t Index, mir::BasicBlock *Target_);
+  void setTargets(std::span<mir::BasicBlock *const> Targets_);
+
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
+  static bool classof(Branch const *Inst);
+  static bool classof(Instruction const *Inst);
+  static bool classof(ASTNode const *Node);
+};
+} // namespace branch
 
 /////////////////////////////////// Return /////////////////////////////////////
 class Return : public Instruction {
@@ -240,10 +340,12 @@ public:
   Return &operator=(Return const &) = delete;
   Return &operator=(Return &&) noexcept = delete;
   ~Return() noexcept override;
+
   bool hasReturnValue() const;
   Instruction *getOperand() const;
   void setOperand(Instruction *Operand_);
   void replace(ASTNode const *Old, ASTNode *New) noexcept override;
+
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
@@ -409,21 +511,31 @@ public:
 
 ///////////////////////////////// Constant /////////////////////////////////////
 class Constant : public Instruction {
-  std::variant<std::int32_t, std::int64_t, float, double> Value;
+  std::variant<
+      std::int32_t,       // I32
+      std::int64_t,       // I64
+      float,              // F32
+      double,             // F64
+      bytecode::V128Value // V128
+      >
+      Value;
 
 public:
   explicit Constant(std::int32_t Value_);
   explicit Constant(std::int64_t Value_);
   explicit Constant(float Value_);
   explicit Constant(double Value_);
+  explicit Constant(bytecode::V128Value Value_);
   std::int32_t &asI32();
   std::int64_t &asI64();
   float &asF32();
   double &asF64();
-  std::int32_t asI32() const;
-  std::int64_t asI64() const;
-  float asF32() const;
-  double asF64() const;
+  bytecode::V128Value &asV128();
+  std::int32_t const &asI32() const;
+  std::int64_t const &asI64() const;
+  float const &asF32() const;
+  double const &asF64() const;
+  bytecode::V128Value const &asV128() const;
   bytecode::ValueType getValueType() const;
   void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
@@ -801,7 +913,6 @@ public:
     switch (Inst->getInstructionKind()) {
     case IKind::Unreachable : return castAndCall<Unreachable>(Inst);
     case IKind::Branch      : return castAndCall<Branch>(Inst);
-    case IKind::BranchTable : return castAndCall<BranchTable>(Inst);
     case IKind::Return      : return castAndCall<Return>(Inst);
     case IKind::Call        : return castAndCall<Call>(Inst);
     case IKind::CallIndirect: return castAndCall<CallIndirect>(Inst);

@@ -65,6 +65,10 @@ bool Type::isPrimitiveF64() const {
   return isPrimitive() && (asPrimitive() == bytecode::valuetypes::F64);
 }
 
+bool Type::isPrimitiveV128() const {
+  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::V128);
+}
+
 bool Type::isIntegral() const { return isPrimitiveI32() || isPrimitiveI64(); }
 
 bool Type::isFloatingPoint() const {
@@ -103,21 +107,57 @@ bool Type::operator==(Type const &Other) const {
   }
 }
 
+SIMD128Type::SIMD128Type(SIMD128ElementKind ElementKind_)
+    : ElementKind(ElementKind_) {}
+
+SIMD128ElementKind SIMD128Type::getElementKind() const { return ElementKind; }
+
+unsigned SIMD128Type::getNumLane() const {
+  switch (ElementKind) {
+  case SIMD128ElementKind::I8: return 16;
+  case SIMD128ElementKind::I16: return 8;
+  case SIMD128ElementKind::I32: return 4;
+  case SIMD128ElementKind::I64: return 2;
+  case SIMD128ElementKind::F32: return 4;
+  case SIMD128ElementKind::F64: return 1;
+  default: utility::unreachable();
+  }
+}
+
+unsigned SIMD128Type::getLaneWidthInBits() const {
+  switch (ElementKind) {
+  case SIMD128ElementKind::I8: return 8;
+  case SIMD128ElementKind::I16: return 16;
+  case SIMD128ElementKind::I32: return 32;
+  case SIMD128ElementKind::I64: return 64;
+  case SIMD128ElementKind::F32: return 32;
+  case SIMD128ElementKind::F64: return 64;
+  default: utility::unreachable();
+  }
+}
+
+unsigned SIMD128Type::getLaneWidthInBytes() const {
+  switch (ElementKind) {
+  case SIMD128ElementKind::I8: return 1;
+  case SIMD128ElementKind::I16: return 2;
+  case SIMD128ElementKind::I32: return 4;
+  case SIMD128ElementKind::I64: return 8;
+  case SIMD128ElementKind::F32: return 4;
+  case SIMD128ElementKind::F64: return 8;
+  default: utility::unreachable();
+  }
+}
+
 bool Instruction::isPhi() const { return instructions::Phi::classof(this); }
 
 bool Instruction::isBranching() const {
-  switch (getInstructionKind()) {
-  case InstructionKind::Branch:
-  case InstructionKind::BranchTable: return true;
-  default: return false;
-  }
+  return is_a<instructions::Branch>(this);
 }
 
 bool Instruction::isTerminating() const {
   switch (getInstructionKind()) {
   case InstructionKind::Unreachable:
   case InstructionKind::Branch:
-  case InstructionKind::BranchTable:
   case InstructionKind::Return: return true;
   default: return false;
   }
@@ -152,7 +192,6 @@ char const *formatter<mir::InstructionKind>::getEnumString(
   switch (Kind) {
   case IKind::Unreachable : return "unreachable";
   case IKind::Branch      : return "br";
-  case IKind::BranchTable : return "br.table";
   case IKind::Return      : return "ret";
   case IKind::Call        : return "call";
   case IKind::CallIndirect: return "call_indirect";

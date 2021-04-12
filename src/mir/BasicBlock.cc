@@ -129,19 +129,42 @@ struct OutwardFlowVisitor :
   using ResultType = llvm::SmallPtrSet<BasicBlock *, 2>;
   ResultType operator()(instructions::Unreachable const *) { return {}; }
   ResultType operator()(instructions::Return const *) { return {}; }
-  ResultType operator()(instructions::Branch const *Inst) {
+
+  ResultType operator()(instructions::branch::Unconditional const *Inst) {
     ResultType Out;
     if (Inst->getTarget()) Out.insert(Inst->getTarget());
-    if (Inst->getFalseTarget()) Out.insert(Inst->getFalseTarget());
     return Out;
-  };
-  ResultType operator()(instructions::BranchTable const *Inst) {
+  }
+
+  ResultType operator()(instructions::branch::Conditional const *Inst) {
+    ResultType Out;
+    if (Inst->getTrue()) Out.insert(Inst->getTrue());
+    if (Inst->getFalse()) Out.insert(Inst->getFalse());
+    return Out;
+  }
+
+  ResultType operator()(instructions::branch::Switch const *Inst) {
     ResultType Out;
     if (Inst->getDefaultTarget()) Out.insert(Inst->getDefaultTarget());
     for (auto *Target : Inst->getTargets())
       if (Target) Out.insert(Target);
     return Out;
   }
+
+  ResultType operator()(instructions::Branch const *Inst) {
+    ResultType Out;
+    if (Inst->isUnconditional()) {
+      return this->operator()(std::addressof(Inst->asUnconditional()));
+    } else if (Inst->isConditional()) {
+      return this->operator()(std::addressof(Inst->asConditional()));
+    } else if (Inst->isSwitch()) {
+      return this->operator()(std::addressof(Inst->asSwitch()));
+    } else {
+      utility::unreachable();
+    }
+    return Out;
+  };
+
   template <mir::instruction T> ResultType operator()(T const *) {
     utility::unreachable();
   }

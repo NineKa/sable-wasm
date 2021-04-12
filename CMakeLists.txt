@@ -32,12 +32,13 @@ add_library(sablewasm
         src/mir/ASTNode.cc
         src/mir/Instruction.cc
         src/mir/Instructions.cc
+        src/mir/Intrinsic.cc 
+        src/mir/SIMD128Instructions.cc
         src/mir/BasicBlock.cc
         src/mir/InitializerExpr.cc
         src/mir/Module.cc
         src/mir/Function.cc
         src/mir/MIRCodegen.cc
-        src/mir/passes/IsWellformed.cc
         src/mir/passes/TypeInfer.cc
         src/mir/passes/Dominator.cc
         src/mir/passes/SimplifyCFG.cc

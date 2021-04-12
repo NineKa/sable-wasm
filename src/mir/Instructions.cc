@@ -27,57 +27,50 @@ bool Unreachable::classof(ASTNode const *Node) {
 }
 
 //////////////////////////////////// Branch ////////////////////////////////////
-Branch::Branch(
-    Instruction *Condition_, BasicBlock *Target_, BasicBlock *FalseTarget_)
-    : Instruction(IKind::Branch), Condition(), Target(), FalseTarget() {
-  setCondition(Condition_);
-  setTarget(Target_);
-  setFalseTarget(FalseTarget_);
+Branch::Branch(BranchKind Kind_)
+    : Instruction(InstructionKind::Branch), Kind(Kind_) {}
+Branch::~Branch() noexcept = default;
+
+BranchKind Branch::getBranchKind() const { return Kind; }
+
+bool Branch::isConditional() const { return Kind == BranchKind::Conditional; }
+bool Branch::isSwitch() const { return Kind == BranchKind::Switch; }
+bool Branch::isUnconditional() const {
+  return Kind == BranchKind::Unconditional;
 }
 
-Branch::Branch(BasicBlock *Target_)
-    : Instruction(IKind::Branch), Condition(), Target(), FalseTarget() {
-  setTarget(Target_);
+branch::Unconditional &Branch::asUnconditional() {
+  assert(isUnconditional());
+  return static_cast<branch::Unconditional &>(*this);
 }
 
-Branch::~Branch() noexcept {
-  if (Condition != nullptr) Condition->remove_use(this);
-  if (Target != nullptr) Target->remove_use(this);
-  if (FalseTarget != nullptr) FalseTarget->remove_use(this);
+branch::Conditional &Branch::asConditional() {
+  assert(isConditional());
+  return static_cast<branch::Conditional &>(*this);
 }
 
-bool Branch::isConditional() const { return Condition != nullptr; }
-bool Branch::isUnconditional() const { return Condition == nullptr; }
-Instruction *Branch::getCondition() const { return Condition; }
-BasicBlock *Branch::getTarget() const { return Target; }
-BasicBlock *Branch::getFalseTarget() const { return FalseTarget; }
-
-void Branch::setCondition(Instruction *Condition_) {
-  if (Condition != nullptr) Condition->remove_use(this);
-  if (Condition_ != nullptr) Condition_->add_use(this);
-  Condition = Condition_;
+branch::Switch &Branch::asSwitch() {
+  assert(isSwitch());
+  return static_cast<branch::Switch &>(*this);
 }
 
-void Branch::setTarget(BasicBlock *Target_) {
-  if (Target != nullptr) Target->remove_use(this);
-  if (Target_ != nullptr) Target_->add_use(this);
-  Target = Target_;
+branch::Unconditional const &Branch::asUnconditional() const {
+  assert(isUnconditional());
+  return static_cast<branch::Unconditional const &>(*this);
 }
 
-void Branch::setFalseTarget(BasicBlock *FalseTarget_) {
-  if (FalseTarget != nullptr) FalseTarget->remove_use(this);
-  if (FalseTarget_ != nullptr) FalseTarget_->add_use(this);
-  FalseTarget = FalseTarget_;
+branch::Conditional const &Branch::asConditional() const {
+  assert(isConditional());
+  return static_cast<branch::Conditional const &>(*this);
 }
 
-void Branch::replace(ASTNode const *Old, ASTNode *New) noexcept {
-  if (getCondition() == Old) setCondition(dyn_cast<Instruction>(New));
-  if (getTarget() == Old) setTarget(dyn_cast<BasicBlock>(New));
-  if (getFalseTarget() == Old) setFalseTarget(dyn_cast<BasicBlock>(New));
+branch::Switch const &Branch::asSwitch() const {
+  assert(isSwitch());
+  return static_cast<branch::Switch const &>(*this);
 }
 
 bool Branch::classof(Instruction const *Inst) {
-  return Inst->getInstructionKind() == IKind::Branch;
+  return Inst->getInstructionKind() == InstructionKind::Branch;
 }
 
 bool Branch::classof(ASTNode const *Node) {
@@ -86,77 +79,173 @@ bool Branch::classof(ASTNode const *Node) {
   return false;
 }
 
-///////////////////////////////// BranchTable //////////////////////////////////
-BranchTable::BranchTable(
-    Instruction *Operand_, BasicBlock *DefaultTarget_,
-    std::span<BasicBlock *const> Targets_)
-    : Instruction(IKind::BranchTable), Operand(), DefaultTarget(), Targets() {
+namespace branch {
+Unconditional::Unconditional(mir::BasicBlock *Target_)
+    : Branch(BranchKind::Unconditional), Target() {
+  setTarget(Target_);
+}
+
+Unconditional::~Unconditional() noexcept {
+  if (Target != nullptr) Target->remove_use(this);
+}
+
+mir::BasicBlock *Unconditional::getTarget() const { return Target; }
+
+void Unconditional::setTarget(mir::BasicBlock *Target_) {
+  if (Target != nullptr) Target->remove_use(this);
+  if (Target_ != nullptr) Target_->add_use(this);
+  Target = Target_;
+}
+
+void Unconditional::replace(ASTNode const *Old, ASTNode *New) noexcept {
+  if (getTarget() == Old) setTarget(dyn_cast<mir::BasicBlock>(New));
+}
+
+bool Unconditional::classof(Branch const *Inst) {
+  return Inst->isUnconditional();
+}
+
+bool Unconditional::classof(Instruction const *Inst) {
+  if (Branch::classof(Inst))
+    return Unconditional::classof(dyn_cast<Branch>(Inst));
+  return false;
+}
+
+bool Unconditional::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Unconditional::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+
+Conditional::Conditional(
+    mir::Instruction *Operand_, mir::BasicBlock *True_, mir::BasicBlock *False_)
+    : Branch(BranchKind::Conditional), Operand(), True(), False() {
   setOperand(Operand_);
-  setDefaultTarget(DefaultTarget_);
-  setTargets(Targets_);
+  setTrue(True_);
+  setFalse(False_);
 }
 
-BranchTable::~BranchTable() noexcept {
+Conditional::~Conditional() noexcept {
   if (Operand != nullptr) Operand->remove_use(this);
-  if (DefaultTarget != nullptr) DefaultTarget->remove_use(this);
-  for (auto *Target : Targets)
-    if (Target != nullptr) Target->remove_use(this);
+  if (True != nullptr) True->remove_use(this);
+  if (False != nullptr) False->remove_use(this);
 }
 
-Instruction *BranchTable::getOperand() const { return Operand; }
-BasicBlock *BranchTable::getDefaultTarget() const { return DefaultTarget; }
-std::span<BasicBlock *const> BranchTable::getTargets() const { return Targets; }
+mir::Instruction *Conditional::getOperand() const { return Operand; }
+mir::BasicBlock *Conditional::getTrue() const { return True; }
+mir::BasicBlock *Conditional::getFalse() const { return False; }
 
-void BranchTable::setOperand(Instruction *Operand_) {
+void Conditional::setOperand(mir::Instruction *Operand_) {
   if (Operand != nullptr) Operand->remove_use(this);
   if (Operand_ != nullptr) Operand_->add_use(this);
   Operand = Operand_;
 }
 
-void BranchTable::setDefaultTarget(BasicBlock *DefaultTarget_) {
+void Conditional::setTrue(mir::BasicBlock *True_) {
+  if (True != nullptr) True->remove_use(this);
+  if (True_ != nullptr) True_->add_use(this);
+  True = True_;
+}
+
+void Conditional::setFalse(mir::BasicBlock *False_) {
+  if (False != nullptr) False->remove(this);
+  if (False_ != nullptr) False_->add_use(this);
+  False = False_;
+}
+
+void Conditional::replace(ASTNode const *Old, ASTNode *New) noexcept {
+  if (getOperand() == Old) setOperand(dyn_cast<Instruction>(New));
+  if (getTrue() == Old) setTrue(dyn_cast<BasicBlock>(New));
+  if (getFalse() == Old) setFalse(dyn_cast<BasicBlock>(New));
+}
+
+bool Conditional::classof(Branch const *Inst) { return Inst->isConditional(); }
+
+bool Conditional::classof(Instruction const *Inst) {
+  if (Branch::classof(Inst))
+    return Conditional::classof(dyn_cast<Branch>(Inst));
+  return false;
+}
+
+bool Conditional::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Conditional::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+
+Switch::Switch(
+    mir::Instruction *Operand_, mir::BasicBlock *DefaultTarget_,
+    std::span<mir::BasicBlock *const> Targets_)
+    : Branch(BranchKind::Switch), Operand(), DefaultTarget(), Targets() {
+  setOperand(Operand_);
+  setDefaultTarget(DefaultTarget_);
+  setTargets(Targets_);
+}
+
+Switch::~Switch() noexcept {
+  if (Operand != nullptr) Operand->remove_use(this);
+  if (DefaultTarget != nullptr) DefaultTarget->remove_use(this);
+  for (auto *Target : Targets)
+    if (Target != nullptr) Target->remove_use(this);
+}
+
+mir::Instruction *Switch::getOperand() const { return Operand; }
+mir::BasicBlock *Switch::getDefaultTarget() const { return DefaultTarget; }
+
+void Switch::setOperand(mir::Instruction *Operand_) {
+  if (Operand != nullptr) Operand->remove_use(this);
+  if (Operand_ != nullptr) Operand_->add_use(this);
+  Operand = Operand_;
+}
+
+void Switch::setDefaultTarget(mir::BasicBlock *DefaultTarget_) {
   if (DefaultTarget != nullptr) DefaultTarget->remove_use(this);
   if (DefaultTarget_ != nullptr) DefaultTarget_->add_use(this);
   DefaultTarget = DefaultTarget_;
 }
 
-std::size_t BranchTable::getNumTargets() const { return Targets.size(); }
+std::size_t Switch::getNumTargets() const { return Targets.size(); }
 
-BasicBlock *BranchTable::getTarget(std::size_t Index) const {
+mir::BasicBlock *Switch::getTarget(std::size_t Index) const {
   assert(Index < getNumTargets());
   return Targets[Index];
 }
 
-void BranchTable::setTargets(std::span<BasicBlock *const> Targets_) {
+void Switch::setTarget(std::size_t Index, mir::BasicBlock *Target_) {
+  assert(Index < getNumTargets());
+  if (Targets[Index] != nullptr) Targets[Index]->remove_use(this);
+  if (Target_ != nullptr) Target_->add_use(this);
+  Targets[Index] = Target_;
+}
+
+void Switch::setTargets(std::span<mir::BasicBlock *const> Targets_) {
   for (auto *Target : Targets)
     if (Target != nullptr) Target->remove_use(this);
   for (auto *Target : Targets_)
     if (Target != nullptr) Target->add_use(this);
-  Targets = ranges::to<decltype(Targets)>(Targets_);
+  Targets = Targets_ | ranges::to<std::vector<mir::BasicBlock *>>();
 }
 
-void BranchTable::setTarget(std::size_t Index, BasicBlock *Target) {
-  assert(Index < getNumTargets());
-  if (getTarget(Index) != nullptr) getTarget(Index)->remove_use(this);
-  if (Target != nullptr) Target->add_use(this);
-  Targets[Index] = Target;
-}
-
-void BranchTable::replace(ASTNode const *Old, ASTNode *New) noexcept {
+void Switch::replace(ASTNode const *Old, ASTNode *New) noexcept {
   if (getOperand() == Old) setOperand(dyn_cast<Instruction>(New));
   if (getDefaultTarget() == Old) setDefaultTarget(dyn_cast<BasicBlock>(New));
   for (std::size_t I = 0; I < getNumTargets(); ++I)
     if (getTarget(I) == Old) setTarget(I, dyn_cast<BasicBlock>(New));
 }
 
-bool BranchTable::classof(Instruction const *Inst) {
-  return Inst->getInstructionKind() == IKind::BranchTable;
-}
+bool Switch::classof(Branch const *Inst) { return Inst->isSwitch(); }
 
-bool BranchTable::classof(ASTNode const *Node) {
-  if (Instruction::classof(Node))
-    return BranchTable::classof(dyn_cast<Instruction>(Node));
+bool Switch::classof(Instruction const *Inst) {
+  if (Branch::classof(Inst)) return Switch::classof(dyn_cast<Branch>(Inst));
   return false;
 }
+
+bool Switch::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return Switch::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+} // namespace branch
 
 /////////////////////////////////// Return /////////////////////////////////////
 Return::Return() : Instruction(IKind::Return), Operand() {}
@@ -544,26 +633,38 @@ Constant::Constant(float Value_)
     : Instruction(IKind::Constant), Value(Value_) {}
 Constant::Constant(double Value_)
     : Instruction(IKind::Constant), Value(Value_) {}
+Constant::Constant(bytecode::V128Value Value_)
+    : Instruction(IKind::Constant), Value(Value_) {}
 
+// clang-format off
 std::int32_t &Constant::asI32() { return std::get<std::int32_t>(Value); }
 std::int64_t &Constant::asI64() { return std::get<std::int64_t>(Value); }
 float &Constant::asF32() { return std::get<float>(Value); }
+bytecode::V128Value &Constant::asV128()
+{ return std::get<bytecode::V128Value>(Value); }
+
 double &Constant::asF64() { return std::get<double>(Value); }
-std::int32_t Constant::asI32() const { return std::get<std::int32_t>(Value); }
-std::int64_t Constant::asI64() const { return std::get<std::int64_t>(Value); }
-float Constant::asF32() const { return std::get<float>(Value); }
-double Constant::asF64() const { return std::get<double>(Value); }
+std::int32_t const &Constant::asI32() const
+{ return std::get<std::int32_t>(Value); }
+std::int64_t const &Constant::asI64() const
+{ return std::get<std::int64_t>(Value); }
+float const &Constant::asF32() const { return std::get<float>(Value); }
+double const &Constant::asF64() const { return std::get<double>(Value); }
+bytecode::V128Value const &Constant::asV128() const
+{ return std::get<bytecode::V128Value>(Value); }
+// clang-format on
 
 bytecode::ValueType Constant::getValueType() const {
   auto const Visitor = utility::Overload{
       [](std::int32_t const &) { return bytecode::valuetypes::I32; },
       [](std::int64_t const &) { return bytecode::valuetypes::I64; },
       [](float const &) { return bytecode::valuetypes::F32; },
-      [](double const &) { return bytecode::valuetypes::F64; }};
+      [](double const &) { return bytecode::valuetypes::F64; },
+      [](bytecode::V128Value const &) { return bytecode::valuetypes::V128; }};
   return std::visit(Visitor, Value);
 }
 
-void Constant::replace(ASTNode const *Old, ASTNode *New) noexcept {
+void Constant::replace(ASTNode const *, ASTNode *) noexcept {
   utility::unreachable();
 }
 

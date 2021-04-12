@@ -46,7 +46,6 @@ public:
 
   Type operator()(minsts::Unreachable const *) { return Type::BuildUnit(); }
   Type operator()(minsts::Branch const *) { return Type::BuildUnit(); }
-  Type operator()(minsts::BranchTable const *) { return Type::BuildUnit(); }
   Type operator()(minsts::Return const *) { return Type::BuildUnit(); }
 
   Type operator()(minsts::Call const *Inst) {

@@ -347,7 +347,7 @@ public:
       }
     }
     if (Reachable) {
-      CurrentBasicBlock->BuildInst<minsts::Branch>(TransferTo);
+      CurrentBasicBlock->BuildInst<minsts::branch::Unconditional>(TransferTo);
       auto MergeValues = values().peek(NumMerges);
       detail::addMergeCandidates(TransferTo, CurrentBasicBlock, MergeValues);
       values().pop(NumMerges);
@@ -390,7 +390,7 @@ public:
     auto *LoopBB = createBasicBlock();
     auto *LandingBB = createBasicBlock();
     TranslationVisitor BodyVisitor(Context, LoopBB, LandingBB);
-    CurrentBasicBlock->BuildInst<minsts::Branch>(LoopBB);
+    CurrentBasicBlock->BuildInst<minsts::branch::Unconditional>(LoopBB);
     for (auto &&[LoopMergeValueType, PhiCandidate] : ranges::views::zip(
              BlockType.getResultTypes(), values().peek(NumParamTypes))) {
       auto *Phi = LoopBB->BuildInst<minsts::Phi>(LoopMergeValueType);
@@ -419,7 +419,8 @@ public:
       auto *LandingBB = createBasicBlock();
       TranslationVisitor TrueVisitor(Context, TrueBB, FalseBB);
       TranslationVisitor FalseVisitor(Context, FalseBB, LandingBB);
-      CurrentBasicBlock->BuildInst<minsts::Branch>(Condition, TrueBB, FalseBB);
+      using MIRCondBr = minsts::branch::Conditional;
+      CurrentBasicBlock->BuildInst<MIRCondBr>(Condition, TrueBB, FalseBB);
       TrueVisitor.values().push(values().peek(NumParamTypes));
       FalseVisitor.values().push(values().peek(NumParamTypes));
       values().pop(NumParamTypes);
@@ -437,8 +438,8 @@ public:
       auto *TrueBB = createBasicBlock();
       auto *LandingBB = createBasicBlock();
       TranslationVisitor TrueVisitor(Context, TrueBB, LandingBB);
-      CurrentBasicBlock->BuildInst<minsts::Branch>(
-          Condition, TrueBB, LandingBB);
+      using MIRCondBr = minsts::branch::Conditional;
+      CurrentBasicBlock->BuildInst<MIRCondBr>(Condition, TrueBB, LandingBB);
       labels().push(LandingBB, NumResultTypes);
       TrueVisitor.translate(Inst->True, LandingBB, NumResultTypes);
       labels().pop();
@@ -450,7 +451,7 @@ public:
     auto [TargetBB, NumPhiNodes] = Context[Inst->Target];
     auto PhiCandidates = values().peek(NumPhiNodes);
     detail::addMergeCandidates(TargetBB, CurrentBasicBlock, PhiCandidates);
-    CurrentBasicBlock->BuildInst<minsts::Branch>(TargetBB);
+    CurrentBasicBlock->BuildInst<minsts::branch::Unconditional>(TargetBB);
     values().clear();
   }
 
@@ -460,7 +461,8 @@ public:
     auto PhiCandidates = values().peek(NumPhiNodes);
     auto *FalseBB = createBasicBlock();
     detail::addMergeCandidates(TargetBB, CurrentBasicBlock, PhiCandidates);
-    CurrentBasicBlock->BuildInst<minsts::Branch>(Condition, TargetBB, FalseBB);
+    using MIRCondBr = minsts::branch::Conditional;
+    CurrentBasicBlock->BuildInst<MIRCondBr>(Condition, TargetBB, FalseBB);
     CurrentBasicBlock = FalseBB;
   }
 
@@ -478,13 +480,13 @@ public:
       utility::ignore(TargetNumPhiNodes);
       detail::addMergeCandidates(TargetBB, CurrentBasicBlock, PhiCandidates);
     }
-    CurrentBasicBlock->BuildInst<minsts::BranchTable>(
-        Operand, DefaultBB, Targets);
+    using MIRSwitch = minsts::branch::Switch;
+    CurrentBasicBlock->BuildInst<MIRSwitch>(Operand, DefaultBB, Targets);
     values().clear();
   }
 
   void operator()(binsts::Return const *) {
-    CurrentBasicBlock->BuildInst<minsts::Branch>(Context.exit());
+    CurrentBasicBlock->BuildInst<minsts::branch::Unconditional>(Context.exit());
     auto NumReturnValues = Context.source().getType()->getResultTypes().size();
     auto ReturnValues = values().peek(NumReturnValues);
     detail::addMergeCandidates(Context.exit(), CurrentBasicBlock, ReturnValues);

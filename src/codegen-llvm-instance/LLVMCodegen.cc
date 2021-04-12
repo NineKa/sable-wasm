@@ -184,29 +184,22 @@ public:
     return Builder.CreateUnreachable();
   }
 
-  llvm::Value *operator()(minsts::Branch const *Inst) {
-    llvm::Value *LLVMBrInstruction = nullptr;
-    if (Inst->isConditional()) {
-      llvm::Value *Condition = Context[*Inst->getCondition()];
-      assert(Context.getInferredType()[*Inst->getCondition()].isPrimitiveI32());
-      assert(Condition->getType() == Context.getLayout().getI32Ty());
-      auto *Zero = Context.getLayout().getI32Constant(0);
-      Condition = Builder.CreateICmpNE(Condition, Zero);
-      auto *TrueBB = std::get<0>(Context[*Inst->getTarget()]);
-      auto *FalseBB = std::get<0>(Context[*Inst->getFalseTarget()]);
-      LLVMBrInstruction = Builder.CreateCondBr(Condition, TrueBB, FalseBB);
-    } else /* Inst->isUnconditional() */ {
-      assert(Inst->isUnconditional());
-      auto *TargetBB = std::get<0>(Context[*Inst->getTarget()]);
-      LLVMBrInstruction = Builder.CreateBr(TargetBB);
-    }
-    return LLVMBrInstruction;
+  llvm::Value *operator()(minsts::branch::Unconditional const *Inst) {
+    auto *TargetBB = std::get<0>(Context[*Inst->getTarget()]);
+    return Builder.CreateBr(TargetBB);
   }
 
-  llvm::Value *operator()(minsts::BranchTable const *Inst) {
+  llvm::Value *operator()(minsts::branch::Conditional const *Inst) {
+    llvm::Value *Condition = Context[*Inst->getOperand()];
+    auto *Zero = Context.getLayout().getI32Constant(0);
+    Condition = Builder.CreateICmpNE(Condition, Zero);
+    auto *TrueBB = std::get<0>(Context[*Inst->getTrue()]);
+    auto *FalseBB = std::get<0>(Context[*Inst->getFalse()]);
+    return Builder.CreateCondBr(Condition, TrueBB, FalseBB);
+  }
+
+  llvm::Value *operator()(minsts::branch::Switch const *Inst) {
     auto *Operand = Context[*Inst->getOperand()];
-    assert(Context.getInferredType()[*Inst->getOperand()].isPrimitiveI32());
-    assert(Operand->getType() == Context.getLayout().getI32Ty());
     auto [DefaultFirst, DefaultLast] = Context[*Inst->getDefaultTarget()];
     utility::ignore(DefaultLast);
     // clang-format off
@@ -223,6 +216,18 @@ public:
     for (auto const &[Index, Target] : ranges::views::enumerate(Targets))
       LLVMSwitch->addCase(Context.getLayout().getI32Constant(Index), Target);
     return LLVMSwitch;
+  }
+
+  llvm::Value *operator()(minsts::Branch const *Inst) {
+    if (Inst->isConditional()) {
+      return this->operator()(std::addressof(Inst->asConditional()));
+    } else if (Inst->isUnconditional()) {
+      return this->operator()(std::addressof(Inst->asUnconditional()));
+    } else if (Inst->isSwitch()) {
+      return this->operator()(std::addressof(Inst->asSwitch()));
+    } else {
+      utility::unreachable();
+    }
   }
 
   llvm::Value *operator()(minsts::Return const *Inst) {

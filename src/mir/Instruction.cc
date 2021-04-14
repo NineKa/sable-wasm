@@ -1,5 +1,6 @@
 #include "Instruction.h"
 #include "BasicBlock.h"
+#include "Branch.h"
 
 #include <range/v3/view/filter.hpp>
 
@@ -107,43 +108,62 @@ bool Type::operator==(Type const &Other) const {
   }
 }
 
-SIMD128Type::SIMD128Type(SIMD128ElementKind ElementKind_)
+SIMD128IntLaneInfo::SIMD128IntLaneInfo(SIMD128IntElementKind ElementKind_)
     : ElementKind(ElementKind_) {}
 
-SIMD128ElementKind SIMD128Type::getElementKind() const { return ElementKind; }
+SIMD128IntElementKind SIMD128IntLaneInfo::getElementKind() const {
+  return ElementKind;
+}
 
-unsigned SIMD128Type::getNumLane() const {
+unsigned SIMD128IntLaneInfo::getNumLane() const {
   switch (ElementKind) {
-  case SIMD128ElementKind::I8: return 16;
-  case SIMD128ElementKind::I16: return 8;
-  case SIMD128ElementKind::I32: return 4;
-  case SIMD128ElementKind::I64: return 2;
-  case SIMD128ElementKind::F32: return 4;
-  case SIMD128ElementKind::F64: return 1;
+  case SIMD128IntElementKind::I8: return 16;
+  case SIMD128IntElementKind::I16: return 8;
+  case SIMD128IntElementKind::I32: return 4;
+  case SIMD128IntElementKind::I64: return 2;
   default: utility::unreachable();
   }
 }
 
-unsigned SIMD128Type::getLaneWidthInBits() const {
+unsigned SIMD128IntLaneInfo::getLaneWidth() const {
   switch (ElementKind) {
-  case SIMD128ElementKind::I8: return 8;
-  case SIMD128ElementKind::I16: return 16;
-  case SIMD128ElementKind::I32: return 32;
-  case SIMD128ElementKind::I64: return 64;
-  case SIMD128ElementKind::F32: return 32;
-  case SIMD128ElementKind::F64: return 64;
+  case SIMD128IntElementKind::I8: return 8;
+  case SIMD128IntElementKind::I16: return 16;
+  case SIMD128IntElementKind::I32: return 32;
+  case SIMD128IntElementKind::I64: return 64;
   default: utility::unreachable();
   }
 }
 
-unsigned SIMD128Type::getLaneWidthInBytes() const {
+SIMD128FPLaneInfo::SIMD128FPLaneInfo(SIMD128FPElementKind ElementKind_)
+    : ElementKind(ElementKind_) {}
+
+SIMD128FPElementKind SIMD128FPLaneInfo::getElementKind() const {
+  return ElementKind;
+}
+
+unsigned SIMD128FPLaneInfo::getNumLane() const {
   switch (ElementKind) {
-  case SIMD128ElementKind::I8: return 1;
-  case SIMD128ElementKind::I16: return 2;
-  case SIMD128ElementKind::I32: return 4;
-  case SIMD128ElementKind::I64: return 8;
-  case SIMD128ElementKind::F32: return 4;
-  case SIMD128ElementKind::F64: return 8;
+  case SIMD128FPElementKind::F32: return 4;
+  case SIMD128FPElementKind::F64: return 2;
+  default: utility::unreachable();
+  }
+}
+
+unsigned SIMD128FPLaneInfo::getLaneWidth() const {
+  switch (ElementKind) {
+  case SIMD128FPElementKind::F32: return 32;
+  case SIMD128FPElementKind::F64: return 64;
+  default: utility::unreachable();
+  }
+}
+
+SIMD128IntLaneInfo SIMD128FPLaneInfo::getCmpResultLaneInfo() const {
+  switch (ElementKind) {
+  case SIMD128FPElementKind::F32:
+    return SIMD128IntLaneInfo(SIMD128IntElementKind::I32);
+  case SIMD128FPElementKind::F64:
+    return SIMD128IntLaneInfo(SIMD128IntElementKind::I64);
   default: utility::unreachable();
   }
 }
@@ -183,40 +203,3 @@ void Instruction::replaceAllUseWith(Instruction *ReplaceValue) const {
   }
 }
 } // namespace mir
-
-namespace fmt {
-char const *formatter<mir::InstructionKind>::getEnumString(
-    mir::InstructionKind const &Kind) {
-  using IKind = mir::InstructionKind;
-  // clang-format off
-  switch (Kind) {
-  case IKind::Unreachable : return "unreachable";
-  case IKind::Branch      : return "br";
-  case IKind::Return      : return "ret";
-  case IKind::Call        : return "call";
-  case IKind::CallIndirect: return "call_indirect";
-  case IKind::Select      : return "select";
-  case IKind::LocalGet    : return "local.get";
-  case IKind::LocalSet    : return "local.set";
-  case IKind::GlobalGet   : return "global.get";
-  case IKind::GlobalSet   : return "global.set";
-  case IKind::Constant    : return "const";
-  case IKind::IntUnaryOp  : return "int.unary";
-  case IKind::IntBinaryOp : return "int.binary";
-  case IKind::FPUnaryOp   : return "fp.unary";
-  case IKind::FPBinaryOp  : return "fp.binary";
-  case IKind::Load        : return "load";
-  case IKind::Store       : return "store";
-  case IKind::MemoryGuard : return "memory.guard";
-  case IKind::MemoryGrow  : return "memory.grow";
-  case IKind::MemorySize  : return "memory.size";
-  case IKind::Cast        : return "cast";
-  case IKind::Extend      : return "extend";
-  case IKind::Pack        : return "pack";
-  case IKind::Unpack      : return "unpack";
-  case IKind::Phi         : return "phi";
-  default: utility::unreachable();
-  }
-  // clang-format on
-}
-} // namespace fmt

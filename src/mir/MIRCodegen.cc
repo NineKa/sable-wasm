@@ -1,4 +1,8 @@
 #include "MIRCodegen.h"
+#include "Binary.h"
+#include "Branch.h"
+#include "Compare.h"
+#include "Unary.h"
 
 #include "passes/Pass.h"
 #include "passes/SimplifyCFG.h"
@@ -584,8 +588,8 @@ public:
     if (Inst->Offset != 0) {                                                   \
       auto *Offset = CurrentBasicBlock->BuildInst<minsts::Constant>(           \
           static_cast<std::int32_t>(Inst->Offset));                            \
-      Address = CurrentBasicBlock->BuildInst<minsts::IntBinaryOp>(             \
-          minsts::IntBinaryOperator::Add, Address, Offset);                    \
+      Address = CurrentBasicBlock->BuildInst<minsts::binary::IntBinary>(       \
+          minsts::binary::IntBinaryOperator::Add, Address, Offset);            \
     }                                                                          \
     CurrentBasicBlock->BuildInst<minsts::MemoryGuard>(                         \
         Mem, Address, LoadWidth);                                              \
@@ -615,8 +619,8 @@ public:
     if (Inst->Offset != 0) {                                                   \
       auto *Offset = CurrentBasicBlock->BuildInst<minsts::Constant>(           \
           static_cast<std::int32_t>(Inst->Offset));                            \
-      Address = CurrentBasicBlock->BuildInst<minsts::IntBinaryOp>(             \
-          minsts::IntBinaryOperator::Add, Address, Offset);                    \
+      Address = CurrentBasicBlock->BuildInst<minsts::binary::IntBinary>(       \
+          minsts::binary::IntBinaryOperator::Add, Address, Offset);            \
     }                                                                          \
     CurrentBasicBlock->BuildInst<minsts::MemoryGuard>(                         \
         Mem, Address, LoadWidth);                                              \
@@ -644,8 +648,8 @@ public:
     if (Inst->Offset != 0) {                                                   \
       auto *Offset = CurrentBasicBlock->BuildInst<minsts::Constant>(           \
           static_cast<std::int32_t>(Inst->Offset));                            \
-      Address = CurrentBasicBlock->BuildInst<minsts::IntBinaryOp>(             \
-          minsts::IntBinaryOperator::Add, Address, Offset);                    \
+      Address = CurrentBasicBlock->BuildInst<minsts::binary::IntBinary>(       \
+          minsts::binary::IntBinaryOperator::Add, Address, Offset);            \
     }                                                                          \
     CurrentBasicBlock->BuildInst<minsts::MemoryGuard>(                         \
         Mem, Address, StoreWidth);                                             \
@@ -691,24 +695,40 @@ public:
   CONSTANT(binsts::F64Const, double)
 #undef CONSTANT
 
+  void operator()(binsts::I32Eqz const *) {
+    auto *Zero =
+        CurrentBasicBlock->BuildInst<minsts::Constant>(std::int32_t(0));
+    auto *Operand = values().pop();
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::compare::IntCompare>(
+        minsts::compare::IntCompareOperator::Eq, Operand, Zero);
+    values().push(Result);
+  }
+
+  void operator()(binsts::I64Eqz const *) {
+    auto *Zero =
+        CurrentBasicBlock->BuildInst<minsts::Constant>(std::int64_t(0));
+    auto *Operand = values().pop();
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::compare::IntCompare>(
+        minsts::compare::IntCompareOperator::Eq, Operand, Zero);
+    values().push(Result);
+  }
+
 #define INT_UNARY_OP(BYTECODE_INST, OPERATOR)                                  \
   void operator()(BYTECODE_INST const *) {                                     \
     auto *Operand = values().pop();                                            \
     auto Operator = OPERATOR;                                                  \
-    auto *Result =                                                             \
-        CurrentBasicBlock->BuildInst<minsts::IntUnaryOp>(Operator, Operand);   \
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::unary::IntUnary>(      \
+        Operator, Operand);                                                    \
     values().push(Result);                                                     \
   }
   // clang-format off
-  INT_UNARY_OP(binsts::I32Eqz   , minsts::IntUnaryOperator::Eqz   )
-  INT_UNARY_OP(binsts::I32Clz   , minsts::IntUnaryOperator::Clz   )
-  INT_UNARY_OP(binsts::I32Ctz   , minsts::IntUnaryOperator::Ctz   )
-  INT_UNARY_OP(binsts::I32Popcnt, minsts::IntUnaryOperator::Popcnt)
+  INT_UNARY_OP(binsts::I32Clz   , minsts::unary::IntUnaryOperator::Clz   )
+  INT_UNARY_OP(binsts::I32Ctz   , minsts::unary::IntUnaryOperator::Ctz   )
+  INT_UNARY_OP(binsts::I32Popcnt, minsts::unary::IntUnaryOperator::Popcnt)
 
-  INT_UNARY_OP(binsts::I64Eqz   , minsts::IntUnaryOperator::Eqz   )
-  INT_UNARY_OP(binsts::I64Clz   , minsts::IntUnaryOperator::Clz   )
-  INT_UNARY_OP(binsts::I64Ctz   , minsts::IntUnaryOperator::Ctz   )
-  INT_UNARY_OP(binsts::I64Popcnt, minsts::IntUnaryOperator::Popcnt)
+  INT_UNARY_OP(binsts::I64Clz   , minsts::unary::IntUnaryOperator::Clz   )
+  INT_UNARY_OP(binsts::I64Ctz   , minsts::unary::IntUnaryOperator::Ctz   )
+  INT_UNARY_OP(binsts::I64Popcnt, minsts::unary::IntUnaryOperator::Popcnt)
   // clang-format on
 #undef INT_UNARY_OP
 
@@ -716,130 +736,158 @@ public:
   void operator()(BYTECODE_INST const *) {                                     \
     auto *Operand = values().pop();                                            \
     auto Operator = OPERATOR;                                                  \
-    auto *Result =                                                             \
-        CurrentBasicBlock->BuildInst<minsts::FPUnaryOp>(Operator, Operand);    \
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::unary::FPUnary>(       \
+        Operator, Operand);                                                    \
     values().push(Result);                                                     \
   }
   // clang-format off
-  FP_UNARY_OP(binsts::F32Abs    , minsts::FPUnaryOperator::Abs    )
-  FP_UNARY_OP(binsts::F32Neg    , minsts::FPUnaryOperator::Neg    )
-  FP_UNARY_OP(binsts::F32Ceil   , minsts::FPUnaryOperator::Ceil   )
-  FP_UNARY_OP(binsts::F32Floor  , minsts::FPUnaryOperator::Floor  )
-  FP_UNARY_OP(binsts::F32Trunc  , minsts::FPUnaryOperator::Trunc  )
-  FP_UNARY_OP(binsts::F32Nearest, minsts::FPUnaryOperator::Nearest)
-  FP_UNARY_OP(binsts::F32Sqrt   , minsts::FPUnaryOperator::Sqrt   )
+  FP_UNARY_OP(binsts::F32Abs    , minsts::unary::FPUnaryOperator::Abs    )
+  FP_UNARY_OP(binsts::F32Neg    , minsts::unary::FPUnaryOperator::Neg    )
+  FP_UNARY_OP(binsts::F32Ceil   , minsts::unary::FPUnaryOperator::Ceil   )
+  FP_UNARY_OP(binsts::F32Floor  , minsts::unary::FPUnaryOperator::Floor  )
+  FP_UNARY_OP(binsts::F32Trunc  , minsts::unary::FPUnaryOperator::Trunc  )
+  FP_UNARY_OP(binsts::F32Nearest, minsts::unary::FPUnaryOperator::Nearest)
+  FP_UNARY_OP(binsts::F32Sqrt   , minsts::unary::FPUnaryOperator::Sqrt   )
 
-  FP_UNARY_OP(binsts::F64Abs    , minsts::FPUnaryOperator::Abs    )
-  FP_UNARY_OP(binsts::F64Neg    , minsts::FPUnaryOperator::Neg    )
-  FP_UNARY_OP(binsts::F64Ceil   , minsts::FPUnaryOperator::Ceil   )
-  FP_UNARY_OP(binsts::F64Floor  , minsts::FPUnaryOperator::Floor  )
-  FP_UNARY_OP(binsts::F64Trunc  , minsts::FPUnaryOperator::Trunc  )
-  FP_UNARY_OP(binsts::F64Nearest, minsts::FPUnaryOperator::Nearest)
-  FP_UNARY_OP(binsts::F64Sqrt   , minsts::FPUnaryOperator::Sqrt   )
+  FP_UNARY_OP(binsts::F64Abs    , minsts::unary::FPUnaryOperator::Abs    )
+  FP_UNARY_OP(binsts::F64Neg    , minsts::unary::FPUnaryOperator::Neg    )
+  FP_UNARY_OP(binsts::F64Ceil   , minsts::unary::FPUnaryOperator::Ceil   )
+  FP_UNARY_OP(binsts::F64Floor  , minsts::unary::FPUnaryOperator::Floor  )
+  FP_UNARY_OP(binsts::F64Trunc  , minsts::unary::FPUnaryOperator::Trunc  )
+  FP_UNARY_OP(binsts::F64Nearest, minsts::unary::FPUnaryOperator::Nearest)
+  FP_UNARY_OP(binsts::F64Sqrt   , minsts::unary::FPUnaryOperator::Sqrt   )
   // clang-format on
 #undef FP_UNARY_OP
+
+#define INT_COMPARE_OP(BYTECODE_INST, OPERATOR)                                \
+  void operator()(BYTECODE_INST const *) {                                     \
+    auto *RHS = values().pop();                                                \
+    auto *LHS = values().pop();                                                \
+    auto Operator = OPERATOR;                                                  \
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::compare::IntCompare>(  \
+        Operator, LHS, RHS);                                                   \
+    values().push(Result);                                                     \
+  }
+  // clang-format off
+  INT_COMPARE_OP(binsts::I32Eq  , minsts::compare::IntCompareOperator::Eq  )
+  INT_COMPARE_OP(binsts::I32Ne  , minsts::compare::IntCompareOperator::Ne  )
+  INT_COMPARE_OP(binsts::I32LtS , minsts::compare::IntCompareOperator::LtS )
+  INT_COMPARE_OP(binsts::I32LtU , minsts::compare::IntCompareOperator::LtU )
+  INT_COMPARE_OP(binsts::I32GtS , minsts::compare::IntCompareOperator::GtS )
+  INT_COMPARE_OP(binsts::I32GtU , minsts::compare::IntCompareOperator::GtU )
+  INT_COMPARE_OP(binsts::I32LeS , minsts::compare::IntCompareOperator::LeS )
+  INT_COMPARE_OP(binsts::I32LeU , minsts::compare::IntCompareOperator::LeU )
+  INT_COMPARE_OP(binsts::I32GeS , minsts::compare::IntCompareOperator::GeS )
+  INT_COMPARE_OP(binsts::I32GeU , minsts::compare::IntCompareOperator::GeU )
+
+  INT_COMPARE_OP(binsts::I64Eq  , minsts::compare::IntCompareOperator::Eq  )
+  INT_COMPARE_OP(binsts::I64Ne  , minsts::compare::IntCompareOperator::Ne  )
+  INT_COMPARE_OP(binsts::I64LtS , minsts::compare::IntCompareOperator::LtS )
+  INT_COMPARE_OP(binsts::I64LtU , minsts::compare::IntCompareOperator::LtU )
+  INT_COMPARE_OP(binsts::I64GtS , minsts::compare::IntCompareOperator::GtS )
+  INT_COMPARE_OP(binsts::I64GtU , minsts::compare::IntCompareOperator::GtU )
+  INT_COMPARE_OP(binsts::I64LeS , minsts::compare::IntCompareOperator::LeS )
+  INT_COMPARE_OP(binsts::I64LeU , minsts::compare::IntCompareOperator::LeU )
+  INT_COMPARE_OP(binsts::I64GeS , minsts::compare::IntCompareOperator::GeS )
+  INT_COMPARE_OP(binsts::I64GeU , minsts::compare::IntCompareOperator::GeU )
+  // clang-format on
+#undef INT_COMPARE_OP
 
 #define INT_BINARY_OP(BYTECODE_INST, OPERATOR)                                 \
   void operator()(BYTECODE_INST const *) {                                     \
     auto *RHS = values().pop();                                                \
     auto *LHS = values().pop();                                                \
     auto Operator = OPERATOR;                                                  \
-    auto *Result =                                                             \
-        CurrentBasicBlock->BuildInst<minsts::IntBinaryOp>(Operator, LHS, RHS); \
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::binary::IntBinary>(    \
+        Operator, LHS, RHS);                                                   \
     values().push(Result);                                                     \
   }
   // clang-format off
-  INT_BINARY_OP(binsts::I32Eq  , minsts::IntBinaryOperator::Eq  )
-  INT_BINARY_OP(binsts::I32Ne  , minsts::IntBinaryOperator::Ne  )
-  INT_BINARY_OP(binsts::I32LtS , minsts::IntBinaryOperator::LtS )
-  INT_BINARY_OP(binsts::I32LtU , minsts::IntBinaryOperator::LtU )
-  INT_BINARY_OP(binsts::I32GtS , minsts::IntBinaryOperator::GtS )
-  INT_BINARY_OP(binsts::I32GtU , minsts::IntBinaryOperator::GtU )
-  INT_BINARY_OP(binsts::I32LeS , minsts::IntBinaryOperator::LeS )
-  INT_BINARY_OP(binsts::I32LeU , minsts::IntBinaryOperator::LeU )
-  INT_BINARY_OP(binsts::I32GeS , minsts::IntBinaryOperator::GeS )
-  INT_BINARY_OP(binsts::I32GeU , minsts::IntBinaryOperator::GeU )
-  INT_BINARY_OP(binsts::I32Add , minsts::IntBinaryOperator::Add )
-  INT_BINARY_OP(binsts::I32Sub , minsts::IntBinaryOperator::Sub )
-  INT_BINARY_OP(binsts::I32Mul , minsts::IntBinaryOperator::Mul )
-  INT_BINARY_OP(binsts::I32DivS, minsts::IntBinaryOperator::DivS)
-  INT_BINARY_OP(binsts::I32DivU, minsts::IntBinaryOperator::DivU)
-  INT_BINARY_OP(binsts::I32RemS, minsts::IntBinaryOperator::RemS)
-  INT_BINARY_OP(binsts::I32RemU, minsts::IntBinaryOperator::RemU)
-  INT_BINARY_OP(binsts::I32And , minsts::IntBinaryOperator::And )
-  INT_BINARY_OP(binsts::I32Or  , minsts::IntBinaryOperator::Or  )
-  INT_BINARY_OP(binsts::I32Xor , minsts::IntBinaryOperator::Xor )
-  INT_BINARY_OP(binsts::I32Shl , minsts::IntBinaryOperator::Shl )
-  INT_BINARY_OP(binsts::I32ShrS, minsts::IntBinaryOperator::ShrS)
-  INT_BINARY_OP(binsts::I32ShrU, minsts::IntBinaryOperator::ShrU)
-  INT_BINARY_OP(binsts::I32Rotl, minsts::IntBinaryOperator::Rotl)
-  INT_BINARY_OP(binsts::I32Rotr, minsts::IntBinaryOperator::Rotr)
+  INT_BINARY_OP(binsts::I32Add , minsts::binary::IntBinaryOperator::Add )
+  INT_BINARY_OP(binsts::I32Sub , minsts::binary::IntBinaryOperator::Sub )
+  INT_BINARY_OP(binsts::I32Mul , minsts::binary::IntBinaryOperator::Mul )
+  INT_BINARY_OP(binsts::I32DivS, minsts::binary::IntBinaryOperator::DivS)
+  INT_BINARY_OP(binsts::I32DivU, minsts::binary::IntBinaryOperator::DivU)
+  INT_BINARY_OP(binsts::I32RemS, minsts::binary::IntBinaryOperator::RemS)
+  INT_BINARY_OP(binsts::I32RemU, minsts::binary::IntBinaryOperator::RemU)
+  INT_BINARY_OP(binsts::I32And , minsts::binary::IntBinaryOperator::And )
+  INT_BINARY_OP(binsts::I32Or  , minsts::binary::IntBinaryOperator::Or  )
+  INT_BINARY_OP(binsts::I32Xor , minsts::binary::IntBinaryOperator::Xor )
+  INT_BINARY_OP(binsts::I32Shl , minsts::binary::IntBinaryOperator::Shl )
+  INT_BINARY_OP(binsts::I32ShrS, minsts::binary::IntBinaryOperator::ShrS)
+  INT_BINARY_OP(binsts::I32ShrU, minsts::binary::IntBinaryOperator::ShrU)
+  INT_BINARY_OP(binsts::I32Rotl, minsts::binary::IntBinaryOperator::Rotl)
+  INT_BINARY_OP(binsts::I32Rotr, minsts::binary::IntBinaryOperator::Rotr)
 
-  INT_BINARY_OP(binsts::I64Eq  , minsts::IntBinaryOperator::Eq  )
-  INT_BINARY_OP(binsts::I64Ne  , minsts::IntBinaryOperator::Ne  )
-  INT_BINARY_OP(binsts::I64LtS , minsts::IntBinaryOperator::LtS )
-  INT_BINARY_OP(binsts::I64LtU , minsts::IntBinaryOperator::LtU )
-  INT_BINARY_OP(binsts::I64GtS , minsts::IntBinaryOperator::GtS )
-  INT_BINARY_OP(binsts::I64GtU , minsts::IntBinaryOperator::GtU )
-  INT_BINARY_OP(binsts::I64LeS , minsts::IntBinaryOperator::LeS )
-  INT_BINARY_OP(binsts::I64LeU , minsts::IntBinaryOperator::LeU )
-  INT_BINARY_OP(binsts::I64GeS , minsts::IntBinaryOperator::GeS )
-  INT_BINARY_OP(binsts::I64GeU , minsts::IntBinaryOperator::GeU )
-  INT_BINARY_OP(binsts::I64Add , minsts::IntBinaryOperator::Add )
-  INT_BINARY_OP(binsts::I64Sub , minsts::IntBinaryOperator::Sub )
-  INT_BINARY_OP(binsts::I64Mul , minsts::IntBinaryOperator::Mul )
-  INT_BINARY_OP(binsts::I64DivS, minsts::IntBinaryOperator::DivS)
-  INT_BINARY_OP(binsts::I64DivU, minsts::IntBinaryOperator::DivU)
-  INT_BINARY_OP(binsts::I64RemS, minsts::IntBinaryOperator::RemS)
-  INT_BINARY_OP(binsts::I64RemU, minsts::IntBinaryOperator::RemU)
-  INT_BINARY_OP(binsts::I64And , minsts::IntBinaryOperator::And )
-  INT_BINARY_OP(binsts::I64Or  , minsts::IntBinaryOperator::Or  )
-  INT_BINARY_OP(binsts::I64Xor , minsts::IntBinaryOperator::Xor )
-  INT_BINARY_OP(binsts::I64Shl , minsts::IntBinaryOperator::Shl )
-  INT_BINARY_OP(binsts::I64ShrS, minsts::IntBinaryOperator::ShrS)
-  INT_BINARY_OP(binsts::I64ShrU, minsts::IntBinaryOperator::ShrU)
-  INT_BINARY_OP(binsts::I64Rotl, minsts::IntBinaryOperator::Rotl)
-  INT_BINARY_OP(binsts::I64Rotr, minsts::IntBinaryOperator::Rotr)
+  INT_BINARY_OP(binsts::I64Add , minsts::binary::IntBinaryOperator::Add )
+  INT_BINARY_OP(binsts::I64Sub , minsts::binary::IntBinaryOperator::Sub )
+  INT_BINARY_OP(binsts::I64Mul , minsts::binary::IntBinaryOperator::Mul )
+  INT_BINARY_OP(binsts::I64DivS, minsts::binary::IntBinaryOperator::DivS)
+  INT_BINARY_OP(binsts::I64DivU, minsts::binary::IntBinaryOperator::DivU)
+  INT_BINARY_OP(binsts::I64RemS, minsts::binary::IntBinaryOperator::RemS)
+  INT_BINARY_OP(binsts::I64RemU, minsts::binary::IntBinaryOperator::RemU)
+  INT_BINARY_OP(binsts::I64And , minsts::binary::IntBinaryOperator::And )
+  INT_BINARY_OP(binsts::I64Or  , minsts::binary::IntBinaryOperator::Or  )
+  INT_BINARY_OP(binsts::I64Xor , minsts::binary::IntBinaryOperator::Xor )
+  INT_BINARY_OP(binsts::I64Shl , minsts::binary::IntBinaryOperator::Shl )
+  INT_BINARY_OP(binsts::I64ShrS, minsts::binary::IntBinaryOperator::ShrS)
+  INT_BINARY_OP(binsts::I64ShrU, minsts::binary::IntBinaryOperator::ShrU)
+  INT_BINARY_OP(binsts::I64Rotl, minsts::binary::IntBinaryOperator::Rotl)
+  INT_BINARY_OP(binsts::I64Rotr, minsts::binary::IntBinaryOperator::Rotr)
   // clang-format on
 #undef INT_BINARY_OP
+
+#define FP_COMPARE_OP(BYTECODE_INST, OPERATOR)                                 \
+  void operator()(BYTECODE_INST const *) {                                     \
+    auto *RHS = values().pop();                                                \
+    auto *LHS = values().pop();                                                \
+    auto Operator = OPERATOR;                                                  \
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::compare::FPCompare>(   \
+        Operator, LHS, RHS);                                                   \
+    values().push(Result);                                                     \
+  }
+  // clang-format off
+  FP_COMPARE_OP(binsts::F32Eq, minsts::compare::FPCompareOperator::Eq)
+  FP_COMPARE_OP(binsts::F32Ne, minsts::compare::FPCompareOperator::Ne)
+  FP_COMPARE_OP(binsts::F32Lt, minsts::compare::FPCompareOperator::Lt)
+  FP_COMPARE_OP(binsts::F32Gt, minsts::compare::FPCompareOperator::Gt)
+  FP_COMPARE_OP(binsts::F32Le, minsts::compare::FPCompareOperator::Le)
+  FP_COMPARE_OP(binsts::F32Ge, minsts::compare::FPCompareOperator::Ge)
+
+  FP_COMPARE_OP(binsts::F64Eq, minsts::compare::FPCompareOperator::Eq)
+  FP_COMPARE_OP(binsts::F64Ne, minsts::compare::FPCompareOperator::Ne)
+  FP_COMPARE_OP(binsts::F64Lt, minsts::compare::FPCompareOperator::Lt)
+  FP_COMPARE_OP(binsts::F64Gt, minsts::compare::FPCompareOperator::Gt)
+  FP_COMPARE_OP(binsts::F64Le, minsts::compare::FPCompareOperator::Le)
+  FP_COMPARE_OP(binsts::F64Ge, minsts::compare::FPCompareOperator::Ge)
+  // clang-format on
+#undef FP_COMPARE_OP
 
 #define FP_BINARY_OP(BYTECODE_INST, OPERATOR)                                  \
   void operator()(BYTECODE_INST const *) {                                     \
     auto *RHS = values().pop();                                                \
     auto *LHS = values().pop();                                                \
     auto Operator = OPERATOR;                                                  \
-    auto *Result =                                                             \
-        CurrentBasicBlock->BuildInst<minsts::FPBinaryOp>(Operator, LHS, RHS);  \
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::binary::FPBinary>(     \
+        Operator, LHS, RHS);                                                   \
     values().push(Result);                                                     \
   }
   // clang-format off
-  FP_BINARY_OP(binsts::F32Eq      , minsts::FPBinaryOperator::Eq      )
-  FP_BINARY_OP(binsts::F32Ne      , minsts::FPBinaryOperator::Ne      )
-  FP_BINARY_OP(binsts::F32Lt      , minsts::FPBinaryOperator::Lt      )
-  FP_BINARY_OP(binsts::F32Gt      , minsts::FPBinaryOperator::Gt      )
-  FP_BINARY_OP(binsts::F32Le      , minsts::FPBinaryOperator::Le      )
-  FP_BINARY_OP(binsts::F32Ge      , minsts::FPBinaryOperator::Ge      )
-  FP_BINARY_OP(binsts::F32Add     , minsts::FPBinaryOperator::Add     )
-  FP_BINARY_OP(binsts::F32Sub     , minsts::FPBinaryOperator::Sub     )
-  FP_BINARY_OP(binsts::F32Mul     , minsts::FPBinaryOperator::Mul     )
-  FP_BINARY_OP(binsts::F32Div     , minsts::FPBinaryOperator::Div     )
-  FP_BINARY_OP(binsts::F32Min     , minsts::FPBinaryOperator::Min     )
-  FP_BINARY_OP(binsts::F32Max     , minsts::FPBinaryOperator::Max     )
-  FP_BINARY_OP(binsts::F32CopySign, minsts::FPBinaryOperator::CopySign)
+  FP_BINARY_OP(binsts::F32Add     , minsts::binary::FPBinaryOperator::Add     )
+  FP_BINARY_OP(binsts::F32Sub     , minsts::binary::FPBinaryOperator::Sub     )
+  FP_BINARY_OP(binsts::F32Mul     , minsts::binary::FPBinaryOperator::Mul     )
+  FP_BINARY_OP(binsts::F32Div     , minsts::binary::FPBinaryOperator::Div     )
+  FP_BINARY_OP(binsts::F32Min     , minsts::binary::FPBinaryOperator::Min     )
+  FP_BINARY_OP(binsts::F32Max     , minsts::binary::FPBinaryOperator::Max     )
+  FP_BINARY_OP(binsts::F32CopySign, minsts::binary::FPBinaryOperator::CopySign)
 
-  FP_BINARY_OP(binsts::F64Eq      , minsts::FPBinaryOperator::Eq      )
-  FP_BINARY_OP(binsts::F64Ne      , minsts::FPBinaryOperator::Ne      )
-  FP_BINARY_OP(binsts::F64Lt      , minsts::FPBinaryOperator::Lt      )
-  FP_BINARY_OP(binsts::F64Gt      , minsts::FPBinaryOperator::Gt      )
-  FP_BINARY_OP(binsts::F64Le      , minsts::FPBinaryOperator::Le      )
-  FP_BINARY_OP(binsts::F64Ge      , minsts::FPBinaryOperator::Ge      )
-  FP_BINARY_OP(binsts::F64Add     , minsts::FPBinaryOperator::Add     )
-  FP_BINARY_OP(binsts::F64Sub     , minsts::FPBinaryOperator::Sub     )
-  FP_BINARY_OP(binsts::F64Mul     , minsts::FPBinaryOperator::Mul     )
-  FP_BINARY_OP(binsts::F64Div     , minsts::FPBinaryOperator::Div     )
-  FP_BINARY_OP(binsts::F64Min     , minsts::FPBinaryOperator::Min     )
-  FP_BINARY_OP(binsts::F64Max     , minsts::FPBinaryOperator::Max     )
-  FP_BINARY_OP(binsts::F64CopySign, minsts::FPBinaryOperator::CopySign)
+  FP_BINARY_OP(binsts::F64Add     , minsts::binary::FPBinaryOperator::Add     )
+  FP_BINARY_OP(binsts::F64Sub     , minsts::binary::FPBinaryOperator::Sub     )
+  FP_BINARY_OP(binsts::F64Mul     , minsts::binary::FPBinaryOperator::Mul     )
+  FP_BINARY_OP(binsts::F64Div     , minsts::binary::FPBinaryOperator::Div     )
+  FP_BINARY_OP(binsts::F64Min     , minsts::binary::FPBinaryOperator::Min     )
+  FP_BINARY_OP(binsts::F64Max     , minsts::binary::FPBinaryOperator::Max     )
+  FP_BINARY_OP(binsts::F64CopySign, minsts::binary::FPBinaryOperator::CopySign)
   // clang-format on
 #undef FP_BINARY_OP
 

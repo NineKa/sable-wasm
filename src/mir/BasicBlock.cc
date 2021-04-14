@@ -1,7 +1,11 @@
 #include "BasicBlock.h"
+#include "Binary.h"
+#include "Branch.h"
+#include "Compare.h"
 #include "Function.h"
 #include "Instruction.h"
 #include "Module.h"
+#include "Unary.h"
 
 #include <range/v3/algorithm/sort.hpp>
 #include <range/v3/algorithm/unique.hpp>
@@ -123,49 +127,41 @@ llvm::SmallPtrSet<BasicBlock *, 4> BasicBlock::getInwardFlow() const {
 }
 
 namespace {
+using OutwardFlowSet = llvm::SmallPtrSet<BasicBlock *, 2>;
 struct OutwardFlowVisitor :
-    mir::InstVisitorBase<
-        OutwardFlowVisitor, llvm::SmallPtrSet<BasicBlock *, 2>> {
-  using ResultType = llvm::SmallPtrSet<BasicBlock *, 2>;
-  ResultType operator()(instructions::Unreachable const *) { return {}; }
-  ResultType operator()(instructions::Return const *) { return {}; }
+    mir::InstVisitorBase<OutwardFlowVisitor, OutwardFlowSet>,
+    mir::instructions::BranchVisitorBase<OutwardFlowVisitor, OutwardFlowSet> {
+  using InstVisitorBase::visit;
 
-  ResultType operator()(instructions::branch::Unconditional const *Inst) {
-    ResultType Out;
+  OutwardFlowSet operator()(instructions::Unreachable const *) { return {}; }
+  OutwardFlowSet operator()(instructions::Return const *) { return {}; }
+
+  OutwardFlowSet operator()(instructions::branch::Unconditional const *Inst) {
+    OutwardFlowSet Out;
     if (Inst->getTarget()) Out.insert(Inst->getTarget());
     return Out;
   }
 
-  ResultType operator()(instructions::branch::Conditional const *Inst) {
-    ResultType Out;
+  OutwardFlowSet operator()(instructions::branch::Conditional const *Inst) {
+    OutwardFlowSet Out;
     if (Inst->getTrue()) Out.insert(Inst->getTrue());
     if (Inst->getFalse()) Out.insert(Inst->getFalse());
     return Out;
   }
 
-  ResultType operator()(instructions::branch::Switch const *Inst) {
-    ResultType Out;
+  OutwardFlowSet operator()(instructions::branch::Switch const *Inst) {
+    OutwardFlowSet Out;
     if (Inst->getDefaultTarget()) Out.insert(Inst->getDefaultTarget());
     for (auto *Target : Inst->getTargets())
       if (Target) Out.insert(Target);
     return Out;
   }
 
-  ResultType operator()(instructions::Branch const *Inst) {
-    switch (Inst->getBranchKind()) {
-    case instructions::BranchKind::Unconditional:
-      return this->operator()(std::addressof(Inst->asUnconditional()));
-    case instructions::BranchKind::Conditional:
-      return this->operator()(std::addressof(Inst->asConditional()));
-    case instructions::BranchKind::Switch:
-      return this->operator()(std::addressof(Inst->asSwitch()));
-    default: utility::unreachable();
-    }
+  OutwardFlowSet operator()(instructions::Branch const *Inst) {
+    return BranchVisitorBase::visit(Inst);
   }
 
-  template <mir::instruction T> ResultType operator()(T const *) {
-    utility::unreachable();
-  }
+  OutwardFlowSet operator()(Instruction const *) { utility::unreachable(); }
 };
 } // namespace
 

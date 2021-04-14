@@ -12,7 +12,7 @@
 namespace bytecode {
 
 class V128Value {
-  std::array<std::byte, 16> Storage;
+  alignas(16) std::array<std::byte, 16> Storage;
 
   template <typename T> std::span<T, 16 / sizeof(T)> as() {
     auto *BufferPtr = reinterpret_cast<T *>(Storage.data()); // NOLINT
@@ -68,7 +68,7 @@ public:
   std::span<std::int64_t ,  2> asI64x2() { return as<std::int64_t >(); }
   std::span<std::uint64_t,  2> asU64x2() { return as<std::uint64_t>(); }
   std::span<float , 4> asF32x4() { return as<float >(); }
-  std::span<double, 2> asF64x4() { return as<double>(); }
+  std::span<double, 2> asF64x2() { return as<double>(); }
 
   std::span<std::int8_t   const, 16> asI8x16() const
   { return as<std::int8_t  >(); }
@@ -87,7 +87,7 @@ public:
   std::span<std::uint64_t const,  2> asU64x2() const
   { return as<std::uint64_t>(); }
   std::span<float  const, 4> asF32x4() const { return as<float >(); }
-  std::span<double const, 2> asF64x4() const { return as<double>(); }
+  std::span<double const, 2> asF64x2() const { return as<double>(); }
   // clang-format on
 };
 } // namespace bytecode

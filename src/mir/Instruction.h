@@ -68,16 +68,27 @@ public:
   bool operator==(Type const &Other) const;
 };
 
-enum class SIMD128ElementKind { I8, I16, I32, I64, F32, F64 };
-class SIMD128Type {
-  SIMD128ElementKind ElementKind;
+enum class SIMD128IntElementKind { I8, I16, I32, I64 };
+class SIMD128IntLaneInfo {
+  SIMD128IntElementKind ElementKind;
 
 public:
-  explicit SIMD128Type(SIMD128ElementKind ElementKind_);
-  SIMD128ElementKind getElementKind() const;
+  explicit SIMD128IntLaneInfo(SIMD128IntElementKind ElementKind_);
+  SIMD128IntElementKind getElementKind() const;
   unsigned getNumLane() const;
-  unsigned getLaneWidthInBits() const;
-  unsigned getLaneWidthInBytes() const;
+  unsigned getLaneWidth() const;
+};
+
+enum class SIMD128FPElementKind { F32, F64 };
+class SIMD128FPLaneInfo {
+  SIMD128FPElementKind ElementKind;
+
+public:
+  explicit SIMD128FPLaneInfo(SIMD128FPElementKind ElementKind_);
+  SIMD128FPElementKind getElementKind() const;
+  unsigned getNumLane() const;
+  unsigned getLaneWidth() const;
+  SIMD128IntLaneInfo getCmpResultLaneInfo() const;
 };
 
 enum class InstructionKind : std::uint8_t {
@@ -92,33 +103,25 @@ enum class InstructionKind : std::uint8_t {
   GlobalGet,
   GlobalSet,
   Constant,
-  IntUnaryOp,
-  IntBinaryOp,
-  FPUnaryOp,
-  FPBinaryOp,
+  Compare,
+  Unary,
+  Binary,
   Load,
   Store,
-  MemoryGuard,
-  MemoryGrow,
-  MemorySize,
   Cast,
   Extend,
   Pack,
   Unpack,
   Phi,
-  Intrinsic, /* Abstract Base for All Intrinsic Instruction */
+  MemoryGuard,
+  MemorySize,
+  MemoryGrow,
   /* SIMD128 Extension */
-  SIMD128Splat,
-  SIMD128UnaryOp,
-  SIMD128BinaryOp,
-  SIMD128IntUnaryOp,
-  SIMD128IntBinaryOp,
-  SIMD128FPUnaryOp,
-  SIMD128FPBinaryOp,
-  SIMD128Extend,
-  SIMD128Narrow,
-  SIMD128ExtractLane,
-  SIMD128ReplaceLane,
+  LaneSplat,
+  LaneExtend,
+  LaneNarrow,
+  LaneExtract,
+  LaneReplace,
 };
 
 class Instruction :
@@ -147,46 +150,17 @@ public:
   void replaceAllUseWith(Instruction *ReplaceValue) const;
 };
 
-template <typename T>
-concept instruction = ast_node<T> &&
-    std::derived_from<T, Instruction> &&requires() {
-  { T::classof(std::declval<Instruction const *>()) }
-  ->std::convertible_to<bool>;
-};
-
-template <instruction T> bool is_a(Instruction const *Inst) {
-  return T::classof(Inst);
-}
-
-template <instruction T> bool is_a(Instruction const &Inst) {
-  return T::classof(std::addressof(Inst));
-}
-
-template <instruction T> T *dyn_cast(Instruction *Inst) {
-  if (Inst == nullptr) return nullptr;
-  assert(is_a<T>(Inst));
-  return static_cast<T *>(Inst);
-}
-
-template <instruction T> T &dyn_cast(Instruction &Inst) {
-  assert(is_a<T>(Inst));
-  return static_cast<T &>(Inst);
-}
-
-template <instruction T> T const *dyn_cast(Instruction const *Inst) {
-  if (Inst == nullptr) return nullptr;
-  assert(is_a<T>(Inst));
-  return static_cast<T const *>(Inst);
-}
-
-template <instruction T> T const &dyn_cast(Instruction const &Inst) {
-  assert(is_a<T>(Inst));
-  return static_cast<T const &>(Inst);
-}
+SABLE_DEFINE_IS_A(Instruction)
+SABLE_DEFINE_DYN_CAST(Instruction)
 
 } // namespace mir
 
 namespace mir::instructions {
+class Branch;  // See Branch.h
+class Compare; // See Compare.h
+class Unary;   // See Unary.h
+class Binary;  // See Binary.h
+
 ///////////////////////////////// Unreachable //////////////////////////////////
 class Unreachable : public Instruction {
 public:
@@ -195,138 +169,6 @@ public:
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
 };
-
-//////////////////////////////////// Branch ////////////////////////////////////
-enum class BranchKind { Unconditional, Conditional, Switch };
-
-namespace branch {
-class Unconditional;
-class Conditional;
-class Switch;
-} // namespace branch
-
-class Branch : public Instruction {
-  BranchKind Kind;
-
-public:
-  explicit Branch(BranchKind Kind_);
-  Branch(Branch const &) = delete;
-  Branch(Branch &&) noexcept = delete;
-  Branch &operator=(Branch const &) = delete;
-  Branch &operator=(Branch &&) noexcept = delete;
-  ~Branch() noexcept override;
-
-  BranchKind getBranchKind() const;
-
-  bool isConditional() const;
-  bool isUnconditional() const;
-  bool isSwitch() const;
-
-  branch::Unconditional &asUnconditional();
-  branch::Conditional &asConditional();
-  branch::Switch &asSwitch();
-
-  branch::Unconditional const &asUnconditional() const;
-  branch::Conditional const &asConditional() const;
-  branch::Switch const &asSwitch() const;
-
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-namespace branch {
-class Unconditional : public Branch {
-  mir::BasicBlock *Target;
-
-public:
-  explicit Unconditional(mir::BasicBlock *Target_);
-  Unconditional(Unconditional const &) = delete;
-  Unconditional(Unconditional &&) noexcept = delete;
-  Unconditional &operator=(Unconditional const &) = delete;
-  Unconditional &operator=(Unconditional &&) noexcept = delete;
-  ~Unconditional() noexcept override;
-
-  mir::BasicBlock *getTarget() const;
-  void setTarget(mir::BasicBlock *Target_);
-
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
-  static bool classof(Branch const *Inst);
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-class Conditional : public Branch {
-  mir::Instruction *Operand;
-  mir::BasicBlock *True;
-  mir::BasicBlock *False;
-
-public:
-  Conditional(
-      mir::Instruction *Operand_, mir::BasicBlock *True_,
-      mir::BasicBlock *False_);
-  Conditional(Conditional const &) = delete;
-  Conditional(Conditional &&) noexcept = delete;
-  Conditional &operator=(Conditional const &) = delete;
-  Conditional &operator=(Conditional &&) noexcept = delete;
-  ~Conditional() noexcept override;
-
-  mir::Instruction *getOperand() const;
-  void setOperand(mir::Instruction *Operand_);
-  mir::BasicBlock *getTrue() const;
-  void setTrue(mir::BasicBlock *True_);
-  mir::BasicBlock *getFalse() const;
-  void setFalse(mir::BasicBlock *False_);
-
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
-  static bool classof(Branch const *Inst);
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-class Switch : public Branch {
-  mir::Instruction *Operand;
-  mir::BasicBlock *DefaultTarget;
-  std::vector<mir::BasicBlock *> Targets;
-
-public:
-  Switch(
-      mir::Instruction *Operand_, mir::BasicBlock *DefaultTarget_,
-      std::span<mir::BasicBlock *const> Targets_);
-  Switch(Switch const &) = delete;
-  Switch(Switch &&) noexcept = delete;
-  Switch &operator=(Switch const &) = delete;
-  Switch &operator=(Switch &&) noexcept = delete;
-  ~Switch() noexcept override;
-
-  mir::Instruction *getOperand() const;
-  void setOperand(mir::Instruction *Operand_);
-
-  mir::BasicBlock *getDefaultTarget() const;
-  void setDefaultTarget(mir::BasicBlock *DefaultTarget_);
-
-  auto getTargets() {
-    auto Begin = ranges::begin(Targets);
-    auto End = ranges::end(Targets);
-    return ranges::make_subrange(Begin, End);
-  }
-
-  auto getTargets() const {
-    auto Begin = ranges::begin(Targets);
-    auto End = ranges::end(Targets);
-    return ranges::make_subrange(Begin, End);
-  }
-
-  std::size_t getNumTargets() const;
-  mir::BasicBlock *getTarget(std::size_t Index) const;
-  void setTarget(std::size_t Index, mir::BasicBlock *Target_);
-  void setTargets(std::span<mir::BasicBlock *const> Targets_);
-
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
-  static bool classof(Branch const *Inst);
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-} // namespace branch
 
 /////////////////////////////////// Return /////////////////////////////////////
 class Return : public Instruction {
@@ -537,114 +379,6 @@ public:
   double const &asF64() const;
   bytecode::V128Value const &asV128() const;
   bytecode::ValueType getValueType() const;
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-/////////////////////////////// IntUnaryOp /////////////////////////////////////
-enum class IntUnaryOperator : std::uint8_t { Eqz, Clz, Ctz, Popcnt };
-class IntUnaryOp : public Instruction {
-  IntUnaryOperator Operator;
-  Instruction *Operand;
-
-public:
-  IntUnaryOp(IntUnaryOperator Operator_, Instruction *Operand_);
-  IntUnaryOp(IntUnaryOp const &) = delete;
-  IntUnaryOp(IntUnaryOp &&) noexcept = delete;
-  IntUnaryOp &operator=(IntUnaryOp const &) = delete;
-  IntUnaryOp &operator=(IntUnaryOp &&) noexcept = delete;
-  ~IntUnaryOp() noexcept override;
-  IntUnaryOperator getOperator() const;
-  void setOperator(IntUnaryOperator Operator_);
-  Instruction *getOperand() const;
-  void setOperand(Instruction *Operand_);
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-/////////////////////////////// IntBinaryOp ////////////////////////////////////
-// clang-format off
-enum class IntBinaryOperator : std::uint8_t {
-  Eq, Ne, LtS, LtU, GtS, GtU, LeS, LeU, GeS, GeU,
-  Add, Sub, Mul, DivS, DivU, RemS, RemU, And, Or, Xor,
-  Shl, ShrS, ShrU, Rotl, Rotr
-};
-// clang-format on
-class IntBinaryOp : public Instruction {
-  IntBinaryOperator Operator;
-  Instruction *LHS;
-  Instruction *RHS;
-
-public:
-  IntBinaryOp(
-      IntBinaryOperator Operator_, Instruction *LHS_, Instruction *RHS_);
-  IntBinaryOp(IntBinaryOp const &) = delete;
-  IntBinaryOp(IntBinaryOp &&) noexcept = delete;
-  IntBinaryOp &operator=(IntBinaryOp const &) = delete;
-  IntBinaryOp &operator=(IntBinaryOp &&) noexcept = delete;
-  ~IntBinaryOp() noexcept override;
-  IntBinaryOperator getOperator() const;
-  void setOperator(IntBinaryOperator Operator_);
-  Instruction *getLHS() const;
-  void setLHS(Instruction *LHS_);
-  Instruction *getRHS() const;
-  void setRHS(Instruction *RHS_);
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-//////////////////////////////// FPUnaryOp /////////////////////////////////////
-// clang-format off
-enum class FPUnaryOperator : std::uint8_t
-{ Abs, Neg, Ceil, Floor, Trunc, Nearest, Sqrt};
-// clang-format on
-class FPUnaryOp : public Instruction {
-  FPUnaryOperator Operator;
-  Instruction *Operand;
-
-public:
-  FPUnaryOp(FPUnaryOperator Operator_, Instruction *Operand_);
-  FPUnaryOp(FPUnaryOp const &) = delete;
-  FPUnaryOp(FPUnaryOp &&) = delete;
-  FPUnaryOp &operator=(FPUnaryOp const &) = delete;
-  FPUnaryOp &operator=(FPUnaryOp &&) noexcept = delete;
-  ~FPUnaryOp() noexcept override;
-  FPUnaryOperator getOperator() const;
-  void setOperator(FPUnaryOperator Operator_);
-  Instruction *getOperand() const;
-  void setOperand(Instruction *Operand_);
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-/////////////////////////////// FPBinaryOp /////////////////////////////////////
-// clang-format off
-enum class FPBinaryOperator : std::uint8_t {
-  Eq, Ne, Lt, Gt, Le, Ge, Add, Sub, Mul, Div, Min, Max, CopySign
-};
-// clang-format on
-class FPBinaryOp : public Instruction {
-  FPBinaryOperator Operator;
-  Instruction *LHS;
-  Instruction *RHS;
-
-public:
-  FPBinaryOp(FPBinaryOperator Operator_, Instruction *LHS_, Instruction *RHS_);
-  FPBinaryOp(FPBinaryOp const &) = delete;
-  FPBinaryOp(FPBinaryOp &&) noexcept = delete;
-  FPBinaryOp &operator=(FPBinaryOp const &) = delete;
-  FPBinaryOp &operator=(FPBinaryOp &&) noexcept = delete;
-  ~FPBinaryOp() noexcept override;
-  FPBinaryOperator getOperator() const;
-  void setOperator(FPBinaryOperator Operator_);
-  Instruction *getLHS() const;
-  void setLHS(Instruction *LHS_);
-  Instruction *getRHS() const;
-  void setRHS(Instruction *RHS_);
   void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(Instruction const *Inst);
   static bool classof(ASTNode const *Node);
@@ -901,7 +635,7 @@ template <typename Derived, typename RetType = void, bool Const = true>
 class InstVisitorBase {
   Derived &derived() { return static_cast<Derived &>(*this); }
   template <typename T> using Ptr = std::conditional_t<Const, T const *, T *>;
-  template <instruction T> RetType castAndCall(Ptr<Instruction> Inst) {
+  template <typename T> RetType castAndCall(Ptr<Instruction> Inst) {
     return derived()(dyn_cast<T>(Inst));
   }
 
@@ -922,10 +656,9 @@ public:
     case IKind::GlobalGet   : return castAndCall<GlobalGet>(Inst);
     case IKind::GlobalSet   : return castAndCall<GlobalSet>(Inst);
     case IKind::Constant    : return castAndCall<Constant>(Inst);
-    case IKind::IntUnaryOp  : return castAndCall<IntUnaryOp>(Inst);
-    case IKind::IntBinaryOp : return castAndCall<IntBinaryOp>(Inst);
-    case IKind::FPUnaryOp   : return castAndCall<FPUnaryOp>(Inst);
-    case IKind::FPBinaryOp  : return castAndCall<FPBinaryOp>(Inst);
+    case IKind::Compare     : return castAndCall<Compare>(Inst);
+    case IKind::Unary       : return castAndCall<Unary>(Inst);
+    case IKind::Binary      : return castAndCall<Binary>(Inst);
     case IKind::Load        : return castAndCall<Load>(Inst);
     case IKind::Store       : return castAndCall<Store>(Inst);
     case IKind::MemoryGuard : return castAndCall<MemoryGuard>(Inst);
@@ -944,11 +677,23 @@ public:
 } // namespace mir
 
 namespace fmt {
-template <> struct formatter<mir::InstructionKind> {
-  static char const *getEnumString(mir::InstructionKind const &Kind);
-  template <typename C> auto parse(C &&CTX) { return CTX.begin(); }
-  template <typename C> auto format(mir::InstructionKind const &Kind, C &&CTX) {
-    return fmt::format_to(CTX.out(), "{}", getEnumString(Kind));
+template <> struct formatter<mir::SIMD128IntLaneInfo> {
+  template <typename CTX> auto parse(CTX &&C) { return C.begin(); }
+  template <typename CTX>
+  auto format(mir::SIMD128IntLaneInfo const &LaneInfo, CTX &&C) {
+    auto LaneWidth = LaneInfo.getLaneWidth();
+    auto NumLane = LaneInfo.getNumLane();
+    return fmt::format_to(C.out(), "i{}x{}", LaneWidth, NumLane);
+  }
+};
+
+template <> struct formatter<mir::SIMD128FPLaneInfo> {
+  template <typename CTX> auto parse(CTX &&C) { return C.begin(); }
+  template <typename CTX>
+  auto format(mir::SIMD128FPLaneInfo const &LaneInfo, CTX &&C) {
+    auto LaneWidth = LaneInfo.getLaneWidth();
+    auto NumLane = LaneInfo.getNumLane();
+    return fmt::format_to(C.out(), "f{}x{}", LaneWidth, NumLane);
   }
 };
 } // namespace fmt

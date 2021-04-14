@@ -32,8 +32,10 @@ add_library(sablewasm
         src/mir/ASTNode.cc
         src/mir/Instruction.cc
         src/mir/Instructions.cc
-        src/mir/Intrinsic.cc 
-        src/mir/SIMD128Instructions.cc
+        src/mir/Branch.cc
+        src/mir/Compare.cc
+        src/mir/Unary.cc
+        src/mir/Binary.cc
         src/mir/BasicBlock.cc
         src/mir/InitializerExpr.cc
         src/mir/Module.cc
@@ -44,6 +46,7 @@ add_library(sablewasm
         src/mir/passes/SimplifyCFG.cc
         src/parser/ExprBuilderDelegate.cc
         src/parser/customsections/Name.cc
+        src/codegen-llvm-instance/IRBuilder.cc
         src/codegen-llvm-instance/LLVMCodegen.cc
         src/codegen-llvm-instance/EntityLayout.cc)
 target_link_libraries(sablewasm

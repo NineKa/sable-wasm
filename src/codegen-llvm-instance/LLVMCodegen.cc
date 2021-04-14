@@ -1,5 +1,9 @@
-#include "LLVMCodege.h"
+#include "LLVMCodegen.h"
 
+#include "../mir/Binary.h"
+#include "../mir/Branch.h"
+#include "../mir/Compare.h"
+#include "../mir/Unary.h"
 #include "../mir/passes/Dominator.h"
 #include "../mir/passes/Pass.h"
 #include "../mir/passes/TypeInfer.h"
@@ -36,13 +40,15 @@ class FunctionTranslationTask::TranslationContext {
       BasicBlockMap;
 
   llvm::Value *getLocalInitializer(std::size_t Index, mir::Local const &Local) {
+    IRBuilder Builder(Target);
     if (Local.isParameter()) return Target.arg_begin() + (Index + 1);
     using VKind = bytecode::ValueTypeKind;
     switch (Local.getType().getKind()) {
-    case VKind::I32: return Layout.getI32Constant(0);
-    case VKind::I64: return Layout.getI64Constant(0);
-    case VKind::F32: return Layout.getF32Constant(0);
-    case VKind::F64: return Layout.getF64Constant(0);
+    case VKind::I32: return Builder.getInt32(0);
+    case VKind::I64: return Builder.getInt64(0);
+    case VKind::F32: return Builder.getFloat(0);
+    case VKind::F64: return Builder.getDouble(0);
+    case VKind::V128: return Builder.getV128(bytecode::V128Value());
     default: utility::unreachable();
     }
   }
@@ -168,13 +174,16 @@ public:
 
 namespace minsts = mir::instructions;
 class FunctionTranslationTask::TranslationVisitor :
-    public mir::InstVisitorBase<TranslationVisitor, llvm::Value *> {
+    public mir::InstVisitorBase<TranslationVisitor, llvm::Value *>,
+    public minsts::BranchVisitorBase<TranslationVisitor, llvm::Value *>,
+    public minsts::CompareVisitorBase<TranslationVisitor, llvm::Value *>,
+    public minsts::UnaryVisitorBase<TranslationVisitor, llvm::Value *>,
+    public minsts::BinaryVisitorBase<TranslationVisitor, llvm::Value *> {
   FunctionTranslationTask::TranslationContext &Context;
-  llvm::IRBuilder<> &Builder;
+  IRBuilder &Builder;
 
 public:
-  explicit TranslationVisitor(
-      TranslationContext &Context_, llvm::IRBuilder<> &Builder_)
+  explicit TranslationVisitor(TranslationContext &Context_, IRBuilder &Builder_)
       : Context(Context_), Builder(Builder_) {}
 
   llvm::Value *operator()(minsts::Unreachable const *) {
@@ -184,6 +193,7 @@ public:
     return Builder.CreateUnreachable();
   }
 
+  ///////////////////////////////// Branch /////////////////////////////////////
   llvm::Value *operator()(minsts::branch::Unconditional const *Inst) {
     auto *TargetBB = std::get<0>(Context[*Inst->getTarget()]);
     return Builder.CreateBr(TargetBB);
@@ -191,8 +201,7 @@ public:
 
   llvm::Value *operator()(minsts::branch::Conditional const *Inst) {
     llvm::Value *Condition = Context[*Inst->getOperand()];
-    auto *Zero = Context.getLayout().getI32Constant(0);
-    Condition = Builder.CreateICmpNE(Condition, Zero);
+    Condition = Builder.CreateICmpNE(Condition, Builder.getInt32(0));
     auto *TrueBB = std::get<0>(Context[*Inst->getTrue()]);
     auto *FalseBB = std::get<0>(Context[*Inst->getFalse()]);
     return Builder.CreateCondBr(Condition, TrueBB, FalseBB);
@@ -214,20 +223,12 @@ public:
     auto *LLVMSwitch =
         Builder.CreateSwitch(Operand, DefaultFirst, Targets.size());
     for (auto const &[Index, Target] : ranges::views::enumerate(Targets))
-      LLVMSwitch->addCase(Context.getLayout().getI32Constant(Index), Target);
+      LLVMSwitch->addCase(Builder.getInt32(Index), Target);
     return LLVMSwitch;
   }
 
   llvm::Value *operator()(minsts::Branch const *Inst) {
-    switch (Inst->getBranchKind()) {
-    case minsts::BranchKind::Conditional:
-      return this->operator()(std::addressof(Inst->asConditional()));
-    case minsts::BranchKind::Unconditional:
-      return this->operator()(std::addressof(Inst->asUnconditional()));
-    case minsts::BranchKind::Switch:
-      return this->operator()(std::addressof(Inst->asSwitch()));
-    default: utility::unreachable();
-    }
+    return BranchVisitorBase::visit(Inst);
   }
 
   llvm::Value *operator()(minsts::Return const *Inst) {
@@ -260,7 +261,7 @@ public:
           Context.getLayout().getBuiltin("__sable_table_guard");
       Builder.CreateCall(BuiltinTableGuard, {Table, Index});
     }
-    auto *ExpectSignature = Context.getLayout().getCStringPtr(
+    auto *ExpectSignature = Builder.getCStr(
         Context.getLayout().getSignature(Inst->getExpectType()),
         "indirect.call.signature");
     auto *BuiltinTableCheck =
@@ -295,10 +296,7 @@ public:
 
   llvm::Value *operator()(minsts::Select const *Inst) {
     llvm::Value *Condition = Context[*Inst->getCondition()];
-    assert(Context.getInferredType()[*Inst->getCondition()].isPrimitiveI32());
-    assert(Condition->getType() == Context.getLayout().getI32Ty());
-    auto *Zero = Context.getLayout().getI32Constant(0);
-    Condition = Builder.CreateICmpNE(Condition, Zero);
+    Condition = Builder.CreateICmpNE(Condition, Builder.getInt32(0));
     auto *True = Context[*Inst->getTrue()];
     auto *False = Context[*Inst->getFalse()];
     return Builder.CreateSelect(Condition, True, False);
@@ -341,12 +339,108 @@ public:
   llvm::Value *operator()(minsts::Constant const *Inst) {
     using VKind = bytecode::ValueTypeKind;
     switch (Inst->getValueType().getKind()) {
-    case VKind::I32: return Context.getLayout().getI32Constant(Inst->asI32());
-    case VKind::I64: return Context.getLayout().getI64Constant(Inst->asI64());
-    case VKind::F32: return Context.getLayout().getF32Constant(Inst->asF32());
-    case VKind::F64: return Context.getLayout().getF64Constant(Inst->asF64());
+    case VKind::I32: return Builder.getInt32(Inst->asI32());
+    case VKind::I64: return Builder.getInt64(Inst->asI64());
+    case VKind::F32: return Builder.getFloat(Inst->asF32());
+    case VKind::F64: return Builder.getDouble(Inst->asF64());
+    case VKind::V128: return Builder.getV128(Inst->asV128());
     default: utility::unreachable();
     }
+  }
+
+  ///////////////////////////////// Compare ////////////////////////////////////
+  llvm::Value *operator()(minsts::compare::IntCompare const *Inst) {
+    auto *LHS = Context[*Inst->getLHS()];
+    auto *RHS = Context[*Inst->getRHS()];
+    using CompareOp = minsts::compare::IntCompareOperator;
+    // clang-format off
+    switch (Inst->getOperator()) {
+    case CompareOp::Eq : return Builder.CreateICmpEQ (LHS, RHS);
+    case CompareOp::Ne : return Builder.CreateICmpNE (LHS, RHS);
+    case CompareOp::LtS: return Builder.CreateICmpSLT(LHS, RHS);
+    case CompareOp::LtU: return Builder.CreateICmpULT(LHS, RHS);
+    case CompareOp::GtS: return Builder.CreateICmpSGT(LHS, RHS);
+    case CompareOp::GtU: return Builder.CreateICmpUGT(LHS, RHS);
+    case CompareOp::LeS: return Builder.CreateICmpSLE(LHS, RHS);
+    case CompareOp::LeU: return Builder.CreateICmpULE(LHS, RHS);
+    case CompareOp::GeS: return Builder.CreateICmpSGE(LHS, RHS);
+    case CompareOp::GeU: return Builder.CreateICmpUGE(LHS, RHS);
+    default: utility::unreachable();
+    }
+    // clang-format on
+  }
+
+  llvm::Value *operator()(minsts::compare::FPCompare const *Inst) {
+    auto *LHS = Context[*Inst->getLHS()];
+    auto *RHS = Context[*Inst->getRHS()];
+    using CompareOp = minsts::compare::FPCompareOperator;
+    switch (Inst->getOperator()) {
+    case CompareOp::Eq: return Builder.CreateFCmpUEQ(LHS, RHS);
+    case CompareOp::Ne: return Builder.CreateFCmpUNE(LHS, RHS);
+    case CompareOp::Lt: return Builder.CreateFCmpULT(LHS, RHS);
+    case CompareOp::Gt: return Builder.CreateFCmpUGT(LHS, RHS);
+    case CompareOp::Le: return Builder.CreateFCmpULE(LHS, RHS);
+    case CompareOp::Ge: return Builder.CreateFCmpUGE(LHS, RHS);
+    default: utility::unreachable();
+    }
+  }
+
+  llvm::Value *operator()(minsts::compare::SIMD128IntCompare const *Inst) {
+    auto *LHS = Context[*Inst->getLHS()];
+    auto *RHS = Context[*Inst->getRHS()];
+    auto *ExpectVecType = Builder.getV128Ty(Inst->getLaneInfo());
+    if (LHS->getType() != ExpectVecType)
+      LHS = Builder.CreateBitCast(LHS, ExpectVecType);
+    if (RHS->getType() != ExpectVecType)
+      LHS = Builder.CreateBitCast(RHS, ExpectVecType);
+    llvm::Value *Result = nullptr;
+    using Operator = mir::instructions::compare::SIMD128IntCompareOperator;
+    // clang-format off
+    switch (Inst->getOperator()) {
+    case Operator::Eq : Result = Builder.CreateICmpEQ (LHS, RHS); break;
+    case Operator::Ne : Result = Builder.CreateICmpNE (LHS, RHS); break;
+    case Operator::LtS: Result = Builder.CreateICmpSLT(LHS, RHS); break;
+    case Operator::LtU: Result = Builder.CreateICmpULT(LHS, RHS); break;
+    case Operator::GtS: Result = Builder.CreateICmpSGT(LHS, RHS); break;
+    case Operator::GtU: Result = Builder.CreateICmpUGT(LHS, RHS); break;
+    case Operator::LeS: Result = Builder.CreateICmpSLE(LHS, RHS); break;
+    case Operator::LeU: Result = Builder.CreateICmpULE(LHS, RHS); break;
+    case Operator::GeS: Result = Builder.CreateICmpSGE(LHS, RHS); break;
+    case Operator::GeU: Result = Builder.CreateICmpUGE(LHS, RHS); break;
+    default: utility::unreachable();
+    }
+    // clang-format on
+    Result = Builder.CreateSExt(Result, ExpectVecType);
+    return Result;
+  }
+
+  llvm::Value *operator()(minsts::compare::SIMD128FPCompare const *Inst) {
+    auto *LHS = Context[*Inst->getLHS()];
+    auto *RHS = Context[*Inst->getRHS()];
+    auto *ExpectVecType = Builder.getV128Ty(Inst->getLaneInfo());
+    if (LHS->getType() != ExpectVecType)
+      LHS = Builder.CreateBitCast(LHS, ExpectVecType);
+    if (RHS->getType() != ExpectVecType)
+      RHS = Builder.CreateBitCast(RHS, ExpectVecType);
+    llvm::Value *Result = nullptr;
+    using Operator = mir::instructions::compare::SIMD128FPCompareOperator;
+    switch (Inst->getOperator()) {
+    case Operator::Eq: Result = Builder.CreateFCmpUEQ(LHS, RHS); break;
+    case Operator::Ne: Result = Builder.CreateFCmpUNE(LHS, RHS); break;
+    case Operator::Lt: Result = Builder.CreateFCmpULT(LHS, RHS); break;
+    case Operator::Gt: Result = Builder.CreateFCmpUGT(LHS, RHS); break;
+    case Operator::Le: Result = Builder.CreateFCmpULE(LHS, RHS); break;
+    case Operator::Ge: Result = Builder.CreateFCmpUGE(LHS, RHS); break;
+    default: utility::unreachable();
+    }
+    auto ResultLaneInfo = Inst->getLaneInfo().getCmpResultLaneInfo();
+    auto *ExpectResultTy = Builder.getV128Ty(ResultLaneInfo);
+    Result = Builder.CreateSExt(Result, ExpectResultTy);
+    return Result;
+  }
+
+  llvm::Value *operator()(minsts::Compare const *Inst) {
+    return CompareVisitorBase::visit(Inst);
   }
 
   template <llvm::Intrinsic::ID IntrinsicID, typename... ArgTypes>
@@ -358,74 +452,147 @@ public:
         EnclosingModule, IntrinsicID, IntrinsicArgumentTys);
   }
 
-  llvm::Value *operator()(minsts::IntUnaryOp const *Inst) {
+  ////////////////////////////////// Unary /////////////////////////////////////
+  llvm::Value *operator()(minsts::unary::IntUnary const *Inst) {
     auto *MIROperand = Inst->getOperand();
     auto *Operand = Context[*MIROperand];
+    using UnaryOperator = minsts::unary::IntUnaryOperator;
     switch (Inst->getOperator()) {
-    case minsts::IntUnaryOperator::Eqz: {
+    case UnaryOperator::Eqz: {
+      auto OperandType = Context.getInferredType()[*MIROperand];
       llvm::Value *Zero = nullptr;
-      if (Context.getInferredType()[*MIROperand].isPrimitiveI32()) {
-        Zero = Context.getLayout().getI32Constant(0);
-      } else /* Context.getInferredType()[*MIROperand].isPrimitiveI64() */ {
-        assert(Context.getInferredType()[*MIROperand].isPrimitiveI64());
-        Zero = Context.getLayout().getI64Constant(0);
+      using VKind = bytecode::ValueTypeKind;
+      switch (OperandType.asPrimitive().getKind()) {
+      case VKind::I32: Zero = Builder.getInt32(0); break;
+      case VKind::I64: Zero = Builder.getInt64(0); break;
+      default: utility::unreachable();
       }
       return Builder.CreateICmpEQ(Operand, Zero);
     }
-    case minsts::IntUnaryOperator::Clz: {
-      auto OperandType = Context.getInferredType()[*MIROperand];
-      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::ctlz>(
-          Context.getLayout().convertType(OperandType.asPrimitive()),
-          Builder.getInt1Ty());
-      return Builder.CreateCall(Intrinsic, {Operand, Builder.getFalse()});
+    case UnaryOperator::Clz: return Builder.CreateIntrinsicClz(Operand);
+    case UnaryOperator::Ctz: return Builder.CreateIntrinsicCtz(Operand);
+    case UnaryOperator::Popcnt: return Builder.CreateIntrinsicPopcnt(Operand);
+    default: utility::unreachable();
     }
-    case minsts::IntUnaryOperator::Ctz: {
-      auto OperandType = Context.getInferredType()[*MIROperand];
-      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::cttz>(
-          Context.getLayout().convertType(OperandType.asPrimitive()),
-          Builder.getInt1Ty());
-      return Builder.CreateCall(Intrinsic, {Operand, Builder.getFalse()});
+  }
+
+  llvm::Value *operator()(minsts::unary::FPUnary const *Inst) {
+    auto *Operand = Context[*Inst->getOperand()];
+    using UnaryOperator = mir::instructions::unary::FPUnaryOperator;
+    // clang-format off
+    switch (Inst->getOperator()) {
+    case UnaryOperator::Abs    : return Builder.CreateIntrinsicFPAbs(Operand);
+    case UnaryOperator::Neg    : return Builder.CreateFNeg(Operand);
+    case UnaryOperator::Ceil   : return Builder.CreateIntrinsicCeil(Operand);
+    case UnaryOperator::Floor  : return Builder.CreateIntrinsicFloor(Operand);
+    case UnaryOperator::Trunc  : return Builder.CreateIntrinsicTrunc(Operand);
+    case UnaryOperator::Nearest: return Builder.CreateIntrinsicNearest(Operand);
+    case UnaryOperator::Sqrt   : return Builder.CreateIntrinsicSqrt(Operand);
+    default: utility::unreachable();
     }
-    case minsts::IntUnaryOperator::Popcnt: {
-      auto OperandType = Context.getInferredType()[*MIROperand];
-      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::ctpop>(
-          Context.getLayout().convertType(OperandType.asPrimitive()));
-      return Builder.CreateCall(Intrinsic, {Operand});
+    // clang-format on
+  }
+
+  llvm::Value *operator()(minsts::unary::SIMD128Unary const *Inst) {
+    auto *Operand = Context[*Inst->getOperand()];
+    using UnaryOperator = mir::instructions::unary::SIMD128UnaryOperator;
+    if (Operand->getType() != Builder.getInt128Ty())
+      Operand = Builder.CreateBitCast(Operand, Builder.getInt128Ty());
+    switch (Inst->getOperator()) {
+    case UnaryOperator::AnyTrue: {
+      auto *Zero = Builder.getIntN(128, 0);
+      llvm::Value *Result = Builder.CreateICmpEQ(Operand, Zero);
+      return Builder.CreateNot(Result);
+    }
+    case UnaryOperator::Not: return Builder.CreateNot(Operand);
+    default: utility::unreachable();
+    }
+  }
+
+  llvm::Value *operator()(minsts::unary::SIMD128IntUnary const *Inst) {
+    auto *Operand = Context[*Inst->getOperand()];
+    auto *ExpectTy = Builder.getV128Ty(Inst->getLaneInfo());
+    if (Operand->getType() != ExpectTy)
+      Operand = Builder.CreateBitCast(Operand, ExpectTy);
+    using UnaryOperator = mir::instructions::unary::SIMD128IntUnaryOperator;
+    switch (Inst->getOperator()) {
+    case UnaryOperator::Neg: {
+      auto *Zero = Builder.getV128(bytecode::V128Value(), Inst->getLaneInfo());
+      return Builder.CreateSub(Zero, Operand);
+    }
+    case UnaryOperator::Abs: {
+      auto *Zero = Builder.getV128(bytecode::V128Value(), Inst->getLaneInfo());
+      auto *Neg = Builder.CreateSub(Zero, Operand);
+      auto *SelectVector = Builder.CreateICmpSGT(Operand, Zero);
+      return Builder.CreateSelect(SelectVector, Operand, Neg);
+    }
+    case UnaryOperator::AllTrue: {
+      auto *Zero = Builder.getV128(bytecode::V128Value(), Inst->getLaneInfo());
+      auto *CmpVector = Builder.CreateICmpNE(Operand, Zero);
+      return Builder.CreateIntrinsicReduceAnd(CmpVector);
+    }
+    case UnaryOperator::Bitmask: {
+      auto LaneWidth = Inst->getLaneInfo().getLaneWidth();
+      auto NumLane = Inst->getLaneInfo().getNumLane();
+      auto *ShiftAmount = Builder.getInt32(LaneWidth - 1);
+      llvm::Value *Result = Builder.CreateLShr(Operand, ShiftAmount);
+      auto *TruncToTy =
+          llvm::FixedVectorType::get(Builder.getInt1Ty(), NumLane);
+      Result = Builder.CreateTrunc(Result, TruncToTy);
+      Result = Builder.CreateBitCast(Result, Builder.getIntNTy(NumLane));
+      return Builder.CreateZExt(Result, Builder.getInt32Ty());
     }
     default: utility::unreachable();
     }
   }
 
-  llvm::Value *operator()(minsts::IntBinaryOp const *Inst) {
+  llvm::Value *operator()(minsts::unary::SIMD128FPUnary const *Inst) {
+    auto *Operand = Context[*Inst->getOperand()];
+    auto *ExpectTy = Builder.getV128Ty(Inst->getLaneInfo());
+    if (Operand->getType() != ExpectTy)
+      Operand = Builder.CreateBitCast(Operand, ExpectTy);
+    using UnaryOperator = mir::instructions::unary::SIMD128FPUnaryOperator;
+    // clang-format off
+    switch (Inst->getOperator()) {
+    case UnaryOperator::Neg    : return Builder.CreateFNeg(Operand);
+    case UnaryOperator::Abs    : return Builder.CreateIntrinsicFPAbs(Operand);
+    case UnaryOperator::Sqrt   : return Builder.CreateIntrinsicSqrt(Operand);
+    case UnaryOperator::Ceil   : return Builder.CreateIntrinsicCeil(Operand);
+    case UnaryOperator::Floor  : return Builder.CreateIntrinsicFloor(Operand);
+    case UnaryOperator::Trunc  : return Builder.CreateIntrinsicTrunc(Operand);
+    case UnaryOperator::Nearest: return Builder.CreateIntrinsicNearest(Operand);
+    default: utility::unreachable();
+    }
+    // clang-format on
+  }
+
+  llvm::Value *operator()(minsts::Unary const *Inst) {
+    return UnaryVisitorBase::visit(Inst);
+  }
+
+  ///////////////////////////////// Binary /////////////////////////////////////
+  llvm::Value *operator()(minsts::binary::IntBinary const *Inst) {
     auto *MIRValueLHS = Inst->getLHS();
     auto *MIRValueRHS = Inst->getRHS();
     auto *LHS = Context[*MIRValueLHS];
     auto *RHS = Context[*MIRValueRHS];
-    using IntBinaryOperator = mir::instructions::IntBinaryOperator;
+    using IntBinaryOperator = mir::instructions::binary::IntBinaryOperator;
     switch (Inst->getOperator()) {
-    case IntBinaryOperator::Eq: return Builder.CreateICmpEQ(LHS, RHS);
-    case IntBinaryOperator::Ne: return Builder.CreateICmpNE(LHS, RHS);
-    case IntBinaryOperator::LtS: return Builder.CreateICmpSLT(LHS, RHS);
-    case IntBinaryOperator::LtU: return Builder.CreateICmpULT(LHS, RHS);
-    case IntBinaryOperator::GtS: return Builder.CreateICmpSGT(LHS, RHS);
-    case IntBinaryOperator::GtU: return Builder.CreateICmpUGT(LHS, RHS);
-    case IntBinaryOperator::LeS: return Builder.CreateICmpSLE(LHS, RHS);
-    case IntBinaryOperator::LeU: return Builder.CreateICmpULE(LHS, RHS);
-    case IntBinaryOperator::GeS: return Builder.CreateICmpSGE(LHS, RHS);
-    case IntBinaryOperator::GeU: return Builder.CreateICmpUGE(LHS, RHS);
-    case IntBinaryOperator::Add: return Builder.CreateAdd(LHS, RHS);
-    case IntBinaryOperator::Sub: return Builder.CreateSub(LHS, RHS);
-    case IntBinaryOperator::Mul: return Builder.CreateMul(LHS, RHS);
+    // clang-format off
+    case IntBinaryOperator::Add : return Builder.CreateAdd (LHS, RHS);
+    case IntBinaryOperator::Sub : return Builder.CreateSub (LHS, RHS);
+    case IntBinaryOperator::Mul : return Builder.CreateMul (LHS, RHS);
     case IntBinaryOperator::DivS: return Builder.CreateSDiv(LHS, RHS);
     case IntBinaryOperator::DivU: return Builder.CreateUDiv(LHS, RHS);
     case IntBinaryOperator::RemS: return Builder.CreateSRem(LHS, RHS);
     case IntBinaryOperator::RemU: return Builder.CreateURem(LHS, RHS);
-    case IntBinaryOperator::And: return Builder.CreateAnd(LHS, RHS);
-    case IntBinaryOperator::Or: return Builder.CreateOr(LHS, RHS);
-    case IntBinaryOperator::Xor: return Builder.CreateXor(LHS, RHS);
-    case IntBinaryOperator::Shl: return Builder.CreateShl(LHS, RHS);
+    case IntBinaryOperator::And : return Builder.CreateAnd (LHS, RHS);
+    case IntBinaryOperator::Or  : return Builder.CreateOr  (LHS, RHS);
+    case IntBinaryOperator::Xor : return Builder.CreateXor (LHS, RHS);
+    case IntBinaryOperator::Shl : return Builder.CreateShl (LHS, RHS);
     case IntBinaryOperator::ShrS: return Builder.CreateAShr(LHS, RHS);
     case IntBinaryOperator::ShrU: return Builder.CreateLShr(LHS, RHS);
+    // clang-format on
     case IntBinaryOperator::Rotl: {
       auto OperandType = Context.getInferredType()[*MIRValueLHS];
       auto ShiftAmountType = Context.getInferredType()[*MIRValueRHS];
@@ -448,65 +615,13 @@ public:
     }
   }
 
-  llvm::Value *operator()(minsts::FPUnaryOp const *Inst) {
-    auto *MIROperand = Inst->getOperand();
-    auto *Operand = Context[*MIROperand];
-    using FPUnaryOperator = mir::instructions::FPUnaryOperator;
-    switch (Inst->getOperator()) {
-    case FPUnaryOperator::Abs: {
-      auto OperandType = Context.getInferredType()[*MIROperand];
-      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::fabs>(
-          Context.getLayout().convertType(OperandType.asPrimitive()));
-      return Builder.CreateCall(Intrinsic, {Operand});
-    }
-    case FPUnaryOperator::Neg: return Builder.CreateFNeg(Operand);
-    case FPUnaryOperator::Ceil: {
-      auto OperandType = Context.getInferredType()[*MIROperand];
-      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::ceil>(
-          Context.getLayout().convertType(OperandType.asPrimitive()));
-      return Builder.CreateCall(Intrinsic, {Operand});
-    }
-    case FPUnaryOperator::Floor: {
-      auto OperandType = Context.getInferredType()[*MIROperand];
-      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::floor>(
-          Context.getLayout().convertType(OperandType.asPrimitive()));
-      return Builder.CreateCall(Intrinsic, {Operand});
-    }
-    case FPUnaryOperator::Trunc: {
-      auto OperandType = Context.getInferredType()[*MIROperand];
-      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::trunc>(
-          Context.getLayout().convertType(OperandType.asPrimitive()));
-      return Builder.CreateCall(Intrinsic, {Operand});
-    }
-    case FPUnaryOperator::Nearest: {
-      auto OperandType = Context.getInferredType()[*MIROperand];
-      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::nearbyint>(
-          Context.getLayout().convertType(OperandType.asPrimitive()));
-      return Builder.CreateCall(Intrinsic, {Operand});
-    }
-    case FPUnaryOperator::Sqrt: {
-      auto OperandType = Context.getInferredType()[*MIROperand];
-      auto *Intrinsic = getIntrinsic<llvm::Intrinsic::sqrt>(
-          Context.getLayout().convertType(OperandType.asPrimitive()));
-      return Builder.CreateCall(Intrinsic, {Operand});
-    }
-    default: utility::unreachable();
-    }
-  }
-
-  llvm::Value *operator()(minsts::FPBinaryOp const *Inst) {
+  llvm::Value *operator()(minsts::binary::FPBinary const *Inst) {
     auto *MIRValueLHS = Inst->getLHS();
     auto *MIRValueRHS = Inst->getRHS();
     auto *LHS = Context[*MIRValueLHS];
     auto *RHS = Context[*MIRValueRHS];
-    using FPBinaryOperator = mir::instructions::FPBinaryOperator;
+    using FPBinaryOperator = mir::instructions::binary::FPBinaryOperator;
     switch (Inst->getOperator()) {
-    case FPBinaryOperator::Eq: return Builder.CreateFCmpOEQ(LHS, RHS);
-    case FPBinaryOperator::Ne: return Builder.CreateFCmpONE(LHS, RHS);
-    case FPBinaryOperator::Lt: return Builder.CreateFCmpOLT(LHS, RHS);
-    case FPBinaryOperator::Gt: return Builder.CreateFCmpOGT(LHS, RHS);
-    case FPBinaryOperator::Le: return Builder.CreateFCmpOLE(LHS, RHS);
-    case FPBinaryOperator::Ge: return Builder.CreateFCmpOGE(LHS, RHS);
     case FPBinaryOperator::Add: return Builder.CreateFAdd(LHS, RHS);
     case FPBinaryOperator::Sub: return Builder.CreateFSub(LHS, RHS);
     case FPBinaryOperator::Mul: return Builder.CreateFMul(LHS, RHS);
@@ -539,10 +654,14 @@ public:
     }
   }
 
+  llvm::Value *operator()(minsts::Binary const *Inst) {
+    return BinaryVisitorBase::visit(Inst);
+  }
+
   llvm::Value *
   getMemoryLocation(mir::Memory const &Memory, llvm::Value *Offset) {
     auto *InstancePtr = Context.getInstancePtr();
-    auto *PtrIntTy = Context.getLayout().getPtrIntTy();
+    auto *PtrIntTy = Builder.getIntPtrTy();
     llvm::Value *Address =
         Context.getLayout().get(Builder, InstancePtr, Memory);
     Address = Builder.CreatePtrToInt(Address, PtrIntTy);
@@ -615,7 +734,7 @@ public:
     auto *Memory =
         Context.getLayout().get(Builder, InstancePtr, *Inst->getLinearMemory());
     llvm::Value *Offset = Context[*Inst->getAddress()];
-    auto *GuardSize = Context.getLayout().getI32Constant(Inst->getGuardSize());
+    auto *GuardSize = Builder.getInt32(Inst->getGuardSize());
     Offset = Builder.CreateNUWAdd(Offset, GuardSize);
     return Builder.CreateCall(BuiltinMemoryGuard, {Memory, Offset});
   }
@@ -729,7 +848,7 @@ public:
     auto *Result = InstVisitorBase::visit(Inst);
     if (Context.getInferredType()[*Inst].isPrimitiveI32() &&
         (Result->getType() == Builder.getInt1Ty())) {
-      Result = Builder.CreateZExt(Result, Context.getLayout().getI32Ty());
+      Result = Builder.CreateZExt(Result, Builder.getInt32Ty());
     }
     return Result;
   }
@@ -751,7 +870,7 @@ void FunctionTranslationTask::perform() {
   for (auto const *BBPtr : Context->getDominatorTree()->asPreorder()) {
     auto [FirstBBPtr, LastBBPtr] = Context->operator[](*BBPtr);
     utility::ignore(LastBBPtr);
-    llvm::IRBuilder<> Builder(FirstBBPtr);
+    IRBuilder Builder(*FirstBBPtr);
     TranslationVisitor Visitor(*Context, Builder);
     for (auto const &Instruction : *BBPtr) {
       auto *Value = Visitor.visit(std::addressof(Instruction));

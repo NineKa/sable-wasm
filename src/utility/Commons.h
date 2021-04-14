@@ -44,4 +44,35 @@ template <typename T> auto measure(T &&Fn) {
   return Stop - Start;
 }
 } // namespace utility
+
+#define SABLE_DEFINE_IS_A(BaseType)                                            \
+  template <typename T> bool is_a(BaseType const *Ptr) {                       \
+    return T::classof(Ptr);                                                    \
+  }                                                                            \
+  template <typename T> bool is_a(BaseType const &Ref) {                       \
+    return T::classof(std::addressof(Ref));                                    \
+  }
+
+#define SABLE_DEFINE_DYN_CAST(BaseType)                                        \
+  template <typename T> T *dyn_cast(BaseType *Ptr) {                           \
+    if (Ptr == nullptr) return nullptr;                                        \
+    assert(is_a<T>(Ptr));                                                      \
+    return static_cast<T *>(Ptr);                                              \
+  }                                                                            \
+                                                                               \
+  template <typename T> T &dyn_cast(BaseType &Ref) {                           \
+    assert(is_a<T>(Ref));                                                      \
+    return static_cast<T &>(Ref);                                              \
+  }                                                                            \
+                                                                               \
+  template <typename T> T const *dyn_cast(BaseType const *Ptr) {               \
+    if (Ptr == nullptr) return nullptr;                                        \
+    assert(is_a<T>(Ptr));                                                      \
+    return static_cast<T const *>(Ptr);                                        \
+  }                                                                            \
+                                                                               \
+  template <typename T> T const &dyn_cast(BaseType const &Ref) {               \
+    assert(is_a<T>(Ref));                                                      \
+    return static_cast<T const &>(Ref);                                        \
+  }
 #endif

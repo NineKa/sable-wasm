@@ -1,5 +1,5 @@
 #include "bytecode/Validation.h"
-#include "codegen-llvm-instance/LLVMCodege.h"
+#include "codegen-llvm-instance/LLVMCodegen.h"
 #include "mir/MIRCodegen.h"
 #include "mir/MIRPrinter.h"
 #include "mir/Module.h"

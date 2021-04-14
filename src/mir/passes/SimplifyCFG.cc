@@ -65,10 +65,8 @@ bool isDroppableInstruction(Instruction const &Inst) {
   case InstructionKind::LocalGet:
   case InstructionKind::GlobalGet:
   case InstructionKind::Constant:
-  case InstructionKind::IntUnaryOp:
-  case InstructionKind::IntBinaryOp:
-  case InstructionKind::FPUnaryOp:
-  case InstructionKind::FPBinaryOp:
+  case InstructionKind::Unary:
+  case InstructionKind::Binary:
   case InstructionKind::Load:
   case InstructionKind::MemorySize:
   case InstructionKind::Cast:

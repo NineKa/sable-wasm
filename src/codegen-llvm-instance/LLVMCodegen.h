@@ -21,6 +21,53 @@ struct TranslationOptions {
   bool AssumeMemRWAligned = false;
 };
 
+class IRBuilder : public llvm::IRBuilder<> {
+  llvm::Module *EnclosingModule;
+
+public:
+  explicit IRBuilder(llvm::Module &EnclosingModule_);
+  explicit IRBuilder(llvm::BasicBlock &BasicBlock_);
+  explicit IRBuilder(llvm::Function &Function_);
+
+  llvm::Module &getModule() { return *EnclosingModule; }
+
+  llvm::PointerType *getInt32PtrTy(unsigned AddressSpace = 0);
+  llvm::PointerType *getInt64PtrTy(unsigned AddressSpace = 0);
+  llvm::PointerType *getFloatPtrTy(unsigned AddressSpace = 0);
+  llvm::PointerType *getDoublePtrTy(unsigned AddressSpace = 0);
+  llvm::Constant *getFloat(float Value);
+  llvm::Constant *getDouble(double Value);
+
+  llvm::Type *getCStrTy(unsigned AddressSpace = 0);
+  llvm::Constant *getCStr(std::string_view String, std::string_view Name = "");
+
+  llvm::Type *getIntPtrTy(unsigned AddressSpace = 0);
+
+  llvm::VectorType *getV128Ty(mir::SIMD128IntLaneInfo const &LaneInfo);
+  llvm::VectorType *getV128Ty(mir::SIMD128FPLaneInfo const &LaneInfo);
+
+  llvm::Constant *getV128(
+      bytecode::V128Value const &Value,
+      mir::SIMD128IntLaneInfo const &LaneInfo =
+          mir::SIMD128IntLaneInfo(mir::SIMD128IntElementKind::I8));
+
+  llvm::Constant *getV128(
+      bytecode::V128Value const &Value, mir::SIMD128FPLaneInfo const &LaneInfo);
+
+  llvm::Value *CreateIntrinsicClz(llvm::Value *Operand);
+  llvm::Value *CreateIntrinsicCtz(llvm::Value *Operand);
+  llvm::Value *CreateIntrinsicPopcnt(llvm::Value *Operand);
+
+  llvm::Value *CreateIntrinsicReduceAnd(llvm::Value *Operand);
+
+  llvm::Value *CreateIntrinsicFPAbs(llvm::Value *Operand);
+  llvm::Value *CreateIntrinsicCeil(llvm::Value *Operand);
+  llvm::Value *CreateIntrinsicFloor(llvm::Value *Operand);
+  llvm::Value *CreateIntrinsicTrunc(llvm::Value *Operand);
+  llvm::Value *CreateIntrinsicNearest(llvm::Value *Operand);
+  llvm::Value *CreateIntrinsicSqrt(llvm::Value *Operand);
+};
+
 class EntityLayout {
 public:
   class FunctionEntry {
@@ -42,6 +89,10 @@ private:
   mir::Module const &Source;
   llvm::Module &Target;
   TranslationOptions Options;
+  mutable IRBuilder ModuleIRBuilder;
+
+  llvm::StringMap<llvm::Type *> NamedStructTys;
+  llvm::StringMap<llvm::Type *> NamedOpaqueTys;
 
   llvm::DenseMap<mir::ASTNode const *, std::size_t> OffsetMap;
   llvm::DenseMap<mir::Data const *, llvm::Constant *> DataMap;
@@ -68,7 +119,7 @@ private:
   void setupInstanceType();
 
   llvm::Value *translateInitExpr(
-      llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
+      IRBuilder &Builder, llvm::Value *InstancePtr,
       mir::InitializerExpr const &Expr);
 
   void setupDataSegments();
@@ -117,40 +168,18 @@ public:
    */
   llvm::Function *getBuiltin(std::string_view Name) const;
 
+  llvm::Value *get(IRBuilder &, llvm::Value *, mir::Global const &) const;
+  llvm::Value *get(IRBuilder &, llvm::Value *, mir::Memory const &) const;
+  llvm::Value *get(IRBuilder &, llvm::Value *, mir::Table const &) const;
+
   llvm::Value *
-  get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::Global const &Global) const;
-  llvm::Value *getContextPtr(
-      llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::Function const &Function) const;
-  llvm::Value *getFunctionPtr(
-      llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::Function const &Function) const;
+  getContextPtr(IRBuilder &, llvm::Value *, mir::Function const &) const;
   llvm::Value *
-  get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::Memory const &Memory) const;
-  llvm::Value *
-  get(llvm::IRBuilder<> &Builder, llvm::Value *InstancePtr,
-      mir::Table const &Table) const;
+  getFunctionPtr(IRBuilder &, llvm::Value *, mir::Function const &) const;
 
   char getSignature(bytecode::ValueType const &Type) const;
   char getSignature(bytecode::GlobalType const &Type) const;
   std::string getSignature(bytecode::FunctionType const &Type) const;
-
-  /* void          */ llvm::Type *getVoidTy() const;
-  /* void *        */ llvm::PointerType *getVoidPtrTy() const;
-  /* char const *  */ llvm::PointerType *getCStringPtrTy() const;
-  llvm::Constant *
-  getCStringPtr(std::string_view, std::string_view Name = "") const;
-  /* std::int32_t  */ llvm::IntegerType *getI32Ty() const;
-  llvm::ConstantInt *getI32Constant(std::int32_t Value) const;
-  /* std::int64_t  */ llvm::IntegerType *getI64Ty() const;
-  llvm::ConstantInt *getI64Constant(std::int64_t Value) const;
-  /* float         */ llvm::Type *getF32Ty() const;
-  llvm::ConstantFP *getF32Constant(float Value) const;
-  /* double        */ llvm::Type *getF64Ty() const;
-  llvm::ConstantFP *getF64Constant(double Value) const;
-  /* std::intptr_t */ llvm::Type *getPtrIntTy() const;
 
   /* __sable_instance_t * */ llvm::PointerType *getInstancePtrTy() const;
 

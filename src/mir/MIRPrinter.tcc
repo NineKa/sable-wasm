@@ -184,36 +184,11 @@ LocalNameWriter::write(Iterator Out, Instruction const *InstructionPtr) const {
 }
 
 template <std::output_iterator<char> Iterator>
-char const *
-MIRIteratorWriter<Iterator>::toString(instructions::IntUnaryOperator Op) {
-  using UnaryOp = instructions::IntUnaryOperator;
+char const *MIRIteratorWriter<Iterator>::toString(
+    instructions::binary::IntBinaryOperator Op) {
+  using BinaryOp = instructions::binary::IntBinaryOperator;
   // clang-format off
   switch (Op) {
-  case UnaryOp::Eqz      : return "int.eqz";
-  case UnaryOp::Clz      : return "int.clz";
-  case UnaryOp::Ctz      : return "int.ctz";
-  case UnaryOp::Popcnt   : return "int.popcnt";
-  default:utility::unreachable();
-  }
-  // clang-format on
-}
-
-template <std::output_iterator<char> Iterator>
-char const *
-MIRIteratorWriter<Iterator>::toString(instructions::IntBinaryOperator Op) {
-  using BinaryOp = instructions::IntBinaryOperator;
-  // clang-format off
-  switch (Op) {
-  case BinaryOp::Eq      : return "int.eq";
-  case BinaryOp::Ne      : return "int.ne";
-  case BinaryOp::LtS     : return "int.lt.s";
-  case BinaryOp::LtU     : return "int.lt.u";
-  case BinaryOp::GtS     : return "int.gt.s";
-  case BinaryOp::GtU     : return "int.gt.u";
-  case BinaryOp::LeS     : return "int.le.s";
-  case BinaryOp::LeU     : return "int.le.u";
-  case BinaryOp::GeS     : return "int.ge.s";
-  case BinaryOp::GeU     : return "int.ge.u";
   case BinaryOp::Add     : return "int.add";
   case BinaryOp::Sub     : return "int.sub";
   case BinaryOp::Mul     : return "int.mul";
@@ -235,35 +210,11 @@ MIRIteratorWriter<Iterator>::toString(instructions::IntBinaryOperator Op) {
 }
 
 template <std::output_iterator<char> Iterator>
-char const *
-MIRIteratorWriter<Iterator>::toString(instructions::FPUnaryOperator Op) {
-  using UnaryOp = instructions::FPUnaryOperator;
+char const *MIRIteratorWriter<Iterator>::toString(
+    instructions::binary::FPBinaryOperator Op) {
+  using BinaryOp = instructions::binary::FPBinaryOperator;
   // clang-format off
   switch (Op) {
-  case UnaryOp::Abs      : return "fp.abs";
-  case UnaryOp::Neg      : return "fp.neg";
-  case UnaryOp::Ceil     : return "fp.ceil";
-  case UnaryOp::Floor    : return "fp.floor";
-  case UnaryOp::Trunc    : return "fp.truncate";
-  case UnaryOp::Nearest  : return "fp.nearest";
-  case UnaryOp::Sqrt     : return "fp.sqrt";
-  default: utility::unreachable();
-  }
-  // clang-format on
-}
-
-template <std::output_iterator<char> Iterator>
-char const *
-MIRIteratorWriter<Iterator>::toString(instructions::FPBinaryOperator Op) {
-  using BinaryOp = instructions::FPBinaryOperator;
-  // clang-format off
-  switch (Op) {
-  case BinaryOp::Eq      : return "fp.eq";
-  case BinaryOp::Ne      : return "fp.ne";
-  case BinaryOp::Lt      : return "fp.lt";
-  case BinaryOp::Gt      : return "fp.gt";
-  case BinaryOp::Le      : return "fp.le";
-  case BinaryOp::Ge      : return "fp.ge";
   case BinaryOp::Add     : return "fp.add";
   case BinaryOp::Sub     : return "fp.sub";
   case BinaryOp::Mul     : return "fp.mul";
@@ -394,11 +345,20 @@ Iterator dumpExportInfo(Iterator Out, ExportableEntity const &Entity) {
 
 namespace detail {
 template <std::output_iterator<char> Iterator>
+// clang-format off
 class WriterInstructionVisitor :
-    public InstVisitorBase<WriterInstructionVisitor<Iterator>, Iterator> {
+    public InstVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
+    public mir::instructions::BranchVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
+    public mir::instructions::CompareVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
+    public mir::instructions::UnaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
+    public mir::instructions::BinaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>
+// clang-format on
+{
   MIRIteratorWriter<Iterator> Writer;
 
 public:
+  using InstVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>::visit;
+
   WriterInstructionVisitor(
       Iterator Out, EntityNameWriter const &ENameWriter_,
       LocalNameWriter const &LNameWriter_)
@@ -428,15 +388,10 @@ public:
   }
 
   Iterator operator()(instructions::Branch const *Inst) {
-    switch (Inst->getBranchKind()) {
-    case instructions::BranchKind::Conditional:
-      return this->operator()(std::addressof(Inst->asConditional()));
-    case instructions::BranchKind::Unconditional:
-      return this->operator()(std::addressof(Inst->asUnconditional()));
-    case instructions::BranchKind::Switch:
-      return this->operator()(std::addressof(Inst->asSwitch()));
-    default: utility::unreachable();
-    }
+    using namespace mir::instructions;
+    using BranchVisitor =
+        BranchVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
+    return BranchVisitor::visit(Inst);
   }
 
   Iterator operator()(instructions::Return const *Inst) {
@@ -533,14 +488,7 @@ public:
     return Writer.iterator();
   }
 
-  Iterator operator()(instructions::IntUnaryOp const *Inst) {
-    auto Operator = Inst->getOperator();
-    auto const *Operand = Inst->getOperand();
-    Writer << Inst << " = " << Operator << ' ' << Operand;
-    return Writer.iterator();
-  }
-
-  Iterator operator()(instructions::IntBinaryOp const *Inst) {
+  Iterator operator()(instructions::compare::IntCompare const *Inst) {
     auto Operator = Inst->getOperator();
     auto const *LHS = Inst->getLHS();
     auto const *RHS = Inst->getRHS();
@@ -548,19 +496,106 @@ public:
     return Writer.iterator();
   }
 
-  Iterator operator()(instructions::FPUnaryOp const *Inst) {
+  Iterator operator()(instructions::compare::FPCompare const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto const *LHS = Inst->getLHS();
+    auto const *RHS = Inst->getRHS();
+    Writer << Inst << " = " << Operator << ' ' << LHS << ' ' << RHS;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::compare::SIMD128IntCompare const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto LaneInfo = Inst->getLaneInfo();
+    auto const *LHS = Inst->getLHS();
+    auto const *RHS = Inst->getRHS();
+    Writer << Inst << " = " << Operator << ' ' << LaneInfo << ' ' << LHS << ' '
+           << RHS;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::compare::SIMD128FPCompare const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto LaneInfo = Inst->getLaneInfo();
+    auto const *LHS = Inst->getLHS();
+    auto const *RHS = Inst->getRHS();
+    Writer << Inst << " = " << Operator << ' ' << LaneInfo << ' ' << LHS << ' '
+           << RHS;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::Compare const *Inst) {
+    using namespace mir::instructions;
+    using CompareVisitor =
+        CompareVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
+    return CompareVisitor::visit(Inst);
+  }
+
+  Iterator operator()(instructions::unary::IntUnary const *Inst) {
     auto Operator = Inst->getOperator();
     auto const *Operand = Inst->getOperand();
     Writer << Inst << " = " << Operator << ' ' << Operand;
     return Writer.iterator();
   }
 
-  Iterator operator()(instructions::FPBinaryOp const *Inst) {
+  Iterator operator()(instructions::unary::FPUnary const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto const *Operand = Inst->getOperand();
+    Writer << Inst << " = " << Operator << ' ' << Operand;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::unary::SIMD128Unary const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto const *Operand = Inst->getOperand();
+    Writer << Inst << " = " << Operator << ' ' << Operand;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::unary::SIMD128IntUnary const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto LaneInfo = Inst->getLaneInfo();
+    auto const *Operand = Inst->getOperand();
+    Writer << Inst << " = " << Operator << ' ' << LaneInfo << ' ' << Operand;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::unary::SIMD128FPUnary const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto LaneInfo = Inst->getLaneInfo();
+    auto const *Operand = Inst->getOperand();
+    Writer << Inst << " = " << Operator << ' ' << LaneInfo << ' ' << Operand;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::Unary const *Inst) {
+    using namespace mir::instructions;
+    using UnaryVisitor =
+        UnaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
+    return UnaryVisitor::visit(Inst);
+  }
+
+  Iterator operator()(instructions::binary::IntBinary const *Inst) {
     auto Operator = Inst->getOperator();
     auto const *LHS = Inst->getLHS();
     auto const *RHS = Inst->getRHS();
     Writer << Inst << " = " << Operator << ' ' << LHS << ' ' << RHS;
     return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::binary::FPBinary const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto const *LHS = Inst->getLHS();
+    auto const *RHS = Inst->getRHS();
+    Writer << Inst << " = " << Operator << ' ' << LHS << ' ' << RHS;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::Binary const *Inst) {
+    using namespace mir::instructions;
+    using BinaryVisitor =
+        BinaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
+    return BinaryVisitor::visit(Inst);
   }
 
   Iterator operator()(instructions::Load const *Inst) {

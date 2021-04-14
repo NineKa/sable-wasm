@@ -2,8 +2,12 @@
 #define SABLE_INCLUDE_GUARD_MIR_PRINTER
 
 #include "BasicBlock.h"
+#include "Binary.h"
+#include "Branch.h"
+#include "Compare.h"
 #include "Instruction.h"
 #include "Module.h"
+#include "Unary.h"
 
 #include <fmt/format.h>
 
@@ -75,10 +79,8 @@ template <std::output_iterator<char> Iterator> class MIRIteratorWriter {
   EntityNameWriter const *ENameWriter = nullptr;
   LocalNameWriter const *LNameWriter = nullptr;
 
-  char const *toString(instructions::IntUnaryOperator Operator);
-  char const *toString(instructions::IntBinaryOperator Operator);
-  char const *toString(instructions::FPUnaryOperator Operator);
-  char const *toString(instructions::FPBinaryOperator Operator);
+  char const *toString(instructions::binary::IntBinaryOperator Operator);
+  char const *toString(instructions::binary::FPBinaryOperator Operator);
   char const *toString(instructions::CastMode Mode);
 
   static const char *const LINEBREAK_STR;
@@ -110,13 +112,36 @@ public:
   MIRIteratorWriter &operator<<(indent_ const &);
 
   // clang-format off
-  MIRIteratorWriter &operator<<(instructions::IntUnaryOperator Op)
+  MIRIteratorWriter &operator<<(instructions::compare::IntCompareOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<(instructions::compare::FPCompareOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<
+  (instructions::compare::SIMD128IntCompareOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<
+  (instructions::compare::SIMD128FPCompareOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<(SIMD128IntLaneInfo const &LaneInfo)
+  { Out = fmt::format_to(Out, "{}", LaneInfo); return *this; }
+  MIRIteratorWriter &operator<<(SIMD128FPLaneInfo const &LaneInfo)
+  { Out = fmt::format_to(Out, "{}", LaneInfo); return *this; }
+
+
+  MIRIteratorWriter &operator<<(instructions::unary::IntUnaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<(instructions::unary::FPUnaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<(instructions::unary::SIMD128UnaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<(instructions::unary::SIMD128IntUnaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<(instructions::unary::SIMD128FPUnaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+
+  MIRIteratorWriter &operator<<(instructions::binary::IntBinaryOperator Op)
   { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
-  MIRIteratorWriter &operator<<(instructions::IntBinaryOperator Op)
-  { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
-  MIRIteratorWriter &operator<<(instructions::FPUnaryOperator Op)
-  { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
-  MIRIteratorWriter &operator<<(instructions::FPBinaryOperator Op)
+  MIRIteratorWriter &operator<<(instructions::binary::FPBinaryOperator Op)
   { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
   MIRIteratorWriter &operator<<(instructions::CastMode Mode)
   { Out = fmt::format_to(Out, "{}", toString(Mode)); return *this; }

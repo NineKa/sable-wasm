@@ -1,4 +1,8 @@
 #include "TypeInfer.h"
+#include "../Binary.h"
+#include "../Branch.h"
+#include "../Compare.h"
+#include "../Unary.h"
 
 #include <range/v3/view/transform.hpp>
 
@@ -32,7 +36,10 @@ void TypeInferPass::prepare(
 
 namespace {
 namespace minsts = mir::instructions;
-class TypeInferVisitor : public mir::InstVisitorBase<TypeInferVisitor, Type> {
+class TypeInferVisitor :
+    public mir::InstVisitorBase<TypeInferVisitor, Type>,
+    public minsts::UnaryVisitorBase<TypeInferVisitor, Type>,
+    public minsts::BinaryVisitorBase<TypeInferVisitor, Type> {
   TypeInferPassResult::TypeMap &Types;
 
   Type const &getType(mir::Instruction const *Instruction) const {
@@ -42,6 +49,8 @@ class TypeInferVisitor : public mir::InstVisitorBase<TypeInferVisitor, Type> {
   }
 
 public:
+  using InstVisitorBase::visit;
+
   TypeInferVisitor(TypeInferPassResult::TypeMap &Types_) : Types(Types_) {}
 
   Type operator()(minsts::Unreachable const *) { return Type::BuildUnit(); }
@@ -89,92 +98,48 @@ public:
     return Type::BuildPrimitive(Inst->getValueType());
   }
 
-  Type operator()(minsts::IntUnaryOp const *Inst) {
+  Type operator()(minsts::Compare const *) {
+    using namespace bytecode::valuetypes;
+    return Type::BuildPrimitive(I32);
+  }
+
+  Type operator()(minsts::unary::IntUnary const *Inst) {
     using namespace bytecode::valuetypes;
     auto const &OperandTy = getType(Inst->getOperand());
     if (!OperandTy.isIntegral()) return Type::BuildBottom();
-    switch (Inst->getOperator()) {
-    case minsts::IntUnaryOperator::Eqz: return Type::BuildPrimitive(I32);
-    case minsts::IntUnaryOperator::Clz:
-    case minsts::IntUnaryOperator::Ctz:
-    case minsts::IntUnaryOperator::Popcnt: return OperandTy;
-    default: utility::unreachable();
-    }
+    return OperandTy;
   }
 
-  Type operator()(minsts::IntBinaryOp const *Inst) {
+  Type operator()(minsts::unary::FPUnary const *Inst) {
+    auto const &OperandTy = getType(Inst->getOperand());
+    if (!OperandTy.isFloatingPoint()) return Type::BuildBottom();
+    return OperandTy;
+  }
+
+  Type operator()(minsts::Unary const *Inst) {
+    return UnaryVisitorBase::visit(Inst);
+  }
+
+  Type operator()(minsts::binary::IntBinary const *Inst) {
     using namespace bytecode::valuetypes;
     auto const &LHSTy = getType(Inst->getLHS());
     auto const &RHSTy = getType(Inst->getRHS());
     if (LHSTy != RHSTy) return Type::BuildBottom();
     if (!LHSTy.isIntegral()) return Type::BuildBottom();
-    switch (Inst->getOperator()) {
-    case minsts::IntBinaryOperator::Eq:
-    case minsts::IntBinaryOperator::Ne:
-    case minsts::IntBinaryOperator::LtS:
-    case minsts::IntBinaryOperator::LtU:
-    case minsts::IntBinaryOperator::GtS:
-    case minsts::IntBinaryOperator::GtU:
-    case minsts::IntBinaryOperator::LeS:
-    case minsts::IntBinaryOperator::LeU:
-    case minsts::IntBinaryOperator::GeS:
-    case minsts::IntBinaryOperator::GeU: return Type::BuildPrimitive(I32);
-    case minsts::IntBinaryOperator::Add:
-    case minsts::IntBinaryOperator::Sub:
-    case minsts::IntBinaryOperator::Mul:
-    case minsts::IntBinaryOperator::DivS:
-    case minsts::IntBinaryOperator::DivU:
-    case minsts::IntBinaryOperator::RemS:
-    case minsts::IntBinaryOperator::RemU:
-    case minsts::IntBinaryOperator::And:
-    case minsts::IntBinaryOperator::Or:
-    case minsts::IntBinaryOperator::Xor:
-    case minsts::IntBinaryOperator::Shl:
-    case minsts::IntBinaryOperator::ShrS:
-    case minsts::IntBinaryOperator::ShrU:
-    case minsts::IntBinaryOperator::Rotl:
-    case minsts::IntBinaryOperator::Rotr: return LHSTy;
-    default: utility::unreachable();
-    }
+    return LHSTy;
   }
 
-  Type operator()(minsts::FPUnaryOp const *Inst) {
-    auto const &OperandTy = getType(Inst->getOperand());
-    if (!OperandTy.isFloatingPoint()) return Type::BuildBottom();
-    switch (Inst->getOperator()) {
-    case minsts::FPUnaryOperator::Abs:
-    case minsts::FPUnaryOperator::Neg:
-    case minsts::FPUnaryOperator::Ceil:
-    case minsts::FPUnaryOperator::Floor:
-    case minsts::FPUnaryOperator::Trunc:
-    case minsts::FPUnaryOperator::Nearest:
-    case minsts::FPUnaryOperator::Sqrt: return OperandTy;
-    default: utility::unreachable();
-    }
-  }
-
-  Type operator()(minsts::FPBinaryOp const *Inst) {
+  Type operator()(minsts::binary::FPBinary const *Inst) {
     using namespace bytecode::valuetypes;
     auto const &LHSTy = getType(Inst->getLHS());
     auto const &RHSTy = getType(Inst->getRHS());
     if (LHSTy != RHSTy) return Type::BuildBottom();
     if (!LHSTy.isFloatingPoint()) return Type::BuildBottom();
-    switch (Inst->getOperator()) {
-    case minsts::FPBinaryOperator::Eq:
-    case minsts::FPBinaryOperator::Ne:
-    case minsts::FPBinaryOperator::Lt:
-    case minsts::FPBinaryOperator::Gt:
-    case minsts::FPBinaryOperator::Le:
-    case minsts::FPBinaryOperator::Ge: return Type::BuildPrimitive(I32);
-    case minsts::FPBinaryOperator::Add:
-    case minsts::FPBinaryOperator::Sub:
-    case minsts::FPBinaryOperator::Mul:
-    case minsts::FPBinaryOperator::Div:
-    case minsts::FPBinaryOperator::Min:
-    case minsts::FPBinaryOperator::Max:
-    case minsts::FPBinaryOperator::CopySign: return LHSTy;
-    default: utility::unreachable();
-    }
+    return LHSTy;
+  }
+
+  Type operator()(minsts::Binary const *Inst) {
+    return BinaryVisitorBase::visit(Inst);
   }
 
   Type operator()(minsts::Load const *Inst) {

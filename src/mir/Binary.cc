@@ -236,19 +236,27 @@ formatter<mir::instructions::binary::SIMD128IntBinaryOperator>::toString(
     BinaryOperator const &Operator) {
   // clang-format off
   switch (Operator) {
-  case BinaryOperator::Add           : return "v128.int.add";
-  case BinaryOperator::Sub           : return "v128.int.sub";
-  case BinaryOperator::Mul           : return "v128.int.mul";
-  case BinaryOperator::ExtMulLowS    : return "v128.int.ext.mul.low.s";
-  case BinaryOperator::ExtMulLowU    : return "v128.int.ext.mul.low.u";
-  case BinaryOperator::ExtMulHighS   : return "v128.int.ext.mul.high.s";
-  case BinaryOperator::ExtMulHighU   : return "v128.int.ext.mul.high.u";
-  case BinaryOperator::ExtAddPairwise: return "v128.int.ext.add.pairwise";
-  case BinaryOperator::AddSat        : return "v128.int.add.sat";
-  case BinaryOperator::SubSat        : return "v128.int.sub.sat";
-  case BinaryOperator::Min           : return "v128.int.min";
-  case BinaryOperator::Max           : return "v128.int.max";
-  case BinaryOperator::AvgrU         : return "v128.int.avgr.u";
+  case BinaryOperator::Add            : return "v128.int.add";
+  case BinaryOperator::Sub            : return "v128.int.sub";
+  case BinaryOperator::Mul            : return "v128.int.mul";
+  case BinaryOperator::ExtMulLowS     : return "v128.int.ext.mul.low.s";
+  case BinaryOperator::ExtMulLowU     : return "v128.int.ext.mul.low.u";
+  case BinaryOperator::ExtMulHighS    : return "v128.int.ext.mul.high.s";
+  case BinaryOperator::ExtMulHighU    : return "v128.int.ext.mul.high.u";
+  case BinaryOperator::ExtAddPairwiseS: return "v128.int.ext.add.pairwise.s";
+  case BinaryOperator::ExtAddPairwiseU: return "v128.int.ext.add.pairwise.u";
+  case BinaryOperator::AddSatS        : return "v128.int.add.sat.s";
+  case BinaryOperator::AddSatU        : return "v128.int.add.sat.u";
+  case BinaryOperator::SubSatS        : return "v128.int.sub.sat.s";
+  case BinaryOperator::SubSatU        : return "v128.int.sub.sat.u";
+  case BinaryOperator::Shl            : return "v128.int.shl";
+  case BinaryOperator::ShrS           : return "v128.int.shr.s";
+  case BinaryOperator::ShrU           : return "v128.int.shr.u";
+  case BinaryOperator::MinS           : return "v128.int.min.s";
+  case BinaryOperator::MinU           : return "v128.int.min.u";
+  case BinaryOperator::MaxS           : return "v128.int.max.s";
+  case BinaryOperator::MaxU           : return "v128.int.max.u";
+  case BinaryOperator::AvgrU          : return "v128.int.avgr.u";
   default: utility::unreachable();
   }
   // clang-format on

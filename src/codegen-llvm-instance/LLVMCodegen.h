@@ -60,6 +60,15 @@ public:
   llvm::Value *CreateIntrinsicPopcnt(llvm::Value *Operand);
   llvm::Value *CreateIntrinsicIntAbs(llvm::Value *Operand);
 
+  llvm::Value *CreateIntrinsicAddSatS(llvm::Value *LHS, llvm::Value *RHS);
+  llvm::Value *CreateIntrinsicAddSatU(llvm::Value *LHS, llvm::Value *RHS);
+  llvm::Value *CreateIntrinsicSubSatS(llvm::Value *LHS, llvm::Value *RHS);
+  llvm::Value *CreateIntrinsicSubSatU(llvm::Value *LHS, llvm::Value *RHS);
+  llvm::Value *CreateIntrinsicIntMinS(llvm::Value *LHS, llvm::Value *RHS);
+  llvm::Value *CreateIntrinsicIntMinU(llvm::Value *LHS, llvm::Value *RHS);
+  llvm::Value *CreateIntrinsicIntMaxS(llvm::Value *LHS, llvm::Value *RHS);
+  llvm::Value *CreateIntrinsicIntMaxU(llvm::Value *LHS, llvm::Value *RHS);
+
   llvm::Value *CreateIntrinsicFPAbs(llvm::Value *Operand);
   llvm::Value *CreateIntrinsicCeil(llvm::Value *Operand);
   llvm::Value *CreateIntrinsicFloor(llvm::Value *Operand);

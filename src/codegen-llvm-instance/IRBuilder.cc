@@ -168,6 +168,56 @@ llvm::Value *IRBuilder::CreateIntrinsicIntAbs(llvm::Value *Operand)
 
 namespace {
 template <llvm::Intrinsic::ID IntrinsicID>
+llvm::Value *CreateIntBinaryIntrinsic(
+    IRBuilder &Builder, llvm::Value *LHS, llvm::Value *RHS) {
+  assert(LHS->getType()->isIntOrIntVectorTy());
+  assert(RHS->getType()->isIntOrIntVectorTy());
+  assert(LHS->getType() == RHS->getType());
+  auto *Intrinsic = llvm::Intrinsic::getDeclaration(
+      std::addressof(Builder.getModule()), IntrinsicID,
+      {LHS->getType(), RHS->getType()});
+  return Builder.CreateCall(Intrinsic, {LHS, RHS});
+}
+
+constexpr auto add_sat_s = llvm::Intrinsic::sadd_sat;
+constexpr auto add_sat_u = llvm::Intrinsic::uadd_sat;
+constexpr auto sub_sat_s = llvm::Intrinsic::ssub_sat;
+constexpr auto sub_sat_u = llvm::Intrinsic::usub_sat;
+constexpr auto int_min_s = llvm::Intrinsic::smin;
+constexpr auto int_min_u = llvm::Intrinsic::umin;
+constexpr auto int_max_s = llvm::Intrinsic::smax;
+constexpr auto int_max_u = llvm::Intrinsic::umax;
+} // namespace
+
+// clang-format off
+llvm::Value *IRBuilder::CreateIntrinsicAddSatS
+(llvm::Value *LHS, llvm::Value *RHS)
+{ return CreateIntBinaryIntrinsic<add_sat_s>(*this, LHS, RHS); }
+llvm::Value *IRBuilder::CreateIntrinsicAddSatU
+(llvm::Value *LHS, llvm::Value *RHS)
+{ return CreateIntBinaryIntrinsic<add_sat_u>(*this, LHS, RHS); }
+llvm::Value *IRBuilder::CreateIntrinsicSubSatS
+(llvm::Value *LHS, llvm::Value *RHS)
+{ return CreateIntBinaryIntrinsic<sub_sat_s>(*this, LHS, RHS); }
+llvm::Value *IRBuilder::CreateIntrinsicSubSatU
+(llvm::Value *LHS, llvm::Value *RHS)
+{ return CreateIntBinaryIntrinsic<sub_sat_u>(*this, LHS, RHS); }
+llvm::Value *IRBuilder::CreateIntrinsicIntMinS
+(llvm::Value *LHS, llvm::Value *RHS)
+{ return CreateIntBinaryIntrinsic<int_min_s>(*this, LHS, RHS); }
+llvm::Value *IRBuilder::CreateIntrinsicIntMinU
+(llvm::Value *LHS, llvm::Value *RHS)
+{ return CreateIntBinaryIntrinsic<int_min_u>(*this, LHS, RHS); }
+llvm::Value *IRBuilder::CreateIntrinsicIntMaxS
+(llvm::Value *LHS, llvm::Value *RHS)
+{ return CreateIntBinaryIntrinsic<int_max_s>(*this, LHS, RHS); }
+llvm::Value *IRBuilder::CreateIntrinsicIntMaxU
+(llvm::Value *LHS, llvm::Value *RHS)
+{ return CreateIntBinaryIntrinsic<int_max_u>(*this, LHS, RHS); }
+// clang-format on
+
+namespace {
+template <llvm::Intrinsic::ID IntrinsicID>
 llvm::Value *CreateFPUnaryIntrinsic(IRBuilder &Builder, llvm::Value *Operand) {
   assert(Operand->getType()->isFPOrFPVectorTy());
   auto *Intrinsic = llvm::Intrinsic::getDeclaration(

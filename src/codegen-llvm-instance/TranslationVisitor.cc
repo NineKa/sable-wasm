@@ -211,12 +211,12 @@ TranslationVisitor::operator()(minsts::compare::FPCompare const *Inst) {
   auto *RHS = Context[*Inst->getRHS()];
   using CompareOp = minsts::compare::FPCompareOperator;
   switch (Inst->getOperator()) {
-  case CompareOp::Eq: return Builder.CreateFCmpUEQ(LHS, RHS);
-  case CompareOp::Ne: return Builder.CreateFCmpUNE(LHS, RHS);
-  case CompareOp::Lt: return Builder.CreateFCmpULT(LHS, RHS);
-  case CompareOp::Gt: return Builder.CreateFCmpUGT(LHS, RHS);
-  case CompareOp::Le: return Builder.CreateFCmpULE(LHS, RHS);
-  case CompareOp::Ge: return Builder.CreateFCmpUGE(LHS, RHS);
+  case CompareOp::Eq: return Builder.CreateFCmpOEQ(LHS, RHS);
+  case CompareOp::Ne: return Builder.CreateFCmpONE(LHS, RHS);
+  case CompareOp::Lt: return Builder.CreateFCmpOLT(LHS, RHS);
+  case CompareOp::Gt: return Builder.CreateFCmpOGT(LHS, RHS);
+  case CompareOp::Le: return Builder.CreateFCmpOLE(LHS, RHS);
+  case CompareOp::Ge: return Builder.CreateFCmpOGE(LHS, RHS);
   default: utility::unreachable();
   }
 }
@@ -263,12 +263,12 @@ TranslationVisitor::operator()(minsts::compare::SIMD128FPCompare const *Inst) {
   llvm::Value *Result = nullptr;
   using Operator = mir::instructions::compare::SIMD128FPCompareOperator;
   switch (Inst->getOperator()) {
-  case Operator::Eq: Result = Builder.CreateFCmpUEQ(LHS, RHS); break;
-  case Operator::Ne: Result = Builder.CreateFCmpUNE(LHS, RHS); break;
-  case Operator::Lt: Result = Builder.CreateFCmpULT(LHS, RHS); break;
-  case Operator::Gt: Result = Builder.CreateFCmpUGT(LHS, RHS); break;
-  case Operator::Le: Result = Builder.CreateFCmpULE(LHS, RHS); break;
-  case Operator::Ge: Result = Builder.CreateFCmpUGE(LHS, RHS); break;
+  case Operator::Eq: Result = Builder.CreateFCmpOEQ(LHS, RHS); break;
+  case Operator::Ne: Result = Builder.CreateFCmpONE(LHS, RHS); break;
+  case Operator::Lt: Result = Builder.CreateFCmpOLT(LHS, RHS); break;
+  case Operator::Gt: Result = Builder.CreateFCmpOGT(LHS, RHS); break;
+  case Operator::Le: Result = Builder.CreateFCmpOLE(LHS, RHS); break;
+  case Operator::Ge: Result = Builder.CreateFCmpOGE(LHS, RHS); break;
   default: utility::unreachable();
   }
   auto ResultLaneInfo = Inst->getLaneInfo().getCmpResultLaneInfo();
@@ -467,14 +467,40 @@ TranslationVisitor::operator()(minsts::binary::SIMD128Binary const *Inst) {
   }
 }
 
+namespace {
+enum class SliceMode { Low, High, Even, Odd };
+
+template <SliceMode SliceMode_, bool Signed_>
+llvm::Value *sliceThenExtend(
+    IRBuilder &Builder, llvm::Value *Vector,
+    mir::SIMD128IntLaneInfo const &LaneInfo) {
+  auto *WidenTy = Builder.getV128Ty(LaneInfo.widen());
+  switch (SliceMode_) {
+  case SliceMode::Low: Vector = Builder.CreateVectorSliceLow(Vector); break;
+  case SliceMode::High: Vector = Builder.CreateVectorSliceHigh(Vector); break;
+  case SliceMode::Odd: Vector = Builder.CreateVectorSliceOdd(Vector); break;
+  case SliceMode::Even: Vector = Builder.CreateVectorSliceEven(Vector); break;
+  default: utility::unreachable();
+  }
+  if constexpr (Signed_) {
+    Vector = Builder.CreateSExt(Vector, WidenTy);
+  } else {
+    Vector = Builder.CreateZExt(Vector, WidenTy);
+  }
+  return Vector;
+}
+} // namespace
+
 llvm::Value *
 TranslationVisitor::operator()(minsts::binary::SIMD128IntBinary const *Inst) {
   auto *LHS = Context[*Inst->getLHS()];
   auto *RHS = Context[*Inst->getRHS()];
-  auto *ExpectOperandTy = Builder.getV128Ty(Inst->getLaneInfo());
+  auto LaneInfo = Inst->getLaneInfo();
+  auto *ExpectOperandTy = Builder.getV128Ty(LaneInfo);
   if (LHS->getType() != ExpectOperandTy)
     LHS = Builder.CreateBitCast(LHS, ExpectOperandTy);
-  if (RHS->getType() != ExpectOperandTy)
+  if (RHS->getType() != ExpectOperandTy &&
+      Context.getInferredType()[*Inst->getRHS()].isPrimitiveV128())
     RHS = Builder.CreateBitCast(RHS, ExpectOperandTy);
   using BinaryOperator = mir::instructions::binary::SIMD128IntBinaryOperator;
   switch (Inst->getOperator()) {
@@ -482,50 +508,101 @@ TranslationVisitor::operator()(minsts::binary::SIMD128IntBinary const *Inst) {
   case BinaryOperator::Sub: return Builder.CreateSub(LHS, RHS);
   case BinaryOperator::Mul: return Builder.CreateMul(LHS, RHS);
   case BinaryOperator::ExtMulLowS: {
-    auto *WidenTy = Builder.getV128Ty(Inst->getLaneInfo().widen());
-    LHS = Builder.CreateVectorSliceLow(LHS);
-    LHS = Builder.CreateSExt(LHS, WidenTy);
-    RHS = Builder.CreateVectorSliceLow(RHS);
-    RHS = Builder.CreateSExt(LHS, WidenTy);
+    LHS = sliceThenExtend<SliceMode::Low, true>(Builder, LHS, LaneInfo);
+    RHS = sliceThenExtend<SliceMode::Low, true>(Builder, RHS, LaneInfo);
     return Builder.CreateMul(LHS, RHS);
   }
   case BinaryOperator::ExtMulLowU: {
-    auto *WidenTy = Builder.getV128Ty(Inst->getLaneInfo().widen());
-    LHS = Builder.CreateVectorSliceLow(LHS);
-    LHS = Builder.CreateZExt(LHS, WidenTy);
-    RHS = Builder.CreateVectorSliceLow(RHS);
-    RHS = Builder.CreateZExt(RHS, WidenTy);
+    LHS = sliceThenExtend<SliceMode::Low, false>(Builder, LHS, LaneInfo);
+    RHS = sliceThenExtend<SliceMode::Low, false>(Builder, RHS, LaneInfo);
     return Builder.CreateMul(LHS, RHS);
   }
   case BinaryOperator::ExtMulHighS: {
-    auto *WidenTy = Builder.getV128Ty(Inst->getLaneInfo().widen());
-    LHS = Builder.CreateVectorSliceHigh(LHS);
-    LHS = Builder.CreateSExt(LHS, WidenTy);
-    RHS = Builder.CreateVectorSliceHigh(RHS);
-    RHS = Builder.CreateSExt(RHS, WidenTy);
+    LHS = sliceThenExtend<SliceMode::High, true>(Builder, LHS, LaneInfo);
+    RHS = sliceThenExtend<SliceMode::High, true>(Builder, RHS, LaneInfo);
     return Builder.CreateMul(LHS, RHS);
   }
   case BinaryOperator::ExtMulHighU: {
-    auto *WidenTy = Builder.getV128Ty(Inst->getLaneInfo().widen());
-    LHS = Builder.CreateVectorSliceHigh(LHS);
-    LHS = Builder.CreateZExt(LHS, WidenTy);
-    RHS = Builder.CreateVectorSliceHigh(RHS);
-    RHS = Builder.CreateZExt(RHS, WidenTy);
+    LHS = sliceThenExtend<SliceMode::High, false>(Builder, LHS, LaneInfo);
+    RHS = sliceThenExtend<SliceMode::High, false>(Builder, RHS, LaneInfo);
     return Builder.CreateMul(LHS, RHS);
   }
-  case BinaryOperator::ExtAddPairwise:
-  case BinaryOperator::AddSat:
-  case BinaryOperator::SubSat:
-  case BinaryOperator::Min:
-  case BinaryOperator::Max:
-  case BinaryOperator::AvgrU:
+  case BinaryOperator::ExtAddPairwiseS: {
+    LHS = sliceThenExtend<SliceMode::Odd, true>(Builder, LHS, LaneInfo);
+    RHS = sliceThenExtend<SliceMode::Even, true>(Builder, RHS, LaneInfo);
+    return Builder.CreateAdd(LHS, RHS);
+  }
+  case BinaryOperator::ExtAddPairwiseU: {
+    LHS = sliceThenExtend<SliceMode::Odd, false>(Builder, LHS, LaneInfo);
+    RHS = sliceThenExtend<SliceMode::Even, false>(Builder, RHS, LaneInfo);
+    return Builder.CreateAdd(LHS, RHS);
+  }
+  case BinaryOperator::AddSatS: return Builder.CreateIntrinsicAddSatS(LHS, RHS);
+  case BinaryOperator::AddSatU: return Builder.CreateIntrinsicAddSatU(LHS, RHS);
+  case BinaryOperator::SubSatS: return Builder.CreateIntrinsicSubSatS(LHS, RHS);
+  case BinaryOperator::SubSatU: return Builder.CreateIntrinsicSubSatU(LHS, RHS);
+  case BinaryOperator::Shl: {
+    assert(RHS->getType()->isIntegerTy());
+    RHS = Builder.CreateVectorSplat(ExpectOperandTy->getElementCount(), RHS);
+    return Builder.CreateShl(LHS, RHS);
+  }
+  case BinaryOperator::ShrS: {
+    assert(RHS->getType()->isIntegerTy());
+    RHS = Builder.CreateVectorSplat(ExpectOperandTy->getElementCount(), RHS);
+    return Builder.CreateAShr(LHS, RHS);
+  }
+  case BinaryOperator::ShrU: {
+    assert(RHS->getType()->isIntegerTy());
+    RHS = Builder.CreateVectorSplat(ExpectOperandTy->getElementCount(), RHS);
+    return Builder.CreateLShr(LHS, RHS);
+  }
+  case BinaryOperator::MinS: return Builder.CreateIntrinsicIntMinS(LHS, RHS);
+  case BinaryOperator::MinU: return Builder.CreateIntrinsicIntMinU(LHS, RHS);
+  case BinaryOperator::MaxS: return Builder.CreateIntrinsicIntMaxS(LHS, RHS);
+  case BinaryOperator::MaxU: return Builder.CreateIntrinsicIntMaxU(LHS, RHS);
+  case BinaryOperator::AvgrU: {
+    // TODO: Better Strategy? Currently implement as (LHS + RHS + 1) >> 1;
+    auto *ElementTy =
+        llvm::dyn_cast<llvm::IntegerType>(ExpectOperandTy->getElementType());
+    auto NumLane = ExpectOperandTy->getElementCount();
+    auto *One = Builder.getIntN(ElementTy->getBitWidth(), 1);
+    auto *Ones = llvm::ConstantVector::getSplat(NumLane, One);
+    auto *Result = Builder.CreateAdd(LHS, RHS);
+    Result = Builder.CreateAdd(Result, Ones);
+    Result = Builder.CreateLShr(Result, Ones);
+    return Result;
+  }
   default: utility::unreachable();
   }
 }
 
 llvm::Value *
-TranslationVisitor::operator()(minsts::binary::SIMD128FPBinary const *) {
-  utility::unreachable();
+TranslationVisitor::operator()(minsts::binary::SIMD128FPBinary const *Inst) {
+  auto *LHS = Context[*Inst->getLHS()];
+  auto *RHS = Context[*Inst->getRHS()];
+  auto *ExpectOperandTy = Builder.getV128Ty(Inst->getLaneInfo());
+  if (LHS->getType() != ExpectOperandTy)
+    LHS = Builder.CreateBitCast(LHS, ExpectOperandTy);
+  if (RHS->getType() != ExpectOperandTy)
+    RHS = Builder.CreateBitCast(RHS, ExpectOperandTy);
+  using BinaryOperator = mir::instructions::binary::SIMD128FPBinaryOperator;
+  switch (Inst->getOperator()) {
+  case BinaryOperator::Add: return Builder.CreateFAdd(LHS, RHS);
+  case BinaryOperator::Sub: return Builder.CreateFSub(LHS, RHS);
+  case BinaryOperator::Mul: return Builder.CreateFMul(LHS, RHS);
+  case BinaryOperator::Div: return Builder.CreateFDiv(LHS, RHS);
+  case BinaryOperator::Min: return Builder.CreateMinimum(LHS, RHS);
+  case BinaryOperator::Max: return Builder.CreateMaximum(LHS, RHS);
+  case BinaryOperator::PMin: {
+    auto *CmpVector = Builder.CreateFCmpOLT(RHS, LHS);
+    return Builder.CreateSelect(CmpVector, RHS, LHS);
+  }
+  case BinaryOperator::PMax: {
+    auto *CmpVector = Builder.CreateFCmpOLT(LHS, RHS);
+    return Builder.CreateSelect(CmpVector, RHS, LHS);
+  }
+  default: utility::unreachable();
+  }
 }
 
 llvm::Value *TranslationVisitor::operator()(minsts::Binary const *Inst) {

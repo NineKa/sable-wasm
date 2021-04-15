@@ -239,8 +239,10 @@ formatter<mir::instructions::binary::SIMD128IntBinaryOperator>::toString(
   case BinaryOperator::Add           : return "v128.int.add";
   case BinaryOperator::Sub           : return "v128.int.sub";
   case BinaryOperator::Mul           : return "v128.int.mul";
-  case BinaryOperator::ExtMulLow     : return "v128.int.ext.mul.low";
-  case BinaryOperator::ExtMulHigh    : return "v128.int.ext.mul.high";
+  case BinaryOperator::ExtMulLowS    : return "v128.int.ext.mul.low.s";
+  case BinaryOperator::ExtMulLowU    : return "v128.int.ext.mul.low.u";
+  case BinaryOperator::ExtMulHighS   : return "v128.int.ext.mul.high.s";
+  case BinaryOperator::ExtMulHighU   : return "v128.int.ext.mul.high.u";
   case BinaryOperator::ExtAddPairwise: return "v128.int.ext.add.pairwise";
   case BinaryOperator::AddSat        : return "v128.int.add.sat";
   case BinaryOperator::SubSat        : return "v128.int.sub.sat";

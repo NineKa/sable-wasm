@@ -184,50 +184,6 @@ LocalNameWriter::write(Iterator Out, Instruction const *InstructionPtr) const {
 }
 
 template <std::output_iterator<char> Iterator>
-char const *MIRIteratorWriter<Iterator>::toString(
-    instructions::binary::IntBinaryOperator Op) {
-  using BinaryOp = instructions::binary::IntBinaryOperator;
-  // clang-format off
-  switch (Op) {
-  case BinaryOp::Add     : return "int.add";
-  case BinaryOp::Sub     : return "int.sub";
-  case BinaryOp::Mul     : return "int.mul";
-  case BinaryOp::DivS    : return "int.div.s";
-  case BinaryOp::DivU    : return "int.div.u";
-  case BinaryOp::RemS    : return "int.rem.s";
-  case BinaryOp::RemU    : return "int.rem.u";
-  case BinaryOp::And     : return "int.and";
-  case BinaryOp::Or      : return "int.or";
-  case BinaryOp::Xor     : return "int.xor";
-  case BinaryOp::Shl     : return "int.shl";
-  case BinaryOp::ShrS    : return "int.shr.s";
-  case BinaryOp::ShrU    : return "int.shr.u";
-  case BinaryOp::Rotl    : return "int.rotl";
-  case BinaryOp::Rotr    : return "int.rotr";
-  default: utility::unreachable();
-  }
-  // clang-format on
-}
-
-template <std::output_iterator<char> Iterator>
-char const *MIRIteratorWriter<Iterator>::toString(
-    instructions::binary::FPBinaryOperator Op) {
-  using BinaryOp = instructions::binary::FPBinaryOperator;
-  // clang-format off
-  switch (Op) {
-  case BinaryOp::Add     : return "fp.add";
-  case BinaryOp::Sub     : return "fp.sub";
-  case BinaryOp::Mul     : return "fp.mul";
-  case BinaryOp::Div     : return "fp.div";
-  case BinaryOp::Min     : return "fp.min";
-  case BinaryOp::Max     : return "fp.max";
-  case BinaryOp::CopySign: return "fp.copysign";
-  default: utility::unreachable();
-  }
-  // clang-format on
-}
-
-template <std::output_iterator<char> Iterator>
 char const *MIRIteratorWriter<Iterator>::toString(instructions::CastMode Mode) {
   using MKind = instructions::CastMode;
   // clang-format off
@@ -588,6 +544,34 @@ public:
     auto const *LHS = Inst->getLHS();
     auto const *RHS = Inst->getRHS();
     Writer << Inst << " = " << Operator << ' ' << LHS << ' ' << RHS;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::binary::SIMD128Binary const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto const *LHS = Inst->getLHS();
+    auto const *RHS = Inst->getRHS();
+    Writer << Inst << " = " << Operator << ' ' << LHS << ' ' << RHS;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::binary::SIMD128IntBinary const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto LaneInfo = Inst->getLaneInfo();
+    auto const *LHS = Inst->getLHS();
+    auto const *RHS = Inst->getRHS();
+    Writer << Inst << " = " << Operator << ' ' << LaneInfo << ' ' << LHS << ' '
+           << RHS;
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::binary::SIMD128FPBinary const *Inst) {
+    auto Operator = Inst->getOperator();
+    auto LaneInfo = Inst->getLaneInfo();
+    auto const *LHS = Inst->getLHS();
+    auto const *RHS = Inst->getRHS();
+    Writer << Inst << " = " << Operator << ' ' << LaneInfo << ' ' << LHS << ' '
+           << RHS;
     return Writer.iterator();
   }
 

@@ -79,8 +79,6 @@ template <std::output_iterator<char> Iterator> class MIRIteratorWriter {
   EntityNameWriter const *ENameWriter = nullptr;
   LocalNameWriter const *LNameWriter = nullptr;
 
-  char const *toString(instructions::binary::IntBinaryOperator Operator);
-  char const *toString(instructions::binary::FPBinaryOperator Operator);
   char const *toString(instructions::CastMode Mode);
 
   static const char *const LINEBREAK_STR;
@@ -140,9 +138,18 @@ public:
   { Out = fmt::format_to(Out, "{}", Op); return *this; }
 
   MIRIteratorWriter &operator<<(instructions::binary::IntBinaryOperator Op)
-  { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
   MIRIteratorWriter &operator<<(instructions::binary::FPBinaryOperator Op)
-  { Out = fmt::format_to(Out, "{}", toString(Op)); return *this; }
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<(instructions::binary::SIMD128BinaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<
+  (instructions::binary::SIMD128IntBinaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+  MIRIteratorWriter &operator<<
+  (instructions::binary::SIMD128FPBinaryOperator Op)
+  { Out = fmt::format_to(Out, "{}", Op); return *this; }
+
   MIRIteratorWriter &operator<<(instructions::CastMode Mode)
   { Out = fmt::format_to(Out, "{}", toString(Mode)); return *this; }
   // clang-format on

@@ -43,8 +43,8 @@ llvm::StructType *EntityLayout::getNamedStructTy(std::string_view Name) const {
 }
 
 llvm::StructType *EntityLayout::getOpaqueTy(std::string_view Name) const {
-  auto SearchIter = NamedStructTys.find(Name);
-  assert(SearchIter != NamedStructTys.end());
+  auto SearchIter = NamedOpaqueTys.find(Name);
+  assert(SearchIter != NamedOpaqueTys.end());
   auto *Type = SearchIter->second;
   assert((Type != nullptr) && (llvm::isa<llvm::StructType>(Type)));
   return llvm::dyn_cast<llvm::StructType>(Type);

@@ -48,7 +48,9 @@ add_library(sablewasm
         src/parser/customsections/Name.cc
         src/codegen-llvm-instance/IRBuilder.cc
         src/codegen-llvm-instance/LLVMCodegen.cc
-        src/codegen-llvm-instance/EntityLayout.cc)
+        src/codegen-llvm-instance/EntityLayout.cc
+        src/codegen-llvm-instance/TranslationContext.cc
+        src/codegen-llvm-instance/TranslationVisitor.cc)
 target_link_libraries(sablewasm
         fmt::fmt
         mio::mio

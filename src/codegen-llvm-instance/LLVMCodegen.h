@@ -3,6 +3,7 @@
 
 #include "../bytecode/Module.h"
 #include "../mir/Module.h"
+#include "TranslationContext.h"
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/StringMap.h>
@@ -57,8 +58,7 @@ public:
   llvm::Value *CreateIntrinsicClz(llvm::Value *Operand);
   llvm::Value *CreateIntrinsicCtz(llvm::Value *Operand);
   llvm::Value *CreateIntrinsicPopcnt(llvm::Value *Operand);
-
-  llvm::Value *CreateIntrinsicReduceAnd(llvm::Value *Operand);
+  llvm::Value *CreateIntrinsicIntAbs(llvm::Value *Operand);
 
   llvm::Value *CreateIntrinsicFPAbs(llvm::Value *Operand);
   llvm::Value *CreateIntrinsicCeil(llvm::Value *Operand);
@@ -66,6 +66,20 @@ public:
   llvm::Value *CreateIntrinsicTrunc(llvm::Value *Operand);
   llvm::Value *CreateIntrinsicNearest(llvm::Value *Operand);
   llvm::Value *CreateIntrinsicSqrt(llvm::Value *Operand);
+
+  llvm::Value *CreateIntrinsicCopysign(llvm::Value *LHS, llvm::Value *RHS);
+
+  // clang-format off
+  llvm::Value *CreateIntrinsicFShl
+  (llvm::Value *LHS, llvm::Value *RHS, llvm::Value *ShiftAmount);
+  llvm::Value *CreateIntrinsicFShr
+  (llvm::Value *LHS, llvm::Value *RHS, llvm::Value *ShiftAmount);
+  // clang-format on
+
+  llvm::Value *CreateVectorSliceLow(llvm::Value *Value);
+  llvm::Value *CreateVectorSliceHigh(llvm::Value *Value);
+  llvm::Value *CreateVectorSliceOdd(llvm::Value *Value);
+  llvm::Value *CreateVectorSliceEven(llvm::Value *Value);
 };
 
 class EntityLayout {
@@ -204,8 +218,6 @@ public:
 };
 
 class FunctionTranslationTask {
-  class TranslationContext;
-  class TranslationVisitor;
   std::unique_ptr<TranslationContext> Context;
 
 public:

@@ -132,17 +132,17 @@ llvm::Constant *IRBuilder::getV128(
 
 llvm::Value *IRBuilder::CreateIntrinsicClz(llvm::Value *Operand) {
   assert(Operand->getType()->isIntOrIntVectorTy());
-  std::array<llvm::Type *, 2> IntrinsicArgTys{Operand->getType(), getInt1Ty()};
   auto *Intrinsic = llvm::Intrinsic::getDeclaration(
-      EnclosingModule, llvm::Intrinsic::ctlz, IntrinsicArgTys);
+      EnclosingModule, llvm::Intrinsic::ctlz,
+      {Operand->getType(), getInt1Ty()});
   return CreateCall(Intrinsic, {Operand, getFalse()});
 }
 
 llvm::Value *IRBuilder::CreateIntrinsicCtz(llvm::Value *Operand) {
   assert(Operand->getType()->isIntOrIntVectorTy());
-  std::array<llvm::Type *, 2> IntrinsicArgTys{Operand->getType(), getInt1Ty()};
   auto *Intrinsic = llvm::Intrinsic::getDeclaration(
-      EnclosingModule, llvm::Intrinsic::cttz, IntrinsicArgTys);
+      EnclosingModule, llvm::Intrinsic::cttz,
+      {Operand->getType(), getInt1Ty()});
   return CreateCall(Intrinsic, {Operand, getFalse()});
 }
 
@@ -150,46 +150,148 @@ namespace {
 template <llvm::Intrinsic::ID IntrinsicID>
 llvm::Value *CreateIntUnaryIntrinsic(IRBuilder &Builder, llvm::Value *Operand) {
   assert(Operand->getType()->isIntOrIntVectorTy());
-  std::array<llvm::Type *, 1> IntrinsicArgTys{Operand->getType()};
   auto *Intrinsic = llvm::Intrinsic::getDeclaration(
-      std::addressof(Builder.getModule()), IntrinsicID, IntrinsicArgTys);
+      std::addressof(Builder.getModule()), IntrinsicID, {Operand->getType()});
   return Builder.CreateCall(Intrinsic, {Operand});
 }
 
 constexpr auto popcnt = llvm::Intrinsic::ctpop;
-constexpr auto vector_reduce_add = llvm::Intrinsic::vector_reduce_add;
+constexpr auto int_abs = llvm::Intrinsic::abs;
 } // namespace
 
 // clang-format off
 llvm::Value *IRBuilder::CreateIntrinsicPopcnt(llvm::Value *Operand) 
 { return CreateIntUnaryIntrinsic<popcnt>(*this, Operand); }
-llvm::Value *IRBuilder::CreateIntrinsicReduceAnd(llvm::Value *Operand) 
-{ return CreateIntUnaryIntrinsic<vector_reduce_add>(*this, Operand); }
+llvm::Value *IRBuilder::CreateIntrinsicIntAbs(llvm::Value *Operand)
+{ return CreateIntUnaryIntrinsic<int_abs>(*this, Operand); }
 // clang-format on
 
 namespace {
 template <llvm::Intrinsic::ID IntrinsicID>
 llvm::Value *CreateFPUnaryIntrinsic(IRBuilder &Builder, llvm::Value *Operand) {
   assert(Operand->getType()->isFPOrFPVectorTy());
-  std::array<llvm::Type *, 1> IntrinsicArgTys{Operand->getType()};
   auto *Intrinsic = llvm::Intrinsic::getDeclaration(
-      std::addressof(Builder.getModule()), IntrinsicID, IntrinsicArgTys);
+      std::addressof(Builder.getModule()), IntrinsicID, {Operand->getType()});
   return Builder.CreateCall(Intrinsic, {Operand});
 }
+
+constexpr auto fp_abs = llvm::Intrinsic::fabs;
+constexpr auto ceil = llvm::Intrinsic::ceil;
+constexpr auto floor = llvm::Intrinsic::floor;
+constexpr auto trunc = llvm::Intrinsic::trunc;
+constexpr auto nearest = llvm::Intrinsic::nearbyint;
+constexpr auto sqrt = llvm::Intrinsic::sqrt;
 } // namespace
 
 // clang-format off
 llvm::Value *IRBuilder::CreateIntrinsicFPAbs(llvm::Value *Operand)
-{ return CreateFPUnaryIntrinsic<llvm::Intrinsic::fabs>(*this, Operand); }
+{ return CreateFPUnaryIntrinsic<fp_abs>(*this, Operand); }
 llvm::Value *IRBuilder::CreateIntrinsicCeil(llvm::Value *Operand)
-{ return CreateFPUnaryIntrinsic<llvm::Intrinsic::ceil>(*this, Operand); }
+{ return CreateFPUnaryIntrinsic<ceil>(*this, Operand); }
 llvm::Value *IRBuilder::CreateIntrinsicFloor(llvm::Value *Operand)
-{ return CreateFPUnaryIntrinsic<llvm::Intrinsic::floor>(*this, Operand); }
+{ return CreateFPUnaryIntrinsic<floor>(*this, Operand); }
 llvm::Value * IRBuilder::CreateIntrinsicTrunc(llvm::Value *Operand)
-{ return CreateFPUnaryIntrinsic<llvm::Intrinsic::trunc>(*this, Operand); }
+{ return CreateFPUnaryIntrinsic<trunc>(*this, Operand); }
 llvm::Value * IRBuilder::CreateIntrinsicNearest(llvm::Value *Operand)
-{ return CreateFPUnaryIntrinsic<llvm::Intrinsic::nearbyint>(*this, Operand); }
+{ return CreateFPUnaryIntrinsic<nearest>(*this, Operand); }
 llvm::Value * IRBuilder::CreateIntrinsicSqrt(llvm::Value *Operand)
-{ return CreateFPUnaryIntrinsic<llvm::Intrinsic::sqrt>(*this, Operand); }
+{ return CreateFPUnaryIntrinsic<sqrt>(*this, Operand); }
 // clang-format on
+
+namespace {
+template <llvm::Intrinsic::ID IntrinsicID>
+llvm::Value *CreateFPBinaryIntrinsic(
+    IRBuilder &Builder, llvm::Value *LHS, llvm::Value *RHS) {
+  assert(LHS->getType()->isFPOrFPVectorTy());
+  assert(RHS->getType()->isFPOrFPVectorTy());
+  assert(LHS->getType() == RHS->getType());
+  auto *Intrinsic = llvm::Intrinsic::getDeclaration(
+      std::addressof(Builder.getModule()), IntrinsicID,
+      {LHS->getType(), RHS->getType()});
+  return Builder.CreateCall(Intrinsic, {LHS, RHS});
+}
+
+constexpr auto copysign = llvm::Intrinsic::copysign;
+} // namespace
+
+// clang-format off
+llvm::Value *
+IRBuilder::CreateIntrinsicCopysign(llvm::Value *LHS, llvm::Value *RHS)
+{ return CreateFPBinaryIntrinsic<copysign>(*this, LHS, RHS); }
+// clang-format on
+
+llvm::Value *IRBuilder::CreateIntrinsicFShl(
+    llvm::Value *LHS, llvm::Value *RHS, llvm::Value *ShiftAmount) {
+  assert(LHS->getType()->isIntOrIntVectorTy());
+  assert(RHS->getType()->isIntOrIntVectorTy());
+  assert(ShiftAmount->getType()->isIntOrIntVectorTy());
+  auto *Intrinsic = llvm::Intrinsic::getDeclaration(
+      EnclosingModule, llvm::Intrinsic::fshl,
+      {LHS->getType(), RHS->getType(), ShiftAmount->getType()});
+  return CreateCall(Intrinsic, {LHS, RHS, ShiftAmount});
+}
+
+llvm::Value *IRBuilder::CreateIntrinsicFShr(
+    llvm::Value *LHS, llvm::Value *RHS, llvm::Value *ShiftAmount) {
+  assert(LHS->getType()->isIntOrIntVectorTy());
+  assert(RHS->getType()->isIntOrIntVectorTy());
+  assert(ShiftAmount->getType()->isIntOrIntVectorTy());
+  auto *Intrinsic = llvm::Intrinsic::getDeclaration(
+      EnclosingModule, llvm::Intrinsic::fshr,
+      {LHS->getType(), RHS->getType(), ShiftAmount->getType()});
+  return CreateCall(Intrinsic, {LHS, RHS, ShiftAmount});
+}
+
+llvm::Value *IRBuilder::CreateVectorSliceLow(llvm::Value *Value) {
+  assert(Value->getType()->isVectorTy());
+  auto *CastedTy = llvm::dyn_cast<llvm::VectorType>(Value->getType());
+  unsigned MidPointIndex = CastedTy->getElementCount().getValue() / 2;
+  std::vector<llvm::Constant *> ShuffleIndices;
+  ShuffleIndices.reserve(MidPointIndex);
+  for (unsigned I = 0; I < MidPointIndex; ++I)
+    ShuffleIndices.push_back(getInt32(I));
+  auto *Undef = llvm::UndefValue::get(Value->getType());
+  auto *ShuffleVector = llvm::ConstantVector::get(ShuffleIndices);
+  return CreateShuffleVector(Value, Undef, ShuffleVector);
+}
+
+llvm::Value *IRBuilder::CreateVectorSliceHigh(llvm::Value *Value) {
+  assert(Value->getType()->isVectorTy());
+  auto *CastedTy = llvm::dyn_cast<llvm::VectorType>(Value->getType());
+  unsigned MidPointIndex = CastedTy->getElementCount().getValue() / 2;
+  unsigned VectorLength = CastedTy->getElementCount().getValue();
+  std::vector<llvm::Constant *> ShuffleIndices;
+  ShuffleIndices.reserve(VectorLength - MidPointIndex);
+  for (unsigned I = MidPointIndex; I < VectorLength; ++I)
+    ShuffleIndices.push_back(getInt32(I));
+  auto *Undef = llvm::UndefValue::get(Value->getType());
+  auto *ShuffleVector = llvm::ConstantVector::get(ShuffleIndices);
+  return CreateShuffleVector(Value, Undef, ShuffleVector);
+}
+
+llvm::Value *IRBuilder::CreateVectorSliceOdd(llvm::Value *Value) {
+  assert(Value->getType()->isVectorTy());
+  auto *CastedTy = llvm::dyn_cast<llvm::VectorType>(Value->getType());
+  unsigned VectorLength = CastedTy->getElementCount().getValue();
+  std::vector<llvm::Constant *> ShuffleIndices;
+  ShuffleIndices.reserve(VectorLength / 2);
+  for (unsigned I = 1; I < VectorLength; I = I + 2)
+    ShuffleIndices.push_back(getInt32(I));
+  auto *Undef = llvm::UndefValue::get(Value->getType());
+  auto *ShuffleVector = llvm::ConstantVector::get(ShuffleIndices);
+  return CreateShuffleVector(Value, Undef, ShuffleVector);
+}
+
+llvm::Value *IRBuilder::CreateVectorSliceEven(llvm::Value *Value) {
+  assert(Value->getType()->isVectorTy());
+  auto *CastedTy = llvm::dyn_cast<llvm::VectorType>(Value->getType());
+  unsigned VectorLength = CastedTy->getElementCount().getValue();
+  std::vector<llvm::Constant *> ShuffleIndices;
+  ShuffleIndices.reserve(VectorLength / 2);
+  for (unsigned I = 0; I < VectorLength; I = I + 2)
+    ShuffleIndices.push_back(getInt32(I));
+  auto *Undef = llvm::UndefValue::get(Value->getType());
+  auto *ShuffleVector = llvm::ConstantVector::get(ShuffleIndices);
+  return CreateShuffleVector(Value, Undef, ShuffleVector);
+}
 } // namespace codegen::llvm_instance

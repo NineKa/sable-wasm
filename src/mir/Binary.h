@@ -121,7 +121,9 @@ public:
 
 // clang-format off
 enum class SIMD128IntBinaryOperator : std::uint8_t 
-{ Add, Sub, Mul, ExtMulLow, ExtMulHigh, ExtAddPairwise,
+{ Add, Sub, Mul, 
+  ExtMulLowS, ExtMulLowU, ExtMulHighS, ExtMulHighU, 
+  ExtAddPairwise,
   AddSat, SubSat, Min, Max, AvgrU };
 // clang-format on
 class SIMD128IntBinary : public Binary {
@@ -206,7 +208,7 @@ public:
 
 namespace fmt {
 template <> struct formatter<mir::instructions::binary::IntBinaryOperator> {
-  template <typename CTX> auto parse(CTX &&C) { return C.out(); }
+  template <typename CTX> auto parse(CTX &&C) { return C.begin(); }
   using BinaryOperator = mir::instructions::binary::IntBinaryOperator;
   char const *toString(BinaryOperator const &Operator);
   template <typename CTX> auto format(BinaryOperator const &Operator, CTX &&C) {
@@ -215,7 +217,7 @@ template <> struct formatter<mir::instructions::binary::IntBinaryOperator> {
 };
 
 template <> struct formatter<mir::instructions::binary::FPBinaryOperator> {
-  template <typename CTX> auto parse(CTX &&C) { return C.out(); }
+  template <typename CTX> auto parse(CTX &&C) { return C.begin(); }
   using BinaryOperator = mir::instructions::binary::FPBinaryOperator;
   char const *toString(BinaryOperator const &Operator);
   template <typename CTX> auto format(BinaryOperator const &Operator, CTX &&C) {
@@ -224,7 +226,7 @@ template <> struct formatter<mir::instructions::binary::FPBinaryOperator> {
 };
 
 template <> struct formatter<mir::instructions::binary::SIMD128BinaryOperator> {
-  template <typename CTX> auto parse(CTX &&C) { return C.out(); }
+  template <typename CTX> auto parse(CTX &&C) { return C.begin(); }
   using BinaryOperator = mir::instructions::binary::SIMD128BinaryOperator;
   char const *toString(BinaryOperator const &Operator);
   template <typename CTX> auto format(BinaryOperator const &Operator, CTX &&C) {
@@ -234,7 +236,7 @@ template <> struct formatter<mir::instructions::binary::SIMD128BinaryOperator> {
 
 template <>
 struct formatter<mir::instructions::binary::SIMD128IntBinaryOperator> {
-  template <typename CTX> auto parse(CTX &&C) { return C.out(); }
+  template <typename CTX> auto parse(CTX &&C) { return C.begin(); }
   using BinaryOperator = mir::instructions::binary::SIMD128IntBinaryOperator;
   char const *toString(BinaryOperator const &Operator);
   template <typename CTX> auto format(BinaryOperator const &Operator, CTX &&C) {
@@ -244,7 +246,7 @@ struct formatter<mir::instructions::binary::SIMD128IntBinaryOperator> {
 
 template <>
 struct formatter<mir::instructions::binary::SIMD128FPBinaryOperator> {
-  template <typename CTX> auto parse(CTX &&C) { return C.out(); }
+  template <typename CTX> auto parse(CTX &&C) { return C.begin(); }
   using BinaryOperator = mir::instructions::binary::SIMD128FPBinaryOperator;
   char const *toString(BinaryOperator const &Operator);
   template <typename CTX> auto format(BinaryOperator const &Operator, CTX &&C) {

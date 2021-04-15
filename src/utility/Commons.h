@@ -34,6 +34,10 @@ namespace utility {
 }
 template <typename... ArgTypes> void ignore(ArgTypes &&.../* IGNORED */) {}
 
+inline void expect(bool Condition) {
+  if (!Condition) unreachable();
+}
+
 template <typename... Ts> struct Overload : Ts... { using Ts::operator()...; };
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 

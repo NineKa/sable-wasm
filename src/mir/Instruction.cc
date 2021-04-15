@@ -135,6 +135,30 @@ unsigned SIMD128IntLaneInfo::getLaneWidth() const {
   }
 }
 
+SIMD128IntLaneInfo SIMD128IntLaneInfo::widen() const {
+  switch (ElementKind) {
+  case SIMD128IntElementKind::I8:
+    return SIMD128IntLaneInfo(SIMD128IntElementKind::I16);
+  case SIMD128IntElementKind::I16:
+    return SIMD128IntLaneInfo(SIMD128IntElementKind::I32);
+  case SIMD128IntElementKind::I32:
+    return SIMD128IntLaneInfo(SIMD128IntElementKind::I64);
+  default: utility::unreachable();
+  }
+}
+
+SIMD128IntLaneInfo SIMD128IntLaneInfo::narrow() const {
+  switch (ElementKind) {
+  case SIMD128IntElementKind::I16:
+    return SIMD128IntLaneInfo(SIMD128IntElementKind::I8);
+  case SIMD128IntElementKind::I32:
+    return SIMD128IntLaneInfo(SIMD128IntElementKind::I16);
+  case SIMD128IntElementKind::I64:
+    return SIMD128IntLaneInfo(SIMD128IntElementKind::I32);
+  default: utility::unreachable();
+  }
+}
+
 SIMD128FPLaneInfo::SIMD128FPLaneInfo(SIMD128FPElementKind ElementKind_)
     : ElementKind(ElementKind_) {}
 

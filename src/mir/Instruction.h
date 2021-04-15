@@ -77,6 +77,8 @@ public:
   SIMD128IntElementKind getElementKind() const;
   unsigned getNumLane() const;
   unsigned getLaneWidth() const;
+  SIMD128IntLaneInfo widen() const;
+  SIMD128IntLaneInfo narrow() const;
 };
 
 enum class SIMD128FPElementKind { F32, F64 };
@@ -128,7 +130,7 @@ class Instruction :
     public ASTNode,
     public llvm::ilist_node_with_parent<Instruction, BasicBlock> {
   friend class BasicBlock;
-  friend class llvm::ilist_callback_traits<mir::Instruction>;
+  friend struct llvm::ilist_callback_traits<mir::Instruction>;
   InstructionKind Kind;
   BasicBlock *Parent = nullptr;
 

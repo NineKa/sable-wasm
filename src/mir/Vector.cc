@@ -134,6 +134,10 @@ void VectorExtract::setLaneIndex(unsigned LaneIndex_) {
   LaneIndex = LaneIndex_;
 }
 
+void VectorExtract::replace(ASTNode const *Old, ASTNode *New) noexcept {
+  if (getOperand() == Old) setOperand(dyn_cast<Instruction>(New));
+}
+
 bool VectorExtract::classof(mir::Instruction const *Inst) {
   return Inst->getInstructionKind() == InstructionKind::VectorExtract;
 }
@@ -206,3 +210,128 @@ bool SIMD128FPExtract::classof(mir::ASTNode const *Node) {
   return false;
 }
 } // namespace mir::instructions::vector_extract
+
+namespace mir::instructions {
+VectorInsert::VectorInsert(
+    VectorInsertKind Kind_, mir::Instruction *TargetVector_,
+    unsigned LaneIndex_, mir::Instruction *CandidateValue_)
+    : Instruction(InstructionKind::VectorInsert), Kind(Kind_), TargetVector(),
+      CandidateValue(), LaneIndex(LaneIndex_) {
+  setTargetVector(TargetVector_);
+  setCandidateValue(CandidateValue_);
+}
+VectorInsert::~VectorInsert() noexcept = default;
+
+VectorInsertKind VectorInsert::getVectorInsertKind() const { return Kind; }
+
+bool VectorInsert::isSIMD128IntInsert() const {
+  return Kind == VectorInsertKind::SIMD128IntInsert;
+}
+
+bool VectorInsert::isSIMD128FPInsert() const {
+  return Kind == VectorInsertKind::SIMD128FPInsert;
+}
+
+mir::Instruction *VectorInsert::getTargetVector() const { return TargetVector; }
+
+void VectorInsert::setTargetVector(mir::Instruction *TargetVector_) {
+  if (TargetVector != nullptr) TargetVector->remove_use(this);
+  if (TargetVector_ != nullptr) TargetVector_->add_use(this);
+  TargetVector = TargetVector_;
+}
+
+mir::Instruction *VectorInsert::getCandidateValue() const {
+  return CandidateValue;
+}
+
+void VectorInsert::setCandidateValue(mir::Instruction *CandidateValue_) {
+  if (CandidateValue != nullptr) CandidateValue->remove_use(this);
+  if (CandidateValue_ != nullptr) CandidateValue_->add_use(this);
+  CandidateValue = CandidateValue_;
+}
+
+void VectorInsert::replace(ASTNode const *Old, ASTNode *New) noexcept {
+  if (getTargetVector() == Old) setTargetVector(dyn_cast<Instruction>(New));
+  if (getCandidateValue() == Old) setCandidateValue(dyn_cast<Instruction>(New));
+}
+
+unsigned VectorInsert::getLaneIndex() const { return LaneIndex; }
+
+void VectorInsert::setLaneIndex(unsigned LaneIndex_) { LaneIndex = LaneIndex_; }
+
+bool VectorInsert::classof(mir::Instruction const *Inst) {
+  return Inst->getInstructionKind() == InstructionKind::VectorInsert;
+}
+
+bool VectorInsert::classof(mir::ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return VectorInsert::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+} // namespace mir::instructions
+
+namespace mir::instructions::vector_insert {
+SIMD128IntInsert::SIMD128IntInsert(
+    SIMD128IntLaneInfo LaneInfo_, mir::Instruction *TargetVector_,
+    unsigned LaneIndex_, mir::Instruction *CandidateValue_)
+    : VectorInsert(
+          VectorInsertKind::SIMD128IntInsert, TargetVector_, LaneIndex_,
+          CandidateValue_),
+      LaneInfo(LaneInfo_) {}
+SIMD128IntInsert::~SIMD128IntInsert() noexcept = default;
+
+SIMD128IntLaneInfo SIMD128IntInsert::getLaneInfo() const { return LaneInfo; }
+
+void SIMD128IntInsert::setLaneInfo(SIMD128IntLaneInfo LaneInfo_) {
+  LaneInfo = LaneInfo_;
+}
+
+bool SIMD128IntInsert::classof(VectorInsert const *Inst) {
+  return Inst->isSIMD128IntInsert();
+}
+
+bool SIMD128IntInsert::classof(mir::Instruction const *Inst) {
+  if (VectorInsert::classof(Inst))
+    return SIMD128IntInsert::classof(dyn_cast<VectorInsert>(Inst));
+  return false;
+}
+
+bool SIMD128IntInsert::classof(mir::ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return SIMD128IntInsert::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+} // namespace mir::instructions::vector_insert
+
+namespace mir::instructions::vector_insert {
+SIMD128FPInsert::SIMD128FPInsert(
+    SIMD128FPLaneInfo LaneInfo_, mir::Instruction *TargetVector_,
+    unsigned LaneIndex_, mir::Instruction *CandidateValue_)
+    : VectorInsert(
+          VectorInsertKind::SIMD128FPInsert, TargetVector_, LaneIndex_,
+          CandidateValue_),
+      LaneInfo(LaneInfo_) {}
+SIMD128FPInsert::~SIMD128FPInsert() noexcept = default;
+
+SIMD128FPLaneInfo SIMD128FPInsert::getLaneInfo() const { return LaneInfo; }
+
+void SIMD128FPInsert::setLaneInfo(SIMD128FPLaneInfo LaneInfo_) {
+  LaneInfo = LaneInfo_;
+}
+
+bool SIMD128FPInsert::classof(VectorInsert const *Inst) {
+  return Inst->isSIMD128FPInsert();
+}
+
+bool SIMD128FPInsert::classof(Instruction const *Inst) {
+  if (VectorInsert::classof(Inst))
+    return SIMD128FPInsert::classof(dyn_cast<VectorInsert>(Inst));
+  return false;
+}
+
+bool SIMD128FPInsert::classof(ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return SIMD128FPInsert::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+} // namespace mir::instructions::vector_insert

@@ -859,6 +859,44 @@ llvm::Value *TranslationVisitor::operator()(minsts::VectorExtract const *Inst) {
   return VectorExtractVisitorBase::visit(Inst);
 }
 
+llvm::Value *TranslationVisitor::operator()(
+    minsts::vector_insert::SIMD128IntInsert const *Inst) {
+  auto *TargetVector = Context[*Inst->getTargetVector()];
+  auto *CandidateValue = Context[*Inst->getCandidateValue()];
+  auto LaneIndex = Inst->getLaneIndex();
+
+  auto *ExpectedOperandTy = Builder.getV128Ty(Inst->getLaneInfo());
+  if (TargetVector->getType() != ExpectedOperandTy)
+    TargetVector = Builder.CreateBitCast(TargetVector, ExpectedOperandTy);
+  using ElementKind = mir::SIMD128IntElementKind;
+  switch (Inst->getLaneInfo().getElementKind()) {
+  case ElementKind::I8:
+    CandidateValue = Builder.CreateTrunc(CandidateValue, Builder.getInt8Ty());
+    break;
+  case ElementKind::I16:
+    CandidateValue = Builder.CreateTrunc(CandidateValue, Builder.getInt16Ty());
+  case ElementKind::I32:
+  case ElementKind::I64: break;
+  default: utility::unreachable();
+  }
+  return Builder.CreateInsertElement(TargetVector, CandidateValue, LaneIndex);
+}
+
+llvm::Value *TranslationVisitor::operator()(
+    minsts::vector_insert::SIMD128FPInsert const *Inst) {
+  auto *TargetVector = Context[*Inst->getTargetVector()];
+  auto *CandidateValue = Context[*Inst->getCandidateValue()];
+  auto LaneIndex = Inst->getLaneIndex();
+  auto *ExpectedOperandTy = Builder.getV128Ty(Inst->getLaneInfo());
+  if (TargetVector->getType() != ExpectedOperandTy)
+    TargetVector = Builder.CreateBitCast(TargetVector, ExpectedOperandTy);
+  return Builder.CreateInsertElement(TargetVector, CandidateValue, LaneIndex);
+}
+
+llvm::Value *TranslationVisitor::operator()(minsts::VectorInsert const *Inst) {
+  return VectorInsertVisitorBase::visit(Inst);
+}
+
 llvm::Value *TranslationVisitor::visit(mir::Instruction const *Inst) {
   auto *Result = InstVisitorBase::visit(Inst);
   if (Context.getInferredType()[*Inst].isPrimitiveI32() &&

@@ -227,6 +227,10 @@ public:
   Type operator()(minsts::VectorExtract const *Inst) {
     return VectorExtractVisitorBase::visit(Inst);
   }
+
+  Type operator()(minsts::VectorInsert const *) {
+    return Type::BuildPrimitive(bytecode::valuetypes::V128);
+  }
 };
 } // namespace
 

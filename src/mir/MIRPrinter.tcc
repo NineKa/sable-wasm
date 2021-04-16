@@ -310,7 +310,8 @@ class WriterInstructionVisitor :
     public mir::instructions::UnaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
     public mir::instructions::BinaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
     public mir::instructions::VectorSplatVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
-    public mir::instructions::VectorExtractVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>
+    public mir::instructions::VectorExtractVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
+    public mir::instructions::VectorInsertVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>
 // clang-format on
 {
   MIRIteratorWriter<Iterator> Writer;
@@ -683,14 +684,14 @@ public:
 
   Iterator
   operator()(instructions::vector_extract::SIMD128IntExtract const *Inst) {
-    Writer << Inst << " = 128.int.extract " << Inst->getLaneInfo() << ' '
+    Writer << Inst << " = v128.int.extract " << Inst->getLaneInfo() << ' '
            << Inst->getLaneIndex() << ' ' << Inst->getOperand();
     return Writer.iterator();
   }
 
   Iterator
   operator()(instructions::vector_extract::SIMD128FPExtract const *Inst) {
-    Writer << Inst << " = 128.fp.extract " << Inst->getLaneInfo() << ' '
+    Writer << Inst << " = v128.fp.extract " << Inst->getLaneInfo() << ' '
            << Inst->getLaneIndex() << ' ' << Inst->getOperand();
     return Writer.iterator();
   }
@@ -700,6 +701,29 @@ public:
     using VectorExtractVisitor =
         VectorExtractVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
     return VectorExtractVisitor::visit(Inst);
+  }
+
+  Iterator
+  operator()(instructions::vector_insert::SIMD128IntInsert const *Inst) {
+    Writer << Inst << " = v128.int.insert" << Inst->getLaneInfo() << ' '
+           << Inst->getLaneIndex() << ' ' << Inst->getTargetVector() << ' '
+           << Inst->getCandidateValue();
+    return Writer.iterator();
+  }
+
+  Iterator
+  operator()(instructions::vector_insert::SIMD128FPInsert const *Inst) {
+    Writer << Inst << " = v128.fp.insert" << Inst->getLaneInfo() << ' '
+           << Inst->getLaneIndex() << ' ' << Inst->getTargetVector() << ' '
+           << Inst->getCandidateValue();
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::VectorInsert const *Inst) {
+    using namespace mir::instructions;
+    using VectorInsertVisitor =
+        VectorInsertVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
+    return VectorInsertVisitor::visit(Inst);
   }
 };
 } // namespace detail

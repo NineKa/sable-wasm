@@ -97,9 +97,13 @@ public:
   unsigned getLaneIndex() const;
   void setLaneIndex(unsigned LaneIndex_);
 
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
   static bool classof(mir::Instruction const *Inst);
   static bool classof(mir::ASTNode const *Node);
 };
+
+SABLE_DEFINE_IS_A(VectorExtract)
+SABLE_DEFINE_DYN_CAST(VectorExtract)
 
 namespace vector_extract {
 class SIMD128IntExtract : public VectorExtract {
@@ -145,7 +149,82 @@ public:
 };
 } // namespace vector_extract
 
-// class VectorInsert : public Instruction {};
+enum class VectorInsertKind { SIMD128IntInsert, SIMD128FPInsert };
+class VectorInsert : public Instruction {
+  VectorInsertKind Kind;
+  mir::Instruction *TargetVector;
+  mir::Instruction *CandidateValue;
+  unsigned LaneIndex;
+
+public:
+  VectorInsert(
+      VectorInsertKind Kind_, mir::Instruction *TargetVector_,
+      unsigned LaneIndex_, mir::Instruction *CandidateValue_);
+  VectorInsert(VectorInsert const &) = delete;
+  VectorInsert(VectorInsert &&) noexcept = delete;
+  VectorInsert &operator=(VectorInsert const &) = delete;
+  VectorInsert &operator=(VectorInsert &&) noexcept = delete;
+  ~VectorInsert() noexcept override;
+
+  VectorInsertKind getVectorInsertKind() const;
+  bool isSIMD128IntInsert() const;
+  bool isSIMD128FPInsert() const;
+
+  mir::Instruction *getTargetVector() const;
+  void setTargetVector(mir::Instruction *TargetVector_);
+  mir::Instruction *getCandidateValue() const;
+  void setCandidateValue(mir::Instruction *CandidateValue_);
+  unsigned getLaneIndex() const;
+  void setLaneIndex(unsigned LaneIndex_);
+
+  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
+  static bool classof(mir::Instruction const *Inst);
+  static bool classof(mir::ASTNode const *Node);
+};
+
+namespace vector_insert {
+class SIMD128IntInsert : public VectorInsert {
+  SIMD128IntLaneInfo LaneInfo;
+
+public:
+  SIMD128IntInsert(
+      SIMD128IntLaneInfo LaneInfo_, mir::Instruction *TargetVector_,
+      unsigned LaneIndex_, mir::Instruction *CandidateValue_);
+  SIMD128IntInsert(SIMD128IntInsert const &) = delete;
+  SIMD128IntInsert(SIMD128IntInsert &&) noexcept = delete;
+  SIMD128IntInsert &operator=(SIMD128IntInsert const &) = delete;
+  SIMD128IntInsert &operator=(SIMD128IntInsert &&) noexcept = delete;
+  ~SIMD128IntInsert() noexcept override;
+
+  SIMD128IntLaneInfo getLaneInfo() const;
+  void setLaneInfo(SIMD128IntLaneInfo LaneInfo_);
+
+  static bool classof(VectorInsert const *Inst);
+  static bool classof(mir::Instruction const *Inst);
+  static bool classof(mir::ASTNode const *Node);
+};
+
+class SIMD128FPInsert : public VectorInsert {
+  SIMD128FPLaneInfo LaneInfo;
+
+public:
+  SIMD128FPInsert(
+      SIMD128FPLaneInfo LaneInfo_, mir::Instruction *TargetVector_,
+      unsigned LaneIndex_, mir::Instruction *CandidateValue_);
+  SIMD128FPInsert(SIMD128FPInsert const &) = delete;
+  SIMD128FPInsert(SIMD128FPInsert &&) noexcept = delete;
+  SIMD128FPInsert &operator=(SIMD128FPInsert const &) = delete;
+  SIMD128FPInsert &operator=(SIMD128FPInsert &&) noexcept = delete;
+  ~SIMD128FPInsert() noexcept override;
+
+  SIMD128FPLaneInfo getLaneInfo() const;
+  void setLaneInfo(SIMD128FPLaneInfo LaneInfo_);
+
+  static bool classof(VectorInsert const *Inst);
+  static bool classof(mir::Instruction const *Inst);
+  static bool classof(mir::ASTNode const *Node);
+};
+} // namespace vector_insert
 
 template <typename Derived, typename RetType = void, bool Const = true>
 class VectorSplatVisitorBase {
@@ -182,6 +261,26 @@ public:
     switch (Inst->getVectorExtractKind()) {
     case EKind::SIMD128IntExtract: return castAndCall<SIMD128IntExtract>(Inst);
     case EKind::SIMD128FPExtract: return castAndCall<SIMD128FPExtract>(Inst);
+    default: utility::unreachable();
+    }
+  }
+};
+
+template <typename Derived, typename RetType = void, bool Const = true>
+class VectorInsertVisitorBase {
+  Derived &derived() { return static_cast<Derived &>(*this); }
+  template <typename T> using Ptr = std::conditional_t<Const, T const *, T *>;
+  template <typename T> RetType castAndCall(Ptr<VectorInsert> Inst) {
+    return derived()(dyn_cast<T>(Inst));
+  }
+
+public:
+  RetType visit(Ptr<VectorInsert> Inst) {
+    using namespace vector_insert;
+    using EKind = VectorInsertKind;
+    switch (Inst->getVectorInsertKind()) {
+    case EKind::SIMD128IntInsert: return castAndCall<SIMD128IntInsert>(Inst);
+    case EKind::SIMD128FPInsert: return castAndCall<SIMD128FPInsert>(Inst);
     default: utility::unreachable();
     }
   }

@@ -2,6 +2,7 @@
 
 #include "LLVMCodegen.h"
 #include "TranslationContext.h"
+#include "llvm/IR/Value.h"
 
 #include <llvm/IR/DerivedTypes.h>
 
@@ -67,12 +68,13 @@ llvm::Value *TranslationVisitor::operator()(minsts::Branch const *Inst) {
 }
 
 llvm::Value *TranslationVisitor::operator()(minsts::Return const *Inst) {
-  if (Inst->hasReturnValue()) {
-    auto *ReturnValue = Context[*Inst->getOperand()];
-    auto ReturnTy = Context.getInferredType()[*Inst->getOperand()];
-    return Builder.CreateRet(ReturnValue);
-  }
-  return Builder.CreateRetVoid();
+  if (!Inst->hasReturnValue()) return Builder.CreateRetVoid();
+  auto *ReturnValue = Context[*Inst->getOperand()];
+  auto ReturnTy = Context.getInferredType()[*Inst->getOperand()];
+  if (ReturnTy.isPrimitiveV128() &&
+      (ReturnValue->getType() != Builder.getInt128Ty()))
+    ReturnValue = Builder.CreateBitCast(ReturnValue, Builder.getInt128Ty());
+  return Builder.CreateRet(ReturnValue);
 }
 
 llvm::Value *TranslationVisitor::operator()(minsts::Call const *Inst) {
@@ -824,6 +826,37 @@ llvm::Value *TranslationVisitor::operator()(
 
 llvm::Value *TranslationVisitor::operator()(minsts::VectorSplat const *Inst) {
   return VectorSplatVisitorBase::visit(Inst);
+}
+
+llvm::Value *TranslationVisitor::operator()(
+    minsts::vector_extract::SIMD128IntExtract const *Inst) {
+  auto *Operand = Context[*Inst->getOperand()];
+  auto *ExpectOperandTy = Builder.getV128Ty(Inst->getLaneInfo());
+  if (Operand->getType() != ExpectOperandTy)
+    Operand = Builder.CreateBitCast(Operand, ExpectOperandTy);
+  auto *Result = Builder.CreateExtractElement(Operand, Inst->getLaneIndex());
+  using ElementKind = mir::SIMD128IntElementKind;
+  switch (Inst->getLaneInfo().getElementKind()) {
+  case ElementKind::I8:
+  case ElementKind::I16:
+    return Builder.CreateZExt(Result, Builder.getInt32Ty());
+  case ElementKind::I32:
+  case ElementKind::I64: return Result;
+  default: utility::unreachable();
+  }
+}
+
+llvm::Value *TranslationVisitor::operator()(
+    minsts::vector_extract::SIMD128FPExtract const *Inst) {
+  auto *Operand = Context[*Inst->getOperand()];
+  auto *ExpectOperandTy = Builder.getV128Ty(Inst->getLaneInfo());
+  if (Operand->getType() != ExpectOperandTy)
+    Operand = Builder.CreateBitCast(Operand, ExpectOperandTy);
+  return Builder.CreateExtractElement(Operand, Inst->getLaneIndex());
+}
+
+llvm::Value *TranslationVisitor::operator()(minsts::VectorExtract const *Inst) {
+  return VectorExtractVisitorBase::visit(Inst);
 }
 
 llvm::Value *TranslationVisitor::visit(mir::Instruction const *Inst) {

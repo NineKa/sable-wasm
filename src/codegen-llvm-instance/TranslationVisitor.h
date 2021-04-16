@@ -21,7 +21,8 @@ class TranslationVisitor :
     public mir::instructions::CompareVisitorBase<TranslationVisitor, llvm::Value *>,
     public mir::instructions::UnaryVisitorBase<TranslationVisitor, llvm::Value *>,
     public mir::instructions::BinaryVisitorBase<TranslationVisitor, llvm::Value *>, 
-    public mir::instructions::VectorSplatVisitorBase<TranslationVisitor, llvm::Value *>
+    public mir::instructions::VectorSplatVisitorBase<TranslationVisitor, llvm::Value *>,
+    public mir::instructions::VectorExtractVisitorBase<TranslationVisitor, llvm::Value *>
 // clang-format on
 {
   TranslationContext &Context;
@@ -91,6 +92,10 @@ public:
   SABLE_ON(vector_splat::SIMD128IntSplat)
   SABLE_ON(vector_splat::SIMD128FPSplat)
   SABLE_ON(VectorSplat)
+
+  SABLE_ON(vector_extract::SIMD128IntExtract)
+  SABLE_ON(vector_extract::SIMD128FPExtract)
+  SABLE_ON(VectorExtract)
 #undef SABLE_ON
 
   llvm::Value *visit(mir::Instruction const *Instruction);

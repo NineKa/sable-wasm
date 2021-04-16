@@ -40,7 +40,8 @@ namespace minsts = mir::instructions;
 class TypeInferVisitor :
     public mir::InstVisitorBase<TypeInferVisitor, Type>,
     public minsts::UnaryVisitorBase<TypeInferVisitor, Type>,
-    public minsts::BinaryVisitorBase<TypeInferVisitor, Type> {
+    public minsts::BinaryVisitorBase<TypeInferVisitor, Type>,
+    public minsts::VectorExtractVisitorBase<TypeInferVisitor, Type> {
   TypeInferPassResult::TypeMap &Types;
 
   Type const &getType(mir::Instruction const *Instruction) const {
@@ -195,6 +196,36 @@ public:
 
   Type operator()(minsts::VectorSplat const *) {
     return Type::BuildPrimitive(bytecode::valuetypes::V128);
+  }
+
+  Type operator()(minsts::vector_extract::SIMD128IntExtract const *Inst) {
+    if (!getType(Inst->getOperand()).isPrimitiveV128())
+      return Type::BuildBottom();
+    using ElementKind = mir::SIMD128IntElementKind;
+    using namespace bytecode::valuetypes;
+    switch (Inst->getLaneInfo().getElementKind()) {
+    case ElementKind::I8:
+    case ElementKind::I16:
+    case ElementKind::I32: return Type::BuildPrimitive(I32);
+    case ElementKind::I64: return Type::BuildPrimitive(I64);
+    default: utility::unreachable();
+    }
+  }
+
+  Type operator()(minsts::vector_extract::SIMD128FPExtract const *Inst) {
+    if (!getType(Inst->getOperand()).isPrimitiveV128())
+      return Type::BuildBottom();
+    using ElementKind = mir::SIMD128FPElementKind;
+    using namespace bytecode::valuetypes;
+    switch (Inst->getLaneInfo().getElementKind()) {
+    case ElementKind::F32: return Type::BuildPrimitive(F32);
+    case ElementKind::F64: return Type::BuildPrimitive(F64);
+    default: utility::unreachable();
+    }
+  }
+
+  Type operator()(minsts::VectorExtract const *Inst) {
+    return VectorExtractVisitorBase::visit(Inst);
   }
 };
 } // namespace

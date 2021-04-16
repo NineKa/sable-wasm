@@ -1,3 +1,4 @@
+#include "Vector.h"
 #include <range/v3/algorithm/for_each.hpp>
 
 namespace mir {
@@ -308,7 +309,8 @@ class WriterInstructionVisitor :
     public mir::instructions::CompareVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
     public mir::instructions::UnaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
     public mir::instructions::BinaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
-    public mir::instructions::VectorSplatVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>
+    public mir::instructions::VectorSplatVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
+    public mir::instructions::VectorExtractVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>
 // clang-format on
 {
   MIRIteratorWriter<Iterator> Writer;
@@ -661,13 +663,13 @@ public:
   }
 
   Iterator operator()(instructions::vector_splat::SIMD128IntSplat const *Inst) {
-    Writer << Inst << " = v128.splat " << Inst->getLaneInfo() << ' '
+    Writer << Inst << " = v128.int.splat " << Inst->getLaneInfo() << ' '
            << Inst->getOperand();
     return Writer.iterator();
   }
 
   Iterator operator()(instructions::vector_splat::SIMD128FPSplat const *Inst) {
-    Writer << Inst << " = v128.splat " << Inst->getLaneInfo() << ' '
+    Writer << Inst << " = v128.fp.splat " << Inst->getLaneInfo() << ' '
            << Inst->getOperand();
     return Writer.iterator();
   }
@@ -677,6 +679,27 @@ public:
     using VectorSplatVisitor =
         VectorSplatVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
     return VectorSplatVisitor::visit(Inst);
+  }
+
+  Iterator
+  operator()(instructions::vector_extract::SIMD128IntExtract const *Inst) {
+    Writer << Inst << " = 128.int.extract " << Inst->getLaneInfo() << ' '
+           << Inst->getLaneIndex() << ' ' << Inst->getOperand();
+    return Writer.iterator();
+  }
+
+  Iterator
+  operator()(instructions::vector_extract::SIMD128FPExtract const *Inst) {
+    Writer << Inst << " = 128.fp.extract " << Inst->getLaneInfo() << ' '
+           << Inst->getLaneIndex() << ' ' << Inst->getOperand();
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::VectorExtract const *Inst) {
+    using namespace mir::instructions;
+    using VectorExtractVisitor =
+        VectorExtractVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
+    return VectorExtractVisitor::visit(Inst);
   }
 };
 } // namespace detail

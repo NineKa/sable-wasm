@@ -1,4 +1,6 @@
 #include "Vector.h"
+#include "ASTNode.h"
+#include "Instruction.h"
 
 namespace mir::instructions {
 VectorSplat::VectorSplat(VectorSplatKind Kind_, mir::Instruction *Operand_)
@@ -99,3 +101,108 @@ bool SIMD128FPSplat::classof(mir::ASTNode const *Node) {
   return false;
 }
 } // namespace mir::instructions::vector_splat
+
+namespace mir::instructions {
+VectorExtract::VectorExtract(
+    VectorExtractKind Kind_, mir::Instruction *Operand_, unsigned LaneIndex_)
+    : Instruction(InstructionKind::VectorExtract), Kind(Kind_), Operand(),
+      LaneIndex(LaneIndex_) {
+  setOperand(Operand_);
+}
+VectorExtract::~VectorExtract() noexcept = default;
+
+VectorExtractKind VectorExtract::getVectorExtractKind() const { return Kind; }
+
+bool VectorExtract::isSIMD128IntExtract() const {
+  return Kind == VectorExtractKind::SIMD128IntExtract;
+}
+
+bool VectorExtract::isSIMD128FPExtract() const {
+  return Kind == VectorExtractKind::SIMD128FPExtract;
+}
+
+mir::Instruction *VectorExtract::getOperand() const { return Operand; }
+
+void VectorExtract::setOperand(mir::Instruction *Operand_) {
+  if (Operand != nullptr) Operand->remove_use(this);
+  if (Operand_ != nullptr) Operand_->add_use(this);
+}
+
+unsigned VectorExtract::getLaneIndex() const { return LaneIndex; }
+
+void VectorExtract::setLaneIndex(unsigned LaneIndex_) {
+  LaneIndex = LaneIndex_;
+}
+
+bool VectorExtract::classof(mir::Instruction const *Inst) {
+  return Inst->getInstructionKind() == InstructionKind::VectorExtract;
+}
+
+bool VectorExtract::classof(mir::ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return VectorExtract::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+} // namespace mir::instructions
+
+namespace mir::instructions::vector_extract {
+SIMD128IntExtract::SIMD128IntExtract(
+    SIMD128IntLaneInfo LaneInfo_, mir::Instruction *Operand_,
+    unsigned LaneIndex_)
+    : VectorExtract(VectorExtractKind::SIMD128IntExtract, Operand_, LaneIndex_),
+      LaneInfo(LaneInfo_) {}
+SIMD128IntExtract::~SIMD128IntExtract() noexcept = default;
+
+SIMD128IntLaneInfo SIMD128IntExtract::getLaneInfo() const { return LaneInfo; }
+
+void SIMD128IntExtract::setLaneInfo(SIMD128IntLaneInfo LaneInfo_) {
+  LaneInfo = LaneInfo_;
+}
+
+bool SIMD128IntExtract::classof(VectorExtract const *Inst) {
+  return Inst->isSIMD128IntExtract();
+}
+
+bool SIMD128IntExtract::classof(mir::Instruction const *Inst) {
+  if (VectorExtract::classof(Inst))
+    return SIMD128IntExtract::classof(dyn_cast<VectorExtract>(Inst));
+  return false;
+}
+
+bool SIMD128IntExtract::classof(mir::ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return SIMD128IntExtract::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+} // namespace mir::instructions::vector_extract
+
+namespace mir::instructions::vector_extract {
+SIMD128FPExtract::SIMD128FPExtract(
+    SIMD128FPLaneInfo LaneInfo_, mir::Instruction *Operand_,
+    unsigned LaneIndex_)
+    : VectorExtract(VectorExtractKind::SIMD128FPExtract, Operand_, LaneIndex_),
+      LaneInfo(LaneInfo_) {}
+SIMD128FPExtract::~SIMD128FPExtract() noexcept = default;
+
+SIMD128FPLaneInfo SIMD128FPExtract::getLaneInfo() const { return LaneInfo; }
+
+void SIMD128FPExtract::setLaneInfo(SIMD128FPLaneInfo LaneInfo_) {
+  LaneInfo = LaneInfo_;
+}
+
+bool SIMD128FPExtract::classof(VectorExtract const *Inst) {
+  return Inst->isSIMD128FPExtract();
+}
+
+bool SIMD128FPExtract::classof(mir::Instruction const *Inst) {
+  if (VectorExtract::classof(Inst))
+    return SIMD128FPExtract::classof(dyn_cast<VectorExtract>(Inst));
+  return false;
+}
+
+bool SIMD128FPExtract::classof(mir::ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return SIMD128FPExtract::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+} // namespace mir::instructions::vector_extract

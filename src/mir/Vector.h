@@ -81,7 +81,7 @@ class VectorExtract : public Instruction {
 
 public:
   VectorExtract(
-      VectorExtractKind Kind_, mir::Instruction *Operand_, unsigned LaneID_);
+      VectorExtractKind Kind_, mir::Instruction *Operand_, unsigned LaneIndex_);
   VectorExtract(VectorExtract const &) = delete;
   VectorExtract(VectorExtract &&) noexcept = delete;
   VectorExtract &operator=(VectorExtract const &) = delete;
@@ -95,10 +95,10 @@ public:
   mir::Instruction *getOperand() const;
   void setOperand(mir::Instruction *Operand_);
   unsigned getLaneIndex() const;
-  void setLaneIndex(unsigned LaneID_);
+  void setLaneIndex(unsigned LaneIndex_);
 
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
+  static bool classof(mir::Instruction const *Inst);
+  static bool classof(mir::ASTNode const *Node);
 };
 
 namespace vector_extract {
@@ -107,13 +107,41 @@ class SIMD128IntExtract : public VectorExtract {
 
 public:
   SIMD128IntExtract(
-      SIMD128IntLaneInfo LaneInfo, mir::Instruction *Operand_,
+      SIMD128IntLaneInfo LaneInfo_, mir::Instruction *Operand_,
       unsigned LaneIndex_);
   SIMD128IntExtract(SIMD128IntExtract const &) = delete;
   SIMD128IntExtract(SIMD128IntExtract &&) noexcept = delete;
   SIMD128IntExtract &operator=(SIMD128IntExtract const &) = delete;
   SIMD128IntExtract &operator=(SIMD128IntExtract &&) noexcept = delete;
   ~SIMD128IntExtract() noexcept override;
+
+  SIMD128IntLaneInfo getLaneInfo() const;
+  void setLaneInfo(SIMD128IntLaneInfo LaneInfo_);
+
+  static bool classof(VectorExtract const *Inst);
+  static bool classof(mir::Instruction const *Inst);
+  static bool classof(mir::ASTNode const *Node);
+};
+
+class SIMD128FPExtract : public VectorExtract {
+  SIMD128FPLaneInfo LaneInfo;
+
+public:
+  SIMD128FPExtract(
+      SIMD128FPLaneInfo LaneInfo_, mir::Instruction *Operand_,
+      unsigned LaneIndex_);
+  SIMD128FPExtract(SIMD128FPExtract const &) = delete;
+  SIMD128FPExtract(SIMD128FPExtract &&) noexcept = delete;
+  SIMD128FPExtract &operator=(SIMD128FPExtract const &) = delete;
+  SIMD128FPExtract &operator=(SIMD128FPExtract &&) noexcept = delete;
+  ~SIMD128FPExtract() noexcept override;
+
+  SIMD128FPLaneInfo getLaneInfo() const;
+  void setLaneInfo(SIMD128FPLaneInfo LaneInfo_);
+
+  static bool classof(VectorExtract const *Inst);
+  static bool classof(mir::Instruction const *Inst);
+  static bool classof(mir::ASTNode const *Node);
 };
 } // namespace vector_extract
 
@@ -134,6 +162,26 @@ public:
     switch (Inst->getVectorSplatKind()) {
     case SKind::SIMD128IntSplat: return castAndCall<SIMD128IntSplat>(Inst);
     case SKind::SIMD128FPSplat: return castAndCall<SIMD128FPSplat>(Inst);
+    default: utility::unreachable();
+    }
+  }
+};
+
+template <typename Derived, typename RetType = void, bool Const = true>
+class VectorExtractVisitorBase {
+  Derived &derived() { return static_cast<Derived &>(*this); }
+  template <typename T> using Ptr = std::conditional_t<Const, T const *, T *>;
+  template <typename T> RetType castAndCall(Ptr<VectorExtract> Inst) {
+    return derived()(dyn_cast<T>(Inst));
+  }
+
+public:
+  RetType visit(Ptr<VectorExtract> Inst) {
+    using namespace vector_extract;
+    using EKind = VectorExtractKind;
+    switch (Inst->getVectorExtractKind()) {
+    case EKind::SIMD128IntExtract: return castAndCall<SIMD128IntExtract>(Inst);
+    case EKind::SIMD128FPExtract: return castAndCall<SIMD128FPExtract>(Inst);
     default: utility::unreachable();
     }
   }

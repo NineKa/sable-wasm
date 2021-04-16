@@ -676,7 +676,7 @@ public:
     case IKind::Unpack       : return castAndCall<Unpack>(Inst);
     case IKind::Phi          : return castAndCall<Phi>(Inst);
     case IKind::VectorSplat  : return castAndCall<VectorSplat>(Inst);
-    //case IKind::VectorExtract: return castAndCall<VectorExtract>(Inst);
+    case IKind::VectorExtract: return castAndCall<VectorExtract>(Inst);
     //case IKind::VectorInsert : return castAndCall<VectorInsert>(Inst);
     default: utility::unreachable();
     }

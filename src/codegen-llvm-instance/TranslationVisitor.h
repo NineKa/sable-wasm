@@ -7,6 +7,7 @@
 #include "../mir/Instruction.h"
 #include "../mir/Module.h"
 #include "../mir/Unary.h"
+#include "../mir/Vector.h"
 
 #include <llvm/IR/Value.h>
 
@@ -19,7 +20,8 @@ class TranslationVisitor :
     public mir::instructions::BranchVisitorBase<TranslationVisitor, llvm::Value *>,
     public mir::instructions::CompareVisitorBase<TranslationVisitor, llvm::Value *>,
     public mir::instructions::UnaryVisitorBase<TranslationVisitor, llvm::Value *>,
-    public mir::instructions::BinaryVisitorBase<TranslationVisitor, llvm::Value *>
+    public mir::instructions::BinaryVisitorBase<TranslationVisitor, llvm::Value *>, 
+    public mir::instructions::VectorSplatVisitorBase<TranslationVisitor, llvm::Value *>
 // clang-format on
 {
   TranslationContext &Context;
@@ -85,6 +87,10 @@ public:
   SABLE_ON(Pack)
   SABLE_ON(Unpack)
   SABLE_ON(Phi)
+
+  SABLE_ON(vector_splat::SIMD128IntSplat)
+  SABLE_ON(vector_splat::SIMD128FPSplat)
+  SABLE_ON(VectorSplat)
 #undef SABLE_ON
 
   llvm::Value *visit(mir::Instruction const *Instruction);

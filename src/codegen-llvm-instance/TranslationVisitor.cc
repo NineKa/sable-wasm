@@ -792,6 +792,40 @@ llvm::Value *TranslationVisitor::operator()(minsts::Phi const *Inst) {
   return Builder.CreatePHI(PhiTy, NumCandidate);
 }
 
+llvm::Value *TranslationVisitor::operator()(
+    minsts::vector_splat::SIMD128IntSplat const *Inst) {
+  auto *Operand = Context[*Inst->getOperand()];
+  using ElementKind = mir::SIMD128IntElementKind;
+  switch (Inst->getLaneInfo().getElementKind()) {
+  case ElementKind::I8: {
+    Operand = Builder.CreateTrunc(Operand, Builder.getInt8Ty());
+    return Builder.CreateVectorSplat(16, Operand);
+  }
+  case ElementKind::I16: {
+    Operand = Builder.CreateTrunc(Operand, Builder.getInt16Ty());
+    return Builder.CreateVectorSplat(8, Operand);
+  }
+  case ElementKind::I32: return Builder.CreateVectorSplat(4, Operand);
+  case ElementKind::I64: return Builder.CreateVectorSplat(2, Operand);
+  default: utility::unreachable();
+  }
+}
+
+llvm::Value *TranslationVisitor::operator()(
+    minsts::vector_splat::SIMD128FPSplat const *Inst) {
+  auto *Operand = Context[*Inst->getOperand()];
+  using ElementKind = mir::SIMD128FPElementKind;
+  switch (Inst->getLaneInfo().getElementKind()) {
+  case ElementKind::F32: return Builder.CreateVectorSplat(4, Operand);
+  case ElementKind::F64: return Builder.CreateVectorSplat(2, Operand);
+  default: utility::unreachable();
+  }
+}
+
+llvm::Value *TranslationVisitor::operator()(minsts::VectorSplat const *Inst) {
+  return VectorSplatVisitorBase::visit(Inst);
+}
+
 llvm::Value *TranslationVisitor::visit(mir::Instruction const *Inst) {
   auto *Result = InstVisitorBase::visit(Inst);
   if (Context.getInferredType()[*Inst].isPrimitiveI32() &&

@@ -307,7 +307,8 @@ class WriterInstructionVisitor :
     public mir::instructions::BranchVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
     public mir::instructions::CompareVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
     public mir::instructions::UnaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
-    public mir::instructions::BinaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>
+    public mir::instructions::BinaryVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>,
+    public mir::instructions::VectorSplatVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>
 // clang-format on
 {
   MIRIteratorWriter<Iterator> Writer;
@@ -657,6 +658,25 @@ public:
       Writer << " [" << std::get<0>(Candidate) << ", " << std::get<1>(Candidate)
              << ']';
     return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::vector_splat::SIMD128IntSplat const *Inst) {
+    Writer << Inst << " = v128.splat " << Inst->getLaneInfo() << ' '
+           << Inst->getOperand();
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::vector_splat::SIMD128FPSplat const *Inst) {
+    Writer << Inst << " = v128.splat " << Inst->getLaneInfo() << ' '
+           << Inst->getOperand();
+    return Writer.iterator();
+  }
+
+  Iterator operator()(instructions::VectorSplat const *Inst) {
+    using namespace mir::instructions;
+    using VectorSplatVisitor =
+        VectorSplatVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
+    return VectorSplatVisitor::visit(Inst);
   }
 };
 } // namespace detail

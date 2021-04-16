@@ -6,6 +6,7 @@
 #include "Instruction.h"
 #include "Module.h"
 #include "Unary.h"
+#include "Vector.h"
 
 #include <range/v3/algorithm/sort.hpp>
 #include <range/v3/algorithm/unique.hpp>

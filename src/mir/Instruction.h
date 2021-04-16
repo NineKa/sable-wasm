@@ -119,11 +119,12 @@ enum class InstructionKind : std::uint8_t {
   MemorySize,
   MemoryGrow,
   /* SIMD128 Extension */
-  LaneSplat,
+  VectorSplat,
+  VectorExtract,
+  VectorInsert,
+
   LaneExtend,
   LaneNarrow,
-  LaneExtract,
-  LaneReplace,
 };
 
 class Instruction :
@@ -158,10 +159,13 @@ SABLE_DEFINE_DYN_CAST(Instruction)
 } // namespace mir
 
 namespace mir::instructions {
-class Branch;  // See Branch.h
-class Compare; // See Compare.h
-class Unary;   // See Unary.h
-class Binary;  // See Binary.h
+class Branch;        // See Branch.h
+class Compare;       // See Compare.h
+class Unary;         // See Unary.h
+class Binary;        // See Binary.h
+class VectorSplat;   // See Vector.h
+class VectorExtract; // See Vector.h
+class VectorInsert;  // See Vector.h
 
 ///////////////////////////////// Unreachable //////////////////////////////////
 class Unreachable : public Instruction {
@@ -647,30 +651,33 @@ public:
     using namespace instructions;
     // clang-format off
     switch (Inst->getInstructionKind()) {
-    case IKind::Unreachable : return castAndCall<Unreachable>(Inst);
-    case IKind::Branch      : return castAndCall<Branch>(Inst);
-    case IKind::Return      : return castAndCall<Return>(Inst);
-    case IKind::Call        : return castAndCall<Call>(Inst);
-    case IKind::CallIndirect: return castAndCall<CallIndirect>(Inst);
-    case IKind::Select      : return castAndCall<Select>(Inst);
-    case IKind::LocalGet    : return castAndCall<LocalGet>(Inst);
-    case IKind::LocalSet    : return castAndCall<LocalSet>(Inst);
-    case IKind::GlobalGet   : return castAndCall<GlobalGet>(Inst);
-    case IKind::GlobalSet   : return castAndCall<GlobalSet>(Inst);
-    case IKind::Constant    : return castAndCall<Constant>(Inst);
-    case IKind::Compare     : return castAndCall<Compare>(Inst);
-    case IKind::Unary       : return castAndCall<Unary>(Inst);
-    case IKind::Binary      : return castAndCall<Binary>(Inst);
-    case IKind::Load        : return castAndCall<Load>(Inst);
-    case IKind::Store       : return castAndCall<Store>(Inst);
-    case IKind::MemoryGuard : return castAndCall<MemoryGuard>(Inst);
-    case IKind::MemoryGrow  : return castAndCall<MemoryGrow>(Inst);
-    case IKind::MemorySize  : return castAndCall<MemorySize>(Inst);
-    case IKind::Cast        : return castAndCall<Cast>(Inst);
-    case IKind::Extend      : return castAndCall<Extend>(Inst);
-    case IKind::Pack        : return castAndCall<Pack>(Inst);
-    case IKind::Unpack      : return castAndCall<Unpack>(Inst);
-    case IKind::Phi         : return castAndCall<Phi>(Inst);
+    case IKind::Unreachable  : return castAndCall<Unreachable>(Inst);
+    case IKind::Branch       : return castAndCall<Branch>(Inst);
+    case IKind::Return       : return castAndCall<Return>(Inst);
+    case IKind::Call         : return castAndCall<Call>(Inst);
+    case IKind::CallIndirect : return castAndCall<CallIndirect>(Inst);
+    case IKind::Select       : return castAndCall<Select>(Inst);
+    case IKind::LocalGet     : return castAndCall<LocalGet>(Inst);
+    case IKind::LocalSet     : return castAndCall<LocalSet>(Inst);
+    case IKind::GlobalGet    : return castAndCall<GlobalGet>(Inst);
+    case IKind::GlobalSet    : return castAndCall<GlobalSet>(Inst);
+    case IKind::Constant     : return castAndCall<Constant>(Inst);
+    case IKind::Compare      : return castAndCall<Compare>(Inst);
+    case IKind::Unary        : return castAndCall<Unary>(Inst);
+    case IKind::Binary       : return castAndCall<Binary>(Inst);
+    case IKind::Load         : return castAndCall<Load>(Inst);
+    case IKind::Store        : return castAndCall<Store>(Inst);
+    case IKind::MemoryGuard  : return castAndCall<MemoryGuard>(Inst);
+    case IKind::MemoryGrow   : return castAndCall<MemoryGrow>(Inst);
+    case IKind::MemorySize   : return castAndCall<MemorySize>(Inst);
+    case IKind::Cast         : return castAndCall<Cast>(Inst);
+    case IKind::Extend       : return castAndCall<Extend>(Inst);
+    case IKind::Pack         : return castAndCall<Pack>(Inst);
+    case IKind::Unpack       : return castAndCall<Unpack>(Inst);
+    case IKind::Phi          : return castAndCall<Phi>(Inst);
+    case IKind::VectorSplat  : return castAndCall<VectorSplat>(Inst);
+    //case IKind::VectorExtract: return castAndCall<VectorExtract>(Inst);
+    //case IKind::VectorInsert : return castAndCall<VectorInsert>(Inst);
     default: utility::unreachable();
     }
     // clang-format on

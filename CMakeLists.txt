@@ -36,6 +36,7 @@ add_library(sablewasm
         src/mir/Compare.cc
         src/mir/Unary.cc
         src/mir/Binary.cc
+        src/mir/Vector.cc
         src/mir/BasicBlock.cc
         src/mir/InitializerExpr.cc
         src/mir/Module.cc

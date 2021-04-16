@@ -3,6 +3,7 @@
 #include "../Branch.h"
 #include "../Compare.h"
 #include "../Unary.h"
+#include "../Vector.h"
 
 #include <range/v3/view/transform.hpp>
 
@@ -190,6 +191,10 @@ public:
 
   Type operator()(minsts::Phi const *Inst) {
     return Type::BuildPrimitive(Inst->getType());
+  }
+
+  Type operator()(minsts::VectorSplat const *) {
+    return Type::BuildPrimitive(bytecode::valuetypes::V128);
   }
 };
 } // namespace

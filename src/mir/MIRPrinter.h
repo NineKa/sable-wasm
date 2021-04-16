@@ -8,6 +8,7 @@
 #include "Instruction.h"
 #include "Module.h"
 #include "Unary.h"
+#include "Vector.h"
 
 #include <fmt/format.h>
 

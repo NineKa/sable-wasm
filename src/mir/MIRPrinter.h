@@ -4,6 +4,7 @@
 #include "BasicBlock.h"
 #include "Binary.h"
 #include "Branch.h"
+#include "Cast.h"
 #include "Compare.h"
 #include "Instruction.h"
 #include "Module.h"
@@ -80,8 +81,6 @@ template <std::output_iterator<char> Iterator> class MIRIteratorWriter {
   EntityNameWriter const *ENameWriter = nullptr;
   LocalNameWriter const *LNameWriter = nullptr;
 
-  char const *toString(instructions::CastMode Mode);
-
   static const char *const LINEBREAK_STR;
   static const char *const INDENT_STR;
 
@@ -151,8 +150,8 @@ public:
   (instructions::binary::SIMD128FPBinaryOperator Op)
   { Out = fmt::format_to(Out, "{}", Op); return *this; }
 
-  MIRIteratorWriter &operator<<(instructions::CastMode Mode)
-  { Out = fmt::format_to(Out, "{}", toString(Mode)); return *this; }
+  MIRIteratorWriter &operator<<(instructions::CastOpcode Mode)
+  { Out = fmt::format_to(Out, "{}", Mode); return *this; }
   // clang-format on
 
   MIRIteratorWriter &operator<<(Memory const &X) { return forwardE(X); }

@@ -7,7 +7,10 @@ VectorSplat::VectorSplat(VectorSplatKind Kind_, mir::Instruction *Operand_)
     : Instruction(InstructionKind::VectorSplat), Kind(Kind_), Operand() {
   setOperand(Operand_);
 }
-VectorSplat::~VectorSplat() noexcept = default;
+
+VectorSplat::~VectorSplat() noexcept {
+  if (Operand != nullptr) Operand->remove_use(this);
+}
 
 mir::Instruction *VectorSplat::getOperand() const { return Operand; }
 
@@ -47,6 +50,7 @@ SIMD128IntSplat::SIMD128IntSplat(
     SIMD128IntLaneInfo LaneInfo_, mir::Instruction *Operand_)
     : VectorSplat(VectorSplatKind::SIMD128IntSplat, Operand_),
       LaneInfo(LaneInfo_) {}
+
 SIMD128IntSplat::~SIMD128IntSplat() noexcept = default;
 
 SIMD128IntLaneInfo SIMD128IntSplat::getLaneInfo() const { return LaneInfo; }
@@ -77,6 +81,7 @@ SIMD128FPSplat::SIMD128FPSplat(
     SIMD128FPLaneInfo LaneInfo_, mir::Instruction *Operand_)
     : VectorSplat(VectorSplatKind::SIMD128FPSplat, Operand_),
       LaneInfo(LaneInfo_) {}
+
 SIMD128FPSplat::~SIMD128FPSplat() noexcept = default;
 
 SIMD128FPLaneInfo SIMD128FPSplat::getLaneInfo() const { return LaneInfo; }
@@ -109,7 +114,10 @@ VectorExtract::VectorExtract(
       LaneIndex(LaneIndex_) {
   setOperand(Operand_);
 }
-VectorExtract::~VectorExtract() noexcept = default;
+
+VectorExtract::~VectorExtract() noexcept {
+  if (Operand != nullptr) Operand->remove_use(this);
+}
 
 VectorExtractKind VectorExtract::getVectorExtractKind() const { return Kind; }
 
@@ -155,6 +163,7 @@ SIMD128IntExtract::SIMD128IntExtract(
     unsigned LaneIndex_)
     : VectorExtract(VectorExtractKind::SIMD128IntExtract, Operand_, LaneIndex_),
       LaneInfo(LaneInfo_) {}
+
 SIMD128IntExtract::~SIMD128IntExtract() noexcept = default;
 
 SIMD128IntLaneInfo SIMD128IntExtract::getLaneInfo() const { return LaneInfo; }
@@ -186,6 +195,7 @@ SIMD128FPExtract::SIMD128FPExtract(
     unsigned LaneIndex_)
     : VectorExtract(VectorExtractKind::SIMD128FPExtract, Operand_, LaneIndex_),
       LaneInfo(LaneInfo_) {}
+
 SIMD128FPExtract::~SIMD128FPExtract() noexcept = default;
 
 SIMD128FPLaneInfo SIMD128FPExtract::getLaneInfo() const { return LaneInfo; }
@@ -220,7 +230,11 @@ VectorInsert::VectorInsert(
   setTargetVector(TargetVector_);
   setCandidateValue(CandidateValue_);
 }
-VectorInsert::~VectorInsert() noexcept = default;
+
+VectorInsert::~VectorInsert() noexcept {
+  if (TargetVector != nullptr) TargetVector->remove_use(this);
+  if (CandidateValue != nullptr) CandidateValue->remove_use(this);
+}
 
 VectorInsertKind VectorInsert::getVectorInsertKind() const { return Kind; }
 
@@ -278,6 +292,7 @@ SIMD128IntInsert::SIMD128IntInsert(
           VectorInsertKind::SIMD128IntInsert, TargetVector_, LaneIndex_,
           CandidateValue_),
       LaneInfo(LaneInfo_) {}
+
 SIMD128IntInsert::~SIMD128IntInsert() noexcept = default;
 
 SIMD128IntLaneInfo SIMD128IntInsert::getLaneInfo() const { return LaneInfo; }
@@ -311,6 +326,7 @@ SIMD128FPInsert::SIMD128FPInsert(
           VectorInsertKind::SIMD128FPInsert, TargetVector_, LaneIndex_,
           CandidateValue_),
       LaneInfo(LaneInfo_) {}
+
 SIMD128FPInsert::~SIMD128FPInsert() noexcept = default;
 
 SIMD128FPLaneInfo SIMD128FPInsert::getLaneInfo() const { return LaneInfo; }

@@ -1,6 +1,7 @@
 #include "MIRCodegen.h"
 #include "Binary.h"
 #include "Branch.h"
+#include "Cast.h"
 #include "Compare.h"
 #include "Unary.h"
 
@@ -610,10 +611,8 @@ public:
   // clang-format on
 #undef LOAD_ZERO_EXTEND
 
-#define LOAD_SIGN_EXTEND(BYTECODE_INST, LOAD_TYPE, LOAD_WIDTH)                 \
+#define LOAD_SIGN_EXTEND(BYTECODE_INST, LOAD_TYPE, LOAD_WIDTH, LOAD_EXTEND_OP) \
   void operator()(BYTECODE_INST const *Inst) {                                 \
-    auto LoadType = LOAD_TYPE;                                                 \
-    auto LoadWidth = LOAD_WIDTH;                                               \
     auto *Mem = Context.getImplicitMemory();                                   \
     auto *Address = values().pop();                                            \
     if (Inst->Offset != 0) {                                                   \
@@ -623,19 +622,19 @@ public:
           minsts::binary::IntBinaryOperator::Add, Address, Offset);            \
     }                                                                          \
     CurrentBasicBlock->BuildInst<minsts::MemoryGuard>(                         \
-        Mem, Address, LoadWidth);                                              \
+        Mem, Address, LOAD_WIDTH);                                             \
     auto *Result = CurrentBasicBlock->BuildInst<minsts::Load>(                 \
-        Mem, LoadType, Address, LoadWidth);                                    \
-    auto *ExtendedResult =                                                     \
-        CurrentBasicBlock->BuildInst<minsts::Extend>(Result, LoadWidth);       \
+        Mem, LOAD_TYPE, Address, LOAD_WIDTH);                                  \
+    auto *ExtendedResult = CurrentBasicBlock->BuildInst<minsts::Cast>(         \
+        minsts::CastOpcode::LOAD_EXTEND_OP, Result);                           \
     values().push(ExtendedResult);                                             \
   }
   // clang-format off
-  LOAD_SIGN_EXTEND(binsts::I32Load8S , I32, 8 )
-  LOAD_SIGN_EXTEND(binsts::I32Load16S, I32, 16)
-  LOAD_SIGN_EXTEND(binsts::I64Load8S , I64, 8 )
-  LOAD_SIGN_EXTEND(binsts::I64Load16S, I64, 16)
-  LOAD_SIGN_EXTEND(binsts::I64Load32S, I64, 32)
+  LOAD_SIGN_EXTEND(binsts::I32Load8S , I32, 8 , I32Extend8S )
+  LOAD_SIGN_EXTEND(binsts::I32Load16S, I32, 16, I32Extend16S)
+  LOAD_SIGN_EXTEND(binsts::I64Load8S , I64, 8 , I64Extend8S )
+  LOAD_SIGN_EXTEND(binsts::I64Load16S, I64, 16, I64Extend16S)
+  LOAD_SIGN_EXTEND(binsts::I64Load32S, I64, 32, I64Extend32S)
   // clang-format on
 #undef LOAD_SIGN_EXTEND
 
@@ -891,67 +890,64 @@ public:
   // clang-format on
 #undef FP_BINARY_OP
 
-#define CAST(BYTECODE_INST, CAST_MODE, TARGET_TYPE)                            \
+#define CAST(BYTECODE_INST, CAST_OPCODE)                                       \
   void operator()(BYTECODE_INST const *) {                                     \
     auto *Operand = values().pop();                                            \
-    auto ConvertMode = CAST_MODE;                                              \
-    auto TargetType = TARGET_TYPE;                                             \
     auto *Result = CurrentBasicBlock->BuildInst<minsts::Cast>(                 \
-        ConvertMode, TargetType, Operand);                                     \
+        minsts::CastOpcode::CAST_OPCODE, Operand);                             \
     values().push(Result);                                                     \
   }
   // clang-format off
-  CAST(binsts::I32WrapI64       , minsts::CastMode::Conversion           , I32)
-  CAST(binsts::I32TruncF32S     , minsts::CastMode::ConversionSigned     , I32)
-  CAST(binsts::I32TruncF32U     , minsts::CastMode::ConversionUnsigned   , I32)
-  CAST(binsts::I32TruncF64S     , minsts::CastMode::ConversionSigned     , I32)
-  CAST(binsts::I32TruncF64U     , minsts::CastMode::ConversionUnsigned   , I32)
-  CAST(binsts::I64ExtendI32S    , minsts::CastMode::ConversionSigned     , I64)
-  CAST(binsts::I64ExtendI32U    , minsts::CastMode::ConversionUnsigned   , I64)
-  CAST(binsts::I64TruncF32S     , minsts::CastMode::ConversionSigned     , I64)
-  CAST(binsts::I64TruncF32U     , minsts::CastMode::ConversionUnsigned   , I64)
-  CAST(binsts::I64TruncF64S     , minsts::CastMode::ConversionSigned     , I64)
-  CAST(binsts::I64TruncF64U     , minsts::CastMode::ConversionUnsigned   , I64)
-  CAST(binsts::F32ConvertI32S   , minsts::CastMode::ConversionSigned     , F32)
-  CAST(binsts::F32ConvertI32U   , minsts::CastMode::ConversionUnsigned   , F32)
-  CAST(binsts::F32ConvertI64S   , minsts::CastMode::ConversionSigned     , F32)
-  CAST(binsts::F32ConvertI64U   , minsts::CastMode::ConversionUnsigned   , F32)
-  CAST(binsts::F32DemoteF64     , minsts::CastMode::Conversion           , F32)
-  CAST(binsts::F64ConvertI32S   , minsts::CastMode::ConversionSigned     , F64)
-  CAST(binsts::F64ConvertI32U   , minsts::CastMode::ConversionUnsigned   , F64)
-  CAST(binsts::F64ConvertI64S   , minsts::CastMode::ConversionSigned     , F64)
-  CAST(binsts::F64ConvertI64U   , minsts::CastMode::ConversionUnsigned   , F64)
-  CAST(binsts::F64PromoteF32    , minsts::CastMode::Conversion           , F64)
-  CAST(binsts::I32ReinterpretF32, minsts::CastMode::Reinterpret          , I32)
-  CAST(binsts::I64ReinterpretF64, minsts::CastMode::Reinterpret          , I64)
-  CAST(binsts::F32ReinterpretI32, minsts::CastMode::Reinterpret          , F32)
-  CAST(binsts::F64ReinterpretI64, minsts::CastMode::Reinterpret          , F64)
+  CAST(binsts::I32WrapI64       , I32WrapI64       )
+  CAST(binsts::I32TruncF32S     , I32TruncF32S     )
+  CAST(binsts::I32TruncF32U     , I32TruncF32U     )
+  CAST(binsts::I32TruncF64S     , I32TruncF64S     )
+  CAST(binsts::I32TruncF64U     , I32TruncF64U     )
+  CAST(binsts::I64ExtendI32S    , I64ExtendI32S    )
+  CAST(binsts::I64ExtendI32U    , I64ExtendI32U    )
+  CAST(binsts::I64TruncF32S     , I64TruncF32S     )
+  CAST(binsts::I64TruncF32U     , I64TruncF32U     )
+  CAST(binsts::I64TruncF64S     , I64TruncF64S     )
+  CAST(binsts::I64TruncF64U     , I64TruncF64U     )
+  CAST(binsts::F32ConvertI32S   , F32ConvertI32S   )
+  CAST(binsts::F32ConvertI32U   , F32ConvertI32U   )
+  CAST(binsts::F32ConvertI64S   , F32ConvertI64S   )
+  CAST(binsts::F32ConvertI64U   , F32ConvertI64U   )
+  CAST(binsts::F32DemoteF64     , F32DemoteF64     )
+  CAST(binsts::F64ConvertI32S   , F64ConvertI32S   )
+  CAST(binsts::F64ConvertI32U   , F64ConvertI32U   )
+  CAST(binsts::F64ConvertI64S   , F64ConvertI64S   )
+  CAST(binsts::F64ConvertI64U   , F64ConvertI64U   )
+  CAST(binsts::F64PromoteF32    , F64PromoteF32    )
+  CAST(binsts::I32ReinterpretF32, I32ReinterpretF32)
+  CAST(binsts::I64ReinterpretF64, I64ReinterpretF64)
+  CAST(binsts::F32ReinterpretI32, F32ReinterpretI32)
+  CAST(binsts::F64ReinterpretI64, F64ReinterpretI64)
 
-  CAST(binsts::I32TruncSatF32S  , minsts::CastMode::SatConversionSigned  , I32)
-  CAST(binsts::I32TruncSatF32U  , minsts::CastMode::SatConversionUnsigned, I32)
-  CAST(binsts::I32TruncSatF64S  , minsts::CastMode::SatConversionSigned  , I32)
-  CAST(binsts::I32TruncSatF64U  , minsts::CastMode::SatConversionUnsigned, I32)
-  CAST(binsts::I64TruncSatF32S  , minsts::CastMode::SatConversionSigned  , I64)
-  CAST(binsts::I64TruncSatF32U  , minsts::CastMode::SatConversionUnsigned, I64)
-  CAST(binsts::I64TruncSatF64S  , minsts::CastMode::SatConversionSigned  , I64)
-  CAST(binsts::I64TruncSatF64U  , minsts::CastMode::SatConversionUnsigned, I64)
+  CAST(binsts::I32TruncSatF32S  , I32TruncSatF32S  )
+  CAST(binsts::I32TruncSatF32U  , I32TruncSatF32U  )
+  CAST(binsts::I32TruncSatF64S  , I32TruncSatF64S  )
+  CAST(binsts::I32TruncSatF64U  , I32TruncSatF64U  )
+  CAST(binsts::I64TruncSatF32S  , I64TruncSatF32S  )
+  CAST(binsts::I64TruncSatF32U  , I64TruncSatF32U  )
+  CAST(binsts::I64TruncSatF64S  , I64TruncSatF64S  )
+  CAST(binsts::I64TruncSatF64U  , I64TruncSatF64U  )
   // clang-format on
 #undef CAST
 
-#define EXTEND(BYTECODE_INST, FROM_WIDTH)                                      \
+#define EXTEND(BYTECODE_INST, CAST_OPCODE)                                     \
   void operator()(BYTECODE_INST const *) {                                     \
     auto *Operand = values().pop();                                            \
-    auto FromWidth = FROM_WIDTH;                                               \
-    auto *Result =                                                             \
-        CurrentBasicBlock->BuildInst<minsts::Extend>(Operand, FromWidth);      \
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::Cast>(                 \
+        minsts::CastOpcode::CAST_OPCODE, Operand);                             \
     values().push(Result);                                                     \
   }
   // clang-format off
-  EXTEND(binsts::I32Extend8S , 8 )
-  EXTEND(binsts::I32Extend16S, 16)
-  EXTEND(binsts::I64Extend8S , 8 )
-  EXTEND(binsts::I64Extend16S, 16)
-  EXTEND(binsts::I64Extend32S, 32)
+  EXTEND(binsts::I32Extend8S   , I32Extend8S )
+  EXTEND(binsts::I32Extend16S  , I32Extend16S)
+  EXTEND(binsts::I64Extend8S   , I64Extend8S )
+  EXTEND(binsts::I64Extend16S  , I64Extend16S)
+  EXTEND(binsts::I64Extend32S  , I64Extend32S)
   // clang-format on
 #undef EXTEND
 

@@ -3,6 +3,7 @@
 
 #include "../mir/Binary.h"
 #include "../mir/Branch.h"
+#include "../mir/Cast.h"
 #include "../mir/Compare.h"
 #include "../mir/Instruction.h"
 #include "../mir/Module.h"
@@ -30,6 +31,9 @@ class TranslationVisitor :
   IRBuilder &Builder;
 
   llvm::Value *getMemoryRWPtr(mir::Memory const &Memory, llvm::Value *Address);
+
+  template <mir::instructions::CastOpcode Opcode>
+  llvm::Value *codegenCast(llvm::Value *); // See TranslationCasts.cc
 
 public:
   TranslationVisitor(TranslationContext &Context_, IRBuilder &Builder_);
@@ -85,7 +89,6 @@ public:
   SABLE_ON(MemoryGrow)
   SABLE_ON(MemorySize)
   SABLE_ON(Cast)
-  SABLE_ON(Extend)
   SABLE_ON(Pack)
   SABLE_ON(Unpack)
   SABLE_ON(Phi)
@@ -105,7 +108,6 @@ public:
 
   llvm::Value *visit(mir::Instruction const *Instruction);
 };
-
 } // namespace codegen::llvm_instance
 
 #endif

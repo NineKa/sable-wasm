@@ -709,55 +709,6 @@ llvm::Value *TranslationVisitor::operator()(minsts::MemorySize const *Inst) {
   return Builder.CreateCall(BuiltinMemorySize, {Memory});
 }
 
-llvm::Value *TranslationVisitor::operator()(minsts::Cast const *Inst) {
-  auto *Operand = Context[*Inst->getOperand()];
-  auto FromMIRTy = Context.getInferredType()[*Inst->getOperand()];
-  auto ToMIRTy = Context.getInferredType()[*Inst];
-  auto *ToTy = Context.getLayout().convertType(ToMIRTy.asPrimitive());
-  using CastMode = mir::instructions::CastMode;
-  switch (Inst->getMode()) {
-  case CastMode::Conversion: {
-    if (FromMIRTy.isIntegral() && ToMIRTy.isIntegral())
-      return Builder.CreateTrunc(Operand, ToTy);
-    if (FromMIRTy.isFloatingPoint() && ToMIRTy.isFloatingPoint())
-      return Builder.CreateFPCast(Operand, ToTy);
-    utility::unreachable();
-  }
-  case CastMode::ConversionSigned: {
-    if (FromMIRTy.isIntegral() && ToMIRTy.isIntegral())
-      return Builder.CreateSExt(Operand, ToTy);
-    if (FromMIRTy.isIntegral() && ToMIRTy.isFloatingPoint())
-      return Builder.CreateSIToFP(Operand, ToTy);
-    if (FromMIRTy.isFloatingPoint() && ToMIRTy.isIntegral())
-      return Builder.CreateFPToSI(Operand, ToTy);
-    utility::unreachable();
-  }
-  case CastMode::ConversionUnsigned: {
-    if (FromMIRTy.isIntegral() && ToMIRTy.isIntegral())
-      return Builder.CreateZExt(Operand, ToTy);
-    if (FromMIRTy.isIntegral() && ToMIRTy.isFloatingPoint())
-      return Builder.CreateUIToFP(Operand, ToTy);
-    if (FromMIRTy.isFloatingPoint() && ToMIRTy.isIntegral())
-      return Builder.CreateFPToUI(Operand, ToTy);
-    utility::unreachable();
-  }
-  case CastMode::Reinterpret: return Builder.CreateBitCast(Operand, ToTy);
-  case CastMode::SatConversionSigned:   // TODO: not yet implement
-  case CastMode::SatConversionUnsigned: // TODO: not yet implement
-  default: utility::unreachable();
-  }
-}
-
-llvm::Value *TranslationVisitor::operator()(minsts::Extend const *Inst) {
-  auto *Operand = Context[*Inst->getOperand()];
-  auto OperandMIRTy = Context.getInferredType()[*Inst];
-  auto *OperandTy = Context.getLayout().convertType(OperandMIRTy.asPrimitive());
-  auto *FromTy = llvm::IntegerType::getIntNTy(
-      Context.getTarget().getContext(), Inst->getFromWidth());
-  llvm::Value *Result = Builder.CreateTrunc(Operand, FromTy);
-  return Builder.CreateSExt(Result, OperandTy);
-}
-
 llvm::Value *TranslationVisitor::operator()(minsts::Pack const *Inst) {
   // clang-format off
   auto Members = Inst->getArguments()
@@ -774,10 +725,12 @@ llvm::Value *TranslationVisitor::operator()(minsts::Pack const *Inst) {
   auto *StructTy =
       llvm::StructType::get(Context.getTarget().getContext(), MemberTypes);
   llvm::Value *Result = llvm::UndefValue::get(StructTy);
-  for (auto const &[Index, Member] : ranges::views::enumerate(Members)) {
+  for (auto [Index, Member] : ranges::views::enumerate(Members)) {
     assert(Index <= std::numeric_limits<unsigned>::max());
     auto StructIndex = static_cast<unsigned>(Index);
-    Result = Builder.CreateInsertValue(Result, Member, {StructIndex});
+    if (Member->getType() != MemberTypes[Index])
+      Member = Builder.CreateBitCast(Member, MemberTypes[Index]);
+    Result = Builder.CreateInsertValue(Result, Member, StructIndex);
   }
   return Result;
 }

@@ -37,6 +37,7 @@ add_library(sablewasm
         src/mir/Unary.cc
         src/mir/Binary.cc
         src/mir/Vector.cc
+        src/mir/Cast.cc
         src/mir/BasicBlock.cc
         src/mir/InitializerExpr.cc
         src/mir/Module.cc
@@ -51,7 +52,8 @@ add_library(sablewasm
         src/codegen-llvm-instance/LLVMCodegen.cc
         src/codegen-llvm-instance/EntityLayout.cc
         src/codegen-llvm-instance/TranslationContext.cc
-        src/codegen-llvm-instance/TranslationVisitor.cc)
+        src/codegen-llvm-instance/TranslationVisitor.cc
+        src/codegen-llvm-instance/TranslationCasts.cc)
 target_link_libraries(sablewasm
         fmt::fmt
         mio::mio

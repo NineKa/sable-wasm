@@ -1,6 +1,7 @@
 #include "BasicBlock.h"
 #include "Binary.h"
 #include "Branch.h"
+#include "Cast.h"
 #include "Compare.h"
 #include "Function.h"
 #include "Instruction.h"

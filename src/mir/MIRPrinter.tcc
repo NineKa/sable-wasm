@@ -1,4 +1,5 @@
 #include "Vector.h"
+
 #include <range/v3/algorithm/for_each.hpp>
 
 namespace mir {
@@ -182,22 +183,6 @@ Iterator
 LocalNameWriter::write(Iterator Out, Instruction const *InstructionPtr) const {
   if (InstructionPtr == nullptr) { return fmt::format_to(Out, "{}", NULL_STR); }
   return write(Out, *InstructionPtr);
-}
-
-template <std::output_iterator<char> Iterator>
-char const *MIRIteratorWriter<Iterator>::toString(instructions::CastMode Mode) {
-  using MKind = instructions::CastMode;
-  // clang-format off
-  switch (Mode) {
-  case MKind::Conversion           : return "cast";
-  case MKind::ConversionSigned     : return "cast.s";
-  case MKind::ConversionUnsigned   : return "cast.u";
-  case MKind::SatConversionSigned  : return "cast.sat.s";
-  case MKind::SatConversionUnsigned: return "cast.sat.u";
-  case MKind::Reinterpret          : return "cast.bit";
-  default: utility::unreachable();
-  }
-  // clang-format on
 }
 
 template <std::output_iterator<char> Iterator>
@@ -628,17 +613,9 @@ public:
   }
 
   Iterator operator()(instructions::Cast const *Inst) {
-    auto Mode = Inst->getMode();
-    auto Type = Inst->getType();
+    auto CastOpcode = Inst->getCastOpcode();
     auto const *Operand = Inst->getOperand();
-    Writer << Inst << " = " << Mode << ' ' << Type << ' ' << Operand;
-    return Writer.iterator();
-  }
-
-  Iterator operator()(instructions::Extend const *Inst) {
-    auto Width = Inst->getFromWidth();
-    auto const *Operand = Inst->getOperand();
-    Writer << Inst << " = extend." << Width << ' ' << Operand;
+    Writer << Inst << " = cast " << CastOpcode << ' ' << ' ' << Operand;
     return Writer.iterator();
   }
 

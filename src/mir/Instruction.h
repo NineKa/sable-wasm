@@ -62,6 +62,11 @@ public:
 
   static Type BuildUnit();
   static Type BuildPrimitive(bytecode::ValueType Primitive);
+  static Type BuildPrimitiveI32();
+  static Type BuildPrimitiveI64();
+  static Type BuildPrimitiveF32();
+  static Type BuildPrimitiveF64();
+  static Type BuildPrimitiveV128();
   static Type BuildAggregate(std::span<bytecode::ValueType const> Aggregate);
   static Type BuildBottom();
 
@@ -111,20 +116,15 @@ enum class InstructionKind : std::uint8_t {
   Load,
   Store,
   Cast,
-  Extend,
   Pack,
   Unpack,
   Phi,
   MemoryGuard,
   MemorySize,
   MemoryGrow,
-  /* SIMD128 Extension */
   VectorSplat,
   VectorExtract,
   VectorInsert,
-
-  LaneExtend,
-  LaneNarrow,
 };
 
 class Instruction :
@@ -166,6 +166,7 @@ class Binary;        // See Binary.h
 class VectorSplat;   // See Vector.h
 class VectorExtract; // See Vector.h
 class VectorInsert;  // See Vector.h
+class Cast;          // See Cast.h
 
 ///////////////////////////////// Unreachable //////////////////////////////////
 class Unreachable : public Instruction {
@@ -512,60 +513,6 @@ public:
   static bool classof(ASTNode const *Node);
 };
 
-////////////////////////////////// Cast ////////////////////////////////////////
-enum class CastMode {
-  Conversion,
-  ConversionSigned,
-  ConversionUnsigned,
-  Reinterpret,
-  SatConversionSigned,
-  SatConversionUnsigned
-};
-
-class Cast : public Instruction {
-  CastMode Mode;
-  bytecode::ValueType Type;
-  Instruction *Operand;
-
-public:
-  Cast(CastMode Mode_, bytecode::ValueType Type_, Instruction *Operand_);
-  Cast(Cast const &) = delete;
-  Cast(Cast &&) noexcept = delete;
-  Cast &operator=(Cast const &) = delete;
-  Cast &operator=(Cast &&) noexcept = delete;
-  ~Cast() noexcept override;
-  CastMode getMode() const;
-  void setMode(CastMode Mode_);
-  bytecode::ValueType const &getType() const;
-  void setType(bytecode::ValueType const &Type_);
-  Instruction *getOperand() const;
-  void setOperand(Instruction *Operand_);
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
-///////////////////////////////// Extend ///////////////////////////////////////
-class Extend : public Instruction {
-  Instruction *Operand;
-  unsigned FromWidth;
-
-public:
-  Extend(Instruction *Operand_, unsigned FromWidth_);
-  Extend(Extend const &) = delete;
-  Extend(Extend &&) noexcept = delete;
-  Extend &operator=(Extend const &) = delete;
-  Extend &operator=(Extend &&) noexcept = delete;
-  ~Extend() noexcept override;
-  Instruction *getOperand() const;
-  void setOperand(Instruction *Operand_);
-  unsigned getFromWidth() const;
-  void setFromWidth(unsigned FromWidth_);
-  void replace(ASTNode const *Old, ASTNode *New) noexcept override;
-  static bool classof(Instruction const *Inst);
-  static bool classof(ASTNode const *Node);
-};
-
 ///////////////////////////////// Packed ///////////////////////////////////////
 class Pack : public Instruction {
   std::vector<Instruction *> Arguments;
@@ -671,7 +618,6 @@ public:
     case IKind::MemoryGrow   : return castAndCall<MemoryGrow>(Inst);
     case IKind::MemorySize   : return castAndCall<MemorySize>(Inst);
     case IKind::Cast         : return castAndCall<Cast>(Inst);
-    case IKind::Extend       : return castAndCall<Extend>(Inst);
     case IKind::Pack         : return castAndCall<Pack>(Inst);
     case IKind::Unpack       : return castAndCall<Unpack>(Inst);
     case IKind::Phi          : return castAndCall<Phi>(Inst);

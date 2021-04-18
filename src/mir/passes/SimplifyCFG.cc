@@ -70,7 +70,6 @@ bool isDroppableInstruction(Instruction const &Inst) {
   case InstructionKind::Load:
   case InstructionKind::MemorySize:
   case InstructionKind::Cast:
-  case InstructionKind::Extend:
   case InstructionKind::Pack:
   case InstructionKind::Unpack:
   case InstructionKind::Phi: return true;

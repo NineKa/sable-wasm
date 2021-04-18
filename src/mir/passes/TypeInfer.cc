@@ -1,6 +1,7 @@
 #include "TypeInfer.h"
 #include "../Binary.h"
 #include "../Branch.h"
+#include "../Cast.h"
 #include "../Compare.h"
 #include "../Unary.h"
 #include "../Vector.h"
@@ -162,13 +163,9 @@ public:
   }
 
   Type operator()(minsts::Cast const *Inst) {
-    return Type::BuildPrimitive(Inst->getType());
-  }
-
-  Type operator()(minsts::Extend const *Inst) {
-    auto const &OperandTy = getType(Inst->getOperand());
-    if (!OperandTy.isIntegral()) return Type::BuildBottom();
-    return OperandTy;
+    if (getType(Inst->getOperand()) != Inst->getCastFromType())
+      return Type::BuildBottom();
+    return Inst->getCastToType();
   }
 
   Type operator()(minsts::Pack const *Inst) {

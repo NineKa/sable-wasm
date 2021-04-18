@@ -6,6 +6,8 @@
 
 #include <vector>
 
+using namespace bytecode::valuetypes;
+
 namespace mir {
 class Type::AggregateStorage {
   std::vector<bytecode::ValueType> Members;
@@ -50,25 +52,24 @@ std::span<bytecode::ValueType const> Type::asAggregate() const {
   return std::get<std::shared_ptr<AggregateStorage>>(Storage)->asView();
 }
 
-bool Type::isPrimitiveI32() const {
-  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::I32);
-}
+// clang-format off
+bool Type::isPrimitiveI32() const 
+{ return isPrimitive() && (asPrimitive() == I32); }
+bool Type::isPrimitiveI64() const 
+{ return isPrimitive() && (asPrimitive() == I64); }
+bool Type::isPrimitiveF32() const 
+{ return isPrimitive() && (asPrimitive() == F32); }
+bool Type::isPrimitiveF64() const 
+{ return isPrimitive() && (asPrimitive() == F64); }
+bool Type::isPrimitiveV128() const 
+{ return isPrimitive() && (asPrimitive() == V128); }
+// clang-format on
 
-bool Type::isPrimitiveI64() const {
-  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::I64);
-}
-
-bool Type::isPrimitiveF32() const {
-  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::F32);
-}
-
-bool Type::isPrimitiveF64() const {
-  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::F64);
-}
-
-bool Type::isPrimitiveV128() const {
-  return isPrimitive() && (asPrimitive() == bytecode::valuetypes::V128);
-}
+Type Type::BuildPrimitiveI32() { return BuildPrimitive(I32); }
+Type Type::BuildPrimitiveI64() { return BuildPrimitive(I64); }
+Type Type::BuildPrimitiveF32() { return BuildPrimitive(F32); }
+Type Type::BuildPrimitiveF64() { return BuildPrimitive(F64); }
+Type Type::BuildPrimitiveV128() { return BuildPrimitive(V128); }
 
 bool Type::isIntegral() const { return isPrimitiveI32() || isPrimitiveI64(); }
 

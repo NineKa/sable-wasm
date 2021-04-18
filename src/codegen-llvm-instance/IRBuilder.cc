@@ -80,6 +80,21 @@ llvm::VectorType *IRBuilder::getV128Ty(mir::SIMD128FPLaneInfo const &LaneInfo) {
   return llvm::FixedVectorType::get(ElementTy, NumLane);
 }
 
+// clang-format off
+llvm::VectorType *IRBuilder::getV128I8x16() 
+{ return getV128Ty(mir::SIMD128IntLaneInfo(mir::SIMD128IntElementKind::I8)); }
+llvm::VectorType *IRBuilder::getV128I16x8()
+{ return getV128Ty(mir::SIMD128IntLaneInfo(mir::SIMD128IntElementKind::I16)); }
+llvm::VectorType *IRBuilder::getV128I32x4()
+{ return getV128Ty(mir::SIMD128IntLaneInfo(mir::SIMD128IntElementKind::I32)); }
+llvm::VectorType *IRBuilder::getV128I64x2()
+{ return getV128Ty(mir::SIMD128IntLaneInfo(mir::SIMD128IntElementKind::I64)); }
+llvm::VectorType *IRBuilder::getV128F32x4()
+{ return getV128Ty(mir::SIMD128FPLaneInfo(mir::SIMD128FPElementKind::F32)); }
+llvm::VectorType *IRBuilder::getV128F64x2()
+{ return getV128Ty(mir::SIMD128FPLaneInfo(mir::SIMD128FPElementKind::F64)); }
+// clang-format on
+
 llvm::Constant *IRBuilder::getV128(
     bytecode::V128Value const &Value, mir::SIMD128IntLaneInfo const &LaneInfo) {
   switch (LaneInfo.getElementKind()) {
@@ -269,6 +284,24 @@ llvm::Value *
 IRBuilder::CreateIntrinsicCopysign(llvm::Value *LHS, llvm::Value *RHS)
 { return CreateFPBinaryIntrinsic<copysign>(*this, LHS, RHS); }
 // clang-format on
+
+llvm::Value *
+IRBuilder::CreateIntrinsicFPTruncSatS(llvm::Value *Value, llvm::Type *ToType) {
+  assert(ToType->isIntegerTy());
+  assert(Value->getType()->isFloatingPointTy());
+  auto *Intrinsic = llvm::Intrinsic::getDeclaration(
+      EnclosingModule, llvm::Intrinsic::fptosi_sat, {ToType, Value->getType()});
+  return CreateCall(Intrinsic, {Value});
+}
+
+llvm::Value *
+IRBuilder::CreateIntrinsicFPTruncSatU(llvm::Value *Value, llvm::Type *ToType) {
+  assert(ToType->isIntegerTy());
+  assert(Value->getType()->isFloatingPointTy());
+  auto *Intrinsic = llvm::Intrinsic::getDeclaration(
+      EnclosingModule, llvm::Intrinsic::fptoui_sat, {ToType, Value->getType()});
+  return CreateCall(Intrinsic, {Value});
+}
 
 llvm::Value *IRBuilder::CreateIntrinsicFShl(
     llvm::Value *LHS, llvm::Value *RHS, llvm::Value *ShiftAmount) {

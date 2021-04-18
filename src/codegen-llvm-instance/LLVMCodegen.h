@@ -46,6 +46,12 @@ public:
 
   llvm::VectorType *getV128Ty(mir::SIMD128IntLaneInfo const &LaneInfo);
   llvm::VectorType *getV128Ty(mir::SIMD128FPLaneInfo const &LaneInfo);
+  llvm::VectorType *getV128I8x16();
+  llvm::VectorType *getV128I16x8();
+  llvm::VectorType *getV128I32x4();
+  llvm::VectorType *getV128I64x2();
+  llvm::VectorType *getV128F32x4();
+  llvm::VectorType *getV128F64x2();
 
   llvm::Constant *getV128(
       bytecode::V128Value const &Value,
@@ -77,6 +83,11 @@ public:
   llvm::Value *CreateIntrinsicSqrt(llvm::Value *Operand);
 
   llvm::Value *CreateIntrinsicCopysign(llvm::Value *LHS, llvm::Value *RHS);
+
+  llvm::Value *
+  CreateIntrinsicFPTruncSatS(llvm::Value *Value, llvm::Type *ToType);
+  llvm::Value *
+  CreateIntrinsicFPTruncSatU(llvm::Value *Value, llvm::Type *ToType);
 
   // clang-format off
   llvm::Value *CreateIntrinsicFShl

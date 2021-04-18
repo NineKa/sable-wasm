@@ -101,7 +101,7 @@ class SIMD128IntCompare : public Compare {
 public:
   SIMD128IntCompare(
       SIMD128IntCompareOperator Operator_, SIMD128IntLaneInfo LaneInfo_,
-      Instruction *LHS_, IntCompare *RHS_);
+      Instruction *LHS_, Instruction *RHS_);
   SIMD128IntCompare(SIMD128IntCompare const &) = delete;
   SIMD128IntCompare(SIMD128IntCompare &&) noexcept = delete;
   SIMD128IntCompare &operator=(SIMD128IntCompare const &) = delete;

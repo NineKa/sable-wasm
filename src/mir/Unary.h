@@ -111,7 +111,7 @@ public:
 
 // clang-format off
 enum class SIMD128IntUnaryOperator : std::uint8_t
-{ Neg, Abs, AllTrue, Bitmask };
+{ Neg, Abs, AllTrue, Bitmask, ExtAddPairwiseS, ExtAddPairwiseU };
 // clang-format on
 class SIMD128IntUnary : public Unary {
   SIMD128IntUnaryOperator Operator;

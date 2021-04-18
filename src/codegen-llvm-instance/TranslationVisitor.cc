@@ -371,6 +371,22 @@ TranslationVisitor::operator()(minsts::unary::SIMD128IntUnary const *Inst) {
     Result = Builder.CreateBitCast(Result, Builder.getIntNTy(NumLane));
     return Builder.CreateZExt(Result, Builder.getInt32Ty());
   }
+  case UnaryOperator::ExtAddPairwiseS: {
+    auto *ExtendTy = Builder.getV128Ty(Inst->getLaneInfo().widen());
+    auto *OddLane = Builder.CreateVectorSliceOdd(Operand);
+    auto *EvenLane = Builder.CreateVectorSliceEven(Operand);
+    OddLane = Builder.CreateSExt(OddLane, ExtendTy);
+    EvenLane = Builder.CreateSExt(EvenLane, ExtendTy);
+    return Builder.CreateAdd(OddLane, EvenLane);
+  }
+  case UnaryOperator::ExtAddPairwiseU: {
+    auto *ExtendTy = Builder.getV128Ty(Inst->getLaneInfo().widen());
+    auto *OddLane = Builder.CreateVectorSliceOdd(Operand);
+    auto *EvenLane = Builder.CreateVectorSliceEven(Operand);
+    OddLane = Builder.CreateZExt(OddLane, ExtendTy);
+    EvenLane = Builder.CreateZExt(EvenLane, ExtendTy);
+    return Builder.CreateAdd(OddLane, EvenLane);
+  }
   default: utility::unreachable();
   }
 }
@@ -529,16 +545,6 @@ TranslationVisitor::operator()(minsts::binary::SIMD128IntBinary const *Inst) {
     RHS = sliceThenExtend<SliceMode::High, false>(Builder, RHS, LaneInfo);
     return Builder.CreateMul(LHS, RHS);
   }
-  case BinaryOperator::ExtAddPairwiseS: {
-    LHS = sliceThenExtend<SliceMode::Odd, true>(Builder, LHS, LaneInfo);
-    RHS = sliceThenExtend<SliceMode::Even, true>(Builder, RHS, LaneInfo);
-    return Builder.CreateAdd(LHS, RHS);
-  }
-  case BinaryOperator::ExtAddPairwiseU: {
-    LHS = sliceThenExtend<SliceMode::Odd, false>(Builder, LHS, LaneInfo);
-    RHS = sliceThenExtend<SliceMode::Even, false>(Builder, RHS, LaneInfo);
-    return Builder.CreateAdd(LHS, RHS);
-  }
   case BinaryOperator::AddSatS: return Builder.CreateIntrinsicAddSatS(LHS, RHS);
   case BinaryOperator::AddSatU: return Builder.CreateIntrinsicAddSatU(LHS, RHS);
   case BinaryOperator::SubSatS: return Builder.CreateIntrinsicSubSatS(LHS, RHS);
@@ -626,17 +632,20 @@ llvm::Value *TranslationVisitor::operator()(minsts::Load const *Inst) {
   auto *MIRMemory = Inst->getLinearMemory();
   auto *Offset = Context[*Inst->getAddress()];
   auto *Address = getMemoryRWPtr(*MIRMemory, Offset);
-  llvm::Value *Result = nullptr;
-  if (Inst->getType().isF32() || Inst->getType().isF64()) {
+  switch (Inst->getType().getKind()) {
+  case bytecode::ValueTypeKind::F32:
+  case bytecode::ValueTypeKind::F64: {
     auto *LoadTy = Context.getLayout().convertType(Inst->getType());
     auto *LoadPtrTy = llvm::PointerType::getUnqual(LoadTy);
     Address = Builder.CreateIntToPtr(Address, LoadPtrTy);
     auto *LoadInst = Builder.CreateLoad(Address);
     if (!Context.getLayout().getTranslationOptions().AssumeMemRWAligned)
       LoadInst->setAlignment(llvm::Align(1));
-    Result = LoadInst;
-  } else {
-    assert(Inst->getType().isI32() || Inst->getType().isI64());
+    return LoadInst;
+    break;
+  }
+  case bytecode::ValueTypeKind::I32:
+  case bytecode::ValueTypeKind::I64: {
     auto *ExpectLoadTy = llvm::dyn_cast<llvm::IntegerType>(
         Context.getLayout().convertType(Inst->getType()));
     auto *LoadTy = llvm::IntegerType::get(
@@ -646,11 +655,25 @@ llvm::Value *TranslationVisitor::operator()(minsts::Load const *Inst) {
     auto *LoadInst = Builder.CreateLoad(Address);
     if (!Context.getLayout().getTranslationOptions().AssumeMemRWAligned)
       LoadInst->setAlignment(llvm::Align(1));
-    Result = LoadInst;
+    llvm::Value *Result = LoadInst;
     if (ExpectLoadTy != LoadTy)
       Result = Builder.CreateZExt(Result, ExpectLoadTy);
+    return Result;
   }
-  return Result;
+  case bytecode::ValueTypeKind::V128: {
+    auto *LoadTy = Builder.getIntNTy(Inst->getLoadWidth());
+    auto *LoadPtrTy = llvm::PointerType::getUnqual(LoadTy);
+    Address = Builder.CreateIntToPtr(Address, LoadPtrTy);
+    auto *LoadInst = Builder.CreateLoad(Address);
+    if (!Context.getLayout().getTranslationOptions().AssumeMemRWAligned)
+      LoadInst->setAlignment(llvm::Align(1));
+    llvm::Value *Result = LoadInst;
+    if (Inst->getLoadWidth() != 128)
+      Result = Builder.CreateZExt(Result, Builder.getInt128Ty());
+    return Result;
+  }
+  default: utility::unreachable();
+  }
 }
 
 llvm::Value *TranslationVisitor::operator()(minsts::Store const *Inst) {
@@ -660,8 +683,15 @@ llvm::Value *TranslationVisitor::operator()(minsts::Store const *Inst) {
     auto *CastedTy = llvm::dyn_cast<llvm::IntegerType>(Value->getType());
     assert(Inst->getStoreWidth() <= CastedTy->getIntegerBitWidth());
     if (Inst->getStoreWidth() < CastedTy->getIntegerBitWidth()) {
-      auto *TruncatedTy = llvm::IntegerType::getIntNTy(
-          Context.getTarget().getContext(), Inst->getStoreWidth());
+      auto *TruncatedTy = Builder.getIntNTy(Inst->getStoreWidth());
+      Value = Builder.CreateTrunc(Value, TruncatedTy);
+    }
+  }
+  if (Context.getInferredType()[*Inst->getOperand()].isPrimitiveV128()) {
+    if (Value->getType() != Builder.getInt128Ty())
+      Value = Builder.CreateBitCast(Value, Builder.getInt128Ty());
+    if (Inst->getStoreWidth() < 128) {
+      auto *TruncatedTy = Builder.getIntNTy(Inst->getStoreWidth());
       Value = Builder.CreateTrunc(Value, TruncatedTy);
     }
   }
@@ -848,6 +878,20 @@ llvm::Value *TranslationVisitor::operator()(
 
 llvm::Value *TranslationVisitor::operator()(minsts::VectorInsert const *Inst) {
   return VectorInsertVisitorBase::visit(Inst);
+}
+
+llvm::Value *
+TranslationVisitor::operator()(minsts::SIMD128ShuffleByte const *Inst) {
+  std::array<llvm::Constant *, 16> ShuffleMask;
+  for (auto [Index, MaskIndex] : ranges::views::enumerate(Inst->getMask()))
+    ShuffleMask[Index] = Builder.getInt32(MaskIndex);
+  auto *Low = Context[*Inst->getLow()];
+  auto *High = Context[*Inst->getHigh()];
+  auto *I8x16Ty = Builder.getV128I8x16();
+  if (Low->getType() != I8x16Ty) Low = Builder.CreateBitCast(Low, I8x16Ty);
+  if (High->getType() != I8x16Ty) High = Builder.CreateBitCast(High, I8x16Ty);
+  return Builder.CreateShuffleVector(
+      Low, High, llvm::ConstantVector::get(ShuffleMask));
 }
 
 llvm::Value *TranslationVisitor::visit(mir::Instruction const *Inst) {

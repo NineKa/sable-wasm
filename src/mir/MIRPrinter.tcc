@@ -615,7 +615,7 @@ public:
   Iterator operator()(instructions::Cast const *Inst) {
     auto CastOpcode = Inst->getCastOpcode();
     auto const *Operand = Inst->getOperand();
-    Writer << Inst << " = cast " << CastOpcode << ' ' << ' ' << Operand;
+    Writer << Inst << " = cast " << CastOpcode << ' ' << Operand;
     return Writer.iterator();
   }
 
@@ -682,7 +682,7 @@ public:
 
   Iterator
   operator()(instructions::vector_insert::SIMD128IntInsert const *Inst) {
-    Writer << Inst << " = v128.int.insert" << Inst->getLaneInfo() << ' '
+    Writer << Inst << " = v128.int.insert " << Inst->getLaneInfo() << ' '
            << Inst->getLaneIndex() << ' ' << Inst->getTargetVector() << ' '
            << Inst->getCandidateValue();
     return Writer.iterator();
@@ -690,7 +690,7 @@ public:
 
   Iterator
   operator()(instructions::vector_insert::SIMD128FPInsert const *Inst) {
-    Writer << Inst << " = v128.fp.insert" << Inst->getLaneInfo() << ' '
+    Writer << Inst << " = v128.fp.insert " << Inst->getLaneInfo() << ' '
            << Inst->getLaneIndex() << ' ' << Inst->getTargetVector() << ' '
            << Inst->getCandidateValue();
     return Writer.iterator();
@@ -701,6 +701,19 @@ public:
     using VectorInsertVisitor =
         VectorInsertVisitorBase<WriterInstructionVisitor<Iterator>, Iterator>;
     return VectorInsertVisitor::visit(Inst);
+  }
+
+  Iterator operator()(instructions::SIMD128ShuffleByte const *Inst) {
+    Writer << Inst << " = v128.shuffle.byte " << Inst->getLow() << ' '
+           << Inst->getHigh() << " [";
+    auto Mask = Inst->getMask();
+    char const *Separator = "";
+    for (unsigned I = 0; I < 16; ++I) {
+      Writer << Separator << Mask[I];
+      Separator = ", ";
+    }
+    Writer << ']';
+    return Writer.iterator();
   }
 };
 } // namespace detail

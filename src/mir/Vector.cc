@@ -2,6 +2,8 @@
 #include "ASTNode.h"
 #include "Instruction.h"
 
+#include <range/v3/algorithm/copy.hpp>
+
 namespace mir::instructions {
 VectorSplat::VectorSplat(VectorSplatKind Kind_, mir::Instruction *Operand_)
     : Instruction(InstructionKind::VectorSplat), Kind(Kind_), Operand() {
@@ -134,6 +136,7 @@ mir::Instruction *VectorExtract::getOperand() const { return Operand; }
 void VectorExtract::setOperand(mir::Instruction *Operand_) {
   if (Operand != nullptr) Operand->remove_use(this);
   if (Operand_ != nullptr) Operand_->add_use(this);
+  Operand = Operand_;
 }
 
 unsigned VectorExtract::getLaneIndex() const { return LaneIndex; }
@@ -351,3 +354,58 @@ bool SIMD128FPInsert::classof(ASTNode const *Node) {
   return false;
 }
 } // namespace mir::instructions::vector_insert
+
+namespace mir::instructions {
+SIMD128ShuffleByte::SIMD128ShuffleByte(
+    mir::Instruction *Low_, mir::Instruction *High_,
+    std::span<unsigned const, 16> Mask_)
+    : Instruction(InstructionKind::SIMD128ShuffleByte), Low(), High(), Mask() {
+  setLow(Low_);
+  setHigh(High_);
+  ranges::copy(Mask_.begin(), Mask_.end(), Mask.begin());
+}
+
+SIMD128ShuffleByte::~SIMD128ShuffleByte() noexcept {
+  if (Low != nullptr) Low->remove_use(this);
+  if (High != nullptr) High->remove_use(this);
+}
+
+mir::Instruction *SIMD128ShuffleByte::getLow() const { return Low; }
+mir::Instruction *SIMD128ShuffleByte::getHigh() const { return High; }
+
+void SIMD128ShuffleByte::setLow(mir::Instruction *Low_) {
+  if (Low != nullptr) Low->remove_use(this);
+  if (Low_ != nullptr) Low_->add_use(this);
+  Low = Low_;
+}
+
+void SIMD128ShuffleByte::setHigh(mir::Instruction *High_) {
+  if (High != nullptr) High->remove_use(this);
+  if (High_ != nullptr) High_->add_use(this);
+  High = High_;
+}
+
+std::span<unsigned const, 16> SIMD128ShuffleByte::getMask() const {
+  return Mask;
+}
+
+void SIMD128ShuffleByte::setMask(std::span<const unsigned int, 16> Mask_) {
+  ranges::copy(Mask_.begin(), Mask_.end(), Mask.begin());
+}
+
+void SIMD128ShuffleByte::replace(
+    mir::ASTNode const *Old, ASTNode *New) noexcept {
+  if (getLow() == Old) setLow(dyn_cast<Instruction>(New));
+  if (getHigh() == Old) setHigh(dyn_cast<Instruction>(New));
+}
+
+bool SIMD128ShuffleByte::classof(mir::Instruction const *Inst) {
+  return Inst->getInstructionKind() == InstructionKind::SIMD128ShuffleByte;
+}
+
+bool SIMD128ShuffleByte::classof(mir::ASTNode const *Node) {
+  if (Instruction::classof(Node))
+    return SIMD128ShuffleByte::classof(dyn_cast<Instruction>(Node));
+  return false;
+}
+} // namespace mir::instructions

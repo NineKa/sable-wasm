@@ -226,6 +226,33 @@ public:
 };
 } // namespace vector_insert
 
+class SIMD128ShuffleByte : public Instruction {
+  mir::Instruction *Low;
+  mir::Instruction *High;
+  std::array<unsigned, 16> Mask;
+
+public:
+  SIMD128ShuffleByte(
+      mir::Instruction *Low_, mir::Instruction *High_,
+      std::span<unsigned const, 16> Mask_);
+  SIMD128ShuffleByte(SIMD128ShuffleByte const &) = delete;
+  SIMD128ShuffleByte(SIMD128ShuffleByte &&) noexcept = delete;
+  SIMD128ShuffleByte &operator=(SIMD128ShuffleByte const &) = delete;
+  SIMD128ShuffleByte &operator=(SIMD128ShuffleByte &&) noexcept = delete;
+  ~SIMD128ShuffleByte() noexcept override;
+
+  mir::Instruction *getLow() const;
+  void setLow(mir::Instruction *Low_);
+  mir::Instruction *getHigh() const;
+  void setHigh(mir::Instruction *High_);
+  std::span<unsigned const, 16> getMask() const;
+  void setMask(std::span<unsigned const, 16> Mask_);
+
+  void replace(mir::ASTNode const *Old, ASTNode *New) noexcept override;
+  static bool classof(mir::Instruction const *Inst);
+  static bool classof(mir::ASTNode const *Node);
+};
+
 template <typename Derived, typename RetType = void, bool Const = true>
 class VectorSplatVisitorBase {
   Derived &derived() { return static_cast<Derived &>(*this); }

@@ -201,10 +201,12 @@ formatter<mir::instructions::unary::SIMD128IntUnaryOperator>::toString(
     UnaryOperator const &Operator) {
   // clang-format off
   switch (Operator) {
-  case UnaryOperator::Neg    : return "v128.int.neg";
-  case UnaryOperator::Abs    : return "v128.int.abs";
-  case UnaryOperator::AllTrue: return "v128.int.alltrue";
-  case UnaryOperator::Bitmask: return "v128.int.bitmask";
+  case UnaryOperator::Neg            : return "v128.int.neg";
+  case UnaryOperator::Abs            : return "v128.int.abs";
+  case UnaryOperator::AllTrue        : return "v128.int.alltrue";
+  case UnaryOperator::Bitmask        : return "v128.int.bitmask";
+  case UnaryOperator::ExtAddPairwiseS: return "v128.int.ext.add.pairwise.s";
+  case UnaryOperator::ExtAddPairwiseU: return "v128.int.ext.add.pairwise.u";
   default: utility::unreachable();
   }
   // clang-format on

@@ -68,9 +68,7 @@ add_library(sablewasm-rt SHARED
         src/codegen-llvm-instance/WebAssemblyGlobal.cc
         src/codegen-llvm-instance/WebAssemblyTable.cc
         src/codegen-llvm-instance/WebAssemblyInstance.cc)
-target_link_libraries(sablewasm-rt fmt::fmt-header-only range-v3)
-target_link_options(sablewasm-rt PRIVATE "-ldl")
-target_link_options(sablewasm-rt PRIVATE "-rdynamic")
+target_link_libraries(sablewasm-rt fmt::fmt-header-only range-v3 dl)
 
 add_executable(sable-wasm src/sable-wasm.cc)
 target_link_libraries(sable-wasm sablewasm cxxopts)

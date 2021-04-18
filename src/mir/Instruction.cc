@@ -160,6 +160,17 @@ SIMD128IntLaneInfo SIMD128IntLaneInfo::narrow() const {
   }
 }
 
+// clang-format off
+SIMD128IntLaneInfo SIMD128IntLaneInfo::getI8x16() 
+{ return SIMD128IntLaneInfo(SIMD128IntElementKind::I8); }
+SIMD128IntLaneInfo SIMD128IntLaneInfo::getI16x8()
+{ return SIMD128IntLaneInfo(SIMD128IntElementKind::I16); }
+SIMD128IntLaneInfo SIMD128IntLaneInfo::getI32x4()
+{ return SIMD128IntLaneInfo(SIMD128IntElementKind::I32); }
+SIMD128IntLaneInfo SIMD128IntLaneInfo::getI64x2()
+{ return SIMD128IntLaneInfo(SIMD128IntElementKind::I64); }
+// clang-format on
+
 SIMD128FPLaneInfo::SIMD128FPLaneInfo(SIMD128FPElementKind ElementKind_)
     : ElementKind(ElementKind_) {}
 
@@ -192,6 +203,13 @@ SIMD128IntLaneInfo SIMD128FPLaneInfo::getCmpResultLaneInfo() const {
   default: utility::unreachable();
   }
 }
+
+// clang-format off
+SIMD128FPLaneInfo SIMD128FPLaneInfo::getF32x4() 
+{ return SIMD128FPLaneInfo(SIMD128FPElementKind::F32); }
+SIMD128FPLaneInfo SIMD128FPLaneInfo::getF64x2()
+{ return SIMD128FPLaneInfo(SIMD128FPElementKind::F64); }
+// clang-format on
 
 bool Instruction::isPhi() const { return instructions::Phi::classof(this); }
 

@@ -104,6 +104,8 @@ public:
   SABLE_ON(vector_insert::SIMD128IntInsert)
   SABLE_ON(vector_insert::SIMD128FPInsert)
   SABLE_ON(VectorInsert)
+
+  SABLE_ON(SIMD128ShuffleByte)
 #undef SABLE_ON
 
   llvm::Value *visit(mir::Instruction const *Instruction);

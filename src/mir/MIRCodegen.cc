@@ -4,10 +4,12 @@
 #include "Cast.h"
 #include "Compare.h"
 #include "Unary.h"
+#include "Vector.h"
 
 #include "passes/Pass.h"
 #include "passes/SimplifyCFG.h"
 
+#include <range/v3/view/enumerate.hpp>
 #include <range/v3/view/transform.hpp>
 
 namespace mir::bytecode_codegen {
@@ -695,20 +697,16 @@ public:
 #undef CONSTANT
 
   void operator()(binsts::I32Eqz const *) {
-    auto *Zero =
-        CurrentBasicBlock->BuildInst<minsts::Constant>(std::int32_t(0));
     auto *Operand = values().pop();
-    auto *Result = CurrentBasicBlock->BuildInst<minsts::compare::IntCompare>(
-        minsts::compare::IntCompareOperator::Eq, Operand, Zero);
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::unary::IntUnary>(
+        minsts::unary::IntUnaryOperator::Eqz, Operand);
     values().push(Result);
   }
 
   void operator()(binsts::I64Eqz const *) {
-    auto *Zero =
-        CurrentBasicBlock->BuildInst<minsts::Constant>(std::int64_t(0));
     auto *Operand = values().pop();
-    auto *Result = CurrentBasicBlock->BuildInst<minsts::compare::IntCompare>(
-        minsts::compare::IntCompareOperator::Eq, Operand, Zero);
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::unary::IntUnary>(
+        minsts::unary::IntUnaryOperator::Eqz, Operand);
     values().push(Result);
   }
 
@@ -950,6 +948,513 @@ public:
   EXTEND(binsts::I64Extend32S  , I64Extend32S)
   // clang-format on
 #undef EXTEND
+
+  auto asI8x16() { return mir::SIMD128IntLaneInfo::getI8x16(); }
+  auto asI16x8() { return mir::SIMD128IntLaneInfo::getI16x8(); }
+  auto asI32x4() { return mir::SIMD128IntLaneInfo::getI32x4(); }
+  auto asI64x2() { return mir::SIMD128IntLaneInfo::getI64x2(); }
+  auto asF32x4() { return mir::SIMD128FPLaneInfo::getF32x4(); }
+  auto asF64x2() { return mir::SIMD128FPLaneInfo::getF64x2(); }
+
+  void operator()(binsts::V128Const const *Inst) {
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::Constant>(Inst->Value);
+    values().push(Result);
+  }
+
+  void operator()(binsts::I8x16Shuffle const *Inst) {
+    std::array<unsigned, 16> ShuffleIndices;
+    for (auto [Index, ShuffleIndex] : ranges::views::enumerate(Inst->Indices))
+      ShuffleIndices[Index] = static_cast<unsigned>(ShuffleIndex);
+    auto *High = values().pop();
+    auto *Low = values().pop();
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::SIMD128ShuffleByte>(
+        Low, High, ShuffleIndices);
+    values().push(Result);
+  }
+
+#define SIMD128_UNARY(BYTECODE_INST, OPERATOR)                                 \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    auto *Operand = values().pop();                                            \
+    using UnaryOperator = minsts::unary::SIMD128UnaryOperator;                 \
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::unary::SIMD128Unary>(  \
+        UnaryOperator::OPERATOR, Operand);                                     \
+    values().push(Result);                                                     \
+  }
+  SIMD128_UNARY(V128Not, Not)
+  SIMD128_UNARY(V128AnyTrue, AnyTrue)
+#undef SIMD128_UNARY
+
+#define SIMD128_BINARY(BYTECODE_INST, OPERATOR)                                \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    auto *RHS = values().pop();                                                \
+    auto *LHS = values().pop();                                                \
+    using BinaryOperator = minsts::binary::SIMD128BinaryOperator;              \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::binary::SIMD128Binary>(           \
+            BinaryOperator::OPERATOR, LHS, RHS);                               \
+    values().push(Result);                                                     \
+  }
+  SIMD128_BINARY(V128And, And)
+  SIMD128_BINARY(V128Or, Or)
+  SIMD128_BINARY(V128Xor, Xor)
+  SIMD128_BINARY(V128AndNot, AndNot)
+#undef SIMD128_BINARY
+
+#define SIMD128_INT_UNARY(BYTECODE_INST, OPERATOR, LANE_INFO)                  \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    using UnaryOperator = minsts::unary::SIMD128IntUnaryOperator;              \
+    auto *Operand = values().pop();                                            \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::unary::SIMD128IntUnary>(          \
+            UnaryOperator::OPERATOR, LANE_INFO, Operand);                      \
+    values().push(Result);                                                     \
+  }
+  SIMD128_INT_UNARY(I8x16Neg, Neg, asI8x16())
+  SIMD128_INT_UNARY(I16x8Neg, Neg, asI16x8())
+  SIMD128_INT_UNARY(I32x4Neg, Neg, asI32x4())
+  SIMD128_INT_UNARY(I64x2Neg, Neg, asI64x2())
+  SIMD128_INT_UNARY(I16x8ExtAddPairwiseI8x16S, ExtAddPairwiseS, asI8x16())
+  SIMD128_INT_UNARY(I16x8ExtAddPairwiseI8x16U, ExtAddPairwiseU, asI8x16())
+  SIMD128_INT_UNARY(I32x4ExtAddPairwiseI16x8S, ExtAddPairwiseS, asI16x8())
+  SIMD128_INT_UNARY(I32x4ExtAddPairwiseI16x8U, ExtAddPairwiseU, asI16x8())
+  SIMD128_INT_UNARY(I8x16Abs, Abs, asI8x16())
+  SIMD128_INT_UNARY(I16x8Abs, Abs, asI16x8())
+  SIMD128_INT_UNARY(I32x4Abs, Abs, asI32x4())
+  SIMD128_INT_UNARY(I64x2Abs, Abs, asI64x2())
+  SIMD128_INT_UNARY(I8x16AllTrue, AllTrue, asI8x16())
+  SIMD128_INT_UNARY(I16x8AllTrue, AllTrue, asI16x8())
+  SIMD128_INT_UNARY(I32x4AllTrue, AllTrue, asI32x4())
+  SIMD128_INT_UNARY(I64x2AllTrue, AllTrue, asI64x2())
+  SIMD128_INT_UNARY(I8x16Bitmask, Bitmask, asI8x16())
+  SIMD128_INT_UNARY(I16x8Bitmask, Bitmask, asI16x8())
+  SIMD128_INT_UNARY(I32x4Bitmask, Bitmask, asI32x4())
+  SIMD128_INT_UNARY(I64x2Bitmask, Bitmask, asI64x2())
+#undef SIMD128_INT_UNARY
+
+#define SIMD128_INT_BINARY(BYTECODE_INST, OPERATOR, LANE_INFO)                 \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    using BinaryOperator = minsts::binary::SIMD128IntBinaryOperator;           \
+    auto *RHS = values().pop();                                                \
+    auto *LHS = values().pop();                                                \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::binary::SIMD128IntBinary>(        \
+            BinaryOperator::OPERATOR, LANE_INFO, LHS, RHS);                    \
+    values().push(Result);                                                     \
+  }
+  SIMD128_INT_BINARY(I8x16Add, Add, asI8x16())
+  SIMD128_INT_BINARY(I16x8Add, Add, asI16x8())
+  SIMD128_INT_BINARY(I32x4Add, Add, asI32x4())
+  SIMD128_INT_BINARY(I64x2Add, Add, asI64x2())
+  SIMD128_INT_BINARY(I8x16Sub, Sub, asI8x16())
+  SIMD128_INT_BINARY(I16x8Sub, Sub, asI16x8())
+  SIMD128_INT_BINARY(I32x4Sub, Sub, asI32x4())
+  SIMD128_INT_BINARY(I64x2Sub, Sub, asI64x2())
+  SIMD128_INT_BINARY(I16x8Mul, Mul, asI16x8())
+  SIMD128_INT_BINARY(I32x4Mul, Mul, asI32x4())
+  SIMD128_INT_BINARY(I64x2Mul, Mul, asI64x2())
+  // clang-format off
+  SIMD128_INT_BINARY(I16x8ExtMulLowI8x16S , ExtMulLowS , asI8x16())
+  SIMD128_INT_BINARY(I16x8ExtMulHighI8x16S, ExtMulHighS, asI8x16())
+  SIMD128_INT_BINARY(I16x8ExtMulLowI8x16U , ExtMulLowU , asI8x16())
+  SIMD128_INT_BINARY(I16x8ExtMulHighI8x16U, ExtMulHighU, asI8x16())
+  SIMD128_INT_BINARY(I32x4ExtMulLowI16x8S , ExtMulLowS , asI16x8())
+  SIMD128_INT_BINARY(I32x4ExtMulHighI16x8S, ExtMulHighS, asI16x8())
+  SIMD128_INT_BINARY(I32x4ExtMulLowI16x8U , ExtMulLowU , asI16x8())
+  SIMD128_INT_BINARY(I32x4ExtMulHighI16x8U, ExtMulHighU, asI16x8())
+  SIMD128_INT_BINARY(I64x2ExtMulLowI32x4S , ExtMulLowS , asI32x4())
+  SIMD128_INT_BINARY(I64x2ExtMulHighI32x4S, ExtMulHighS, asI32x4())
+  SIMD128_INT_BINARY(I64x2ExtMulLowI32x4U , ExtMulLowU , asI32x4())
+  SIMD128_INT_BINARY(I64x2ExtMulHighI32x4U, ExtMulHighU, asI32x4())
+  // clang-format on
+  SIMD128_INT_BINARY(I8x16AddSatS, AddSatS, asI8x16())
+  SIMD128_INT_BINARY(I8x16AddSatU, AddSatU, asI8x16())
+  SIMD128_INT_BINARY(I16x8AddSatS, AddSatS, asI16x8())
+  SIMD128_INT_BINARY(I16x8AddSatU, AddSatU, asI16x8())
+  SIMD128_INT_BINARY(I8x16SubSatS, SubSatS, asI8x16())
+  SIMD128_INT_BINARY(I8x16SubSatU, SubSatU, asI8x16())
+  SIMD128_INT_BINARY(I16x8SubSatS, SubSatS, asI16x8())
+  SIMD128_INT_BINARY(I16x8SubSatU, SubSatU, asI16x8())
+
+  SIMD128_INT_BINARY(I8x16MinS, MinS, asI8x16())
+  SIMD128_INT_BINARY(I8x16MinU, MinU, asI8x16())
+  SIMD128_INT_BINARY(I16x8MinS, MinS, asI16x8())
+  SIMD128_INT_BINARY(I16x8MinU, MinU, asI16x8())
+  SIMD128_INT_BINARY(I32x4MinS, MinS, asI32x4())
+  SIMD128_INT_BINARY(I32x4MinU, MinU, asI32x4())
+
+  SIMD128_INT_BINARY(I8x16MaxS, MaxS, asI8x16())
+  SIMD128_INT_BINARY(I8x16MaxU, MaxU, asI8x16())
+  SIMD128_INT_BINARY(I16x8MaxS, MaxS, asI16x8())
+  SIMD128_INT_BINARY(I16x8MaxU, MaxU, asI16x8())
+  SIMD128_INT_BINARY(I32x4MaxS, MaxS, asI32x4())
+  SIMD128_INT_BINARY(I32x4MaxU, MaxU, asI32x4())
+
+  SIMD128_INT_BINARY(I8x16Shl, Shl, asI8x16())
+  SIMD128_INT_BINARY(I16x8Shl, Shl, asI16x8())
+  SIMD128_INT_BINARY(I32x4Shl, Shl, asI32x4())
+  SIMD128_INT_BINARY(I64x2Shl, Shl, asI64x2())
+
+  SIMD128_INT_BINARY(I8x16ShrS, ShrS, asI8x16())
+  SIMD128_INT_BINARY(I8x16ShrU, ShrU, asI8x16())
+  SIMD128_INT_BINARY(I16x8ShrS, ShrS, asI16x8())
+  SIMD128_INT_BINARY(I16x8ShrU, ShrU, asI16x8())
+  SIMD128_INT_BINARY(I32x4ShrS, ShrS, asI32x4())
+  SIMD128_INT_BINARY(I32x4ShrU, ShrU, asI32x4())
+  SIMD128_INT_BINARY(I64x2ShrS, ShrS, asI64x2())
+  SIMD128_INT_BINARY(I64x2ShrU, ShrU, asI64x2())
+#undef SIMD128_INT_BINARY
+
+#define SIMD128_INT_COMPARE(BYTECODE_INST, OPERATOR, LANE_INFO)                \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    using ComareOperator = minsts::compare::SIMD128IntCompareOperator;         \
+    auto *RHS = values().pop();                                                \
+    auto *LHS = values().pop();                                                \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::compare::SIMD128IntCompare>(      \
+            ComareOperator::OPERATOR, LANE_INFO, LHS, RHS);                    \
+    values().push(Result);                                                     \
+  }
+  SIMD128_INT_COMPARE(I8x16Eq, Eq, asI8x16())
+  SIMD128_INT_COMPARE(I16x8Eq, Eq, asI16x8())
+  SIMD128_INT_COMPARE(I32x4Eq, Eq, asI32x4())
+  SIMD128_INT_COMPARE(I64x2Eq, Eq, asI64x2())
+  SIMD128_INT_COMPARE(I8x16Ne, Ne, asI8x16())
+  SIMD128_INT_COMPARE(I16x8Ne, Ne, asI16x8())
+  SIMD128_INT_COMPARE(I32x4Ne, Ne, asI32x4())
+  SIMD128_INT_COMPARE(I64x2Ne, Ne, asI64x2())
+  SIMD128_INT_COMPARE(I8x16LtS, LtS, asI8x16())
+  SIMD128_INT_COMPARE(I8x16LtU, LtU, asI8x16())
+  SIMD128_INT_COMPARE(I16x8LtS, LtS, asI16x8())
+  SIMD128_INT_COMPARE(I16x8LtU, LtU, asI16x8())
+  SIMD128_INT_COMPARE(I32x4LtS, LtS, asI32x4())
+  SIMD128_INT_COMPARE(I32x4LtU, LtU, asI32x4())
+  SIMD128_INT_COMPARE(I64x2LtS, LtS, asI64x2())
+  SIMD128_INT_COMPARE(I8x16LeS, LeS, asI8x16())
+  SIMD128_INT_COMPARE(I8x16LeU, LeU, asI8x16())
+  SIMD128_INT_COMPARE(I16x8LeS, LeS, asI16x8())
+  SIMD128_INT_COMPARE(I16x8LeU, LeU, asI16x8())
+  SIMD128_INT_COMPARE(I32x4LeS, LeS, asI32x4())
+  SIMD128_INT_COMPARE(I32x4LeU, LeU, asI32x4())
+  SIMD128_INT_COMPARE(I64x2LeS, LeS, asI64x2())
+  SIMD128_INT_COMPARE(I8x16GtS, GtS, asI8x16())
+  SIMD128_INT_COMPARE(I8x16GtU, GtU, asI8x16())
+  SIMD128_INT_COMPARE(I16x8GtS, GtS, asI16x8())
+  SIMD128_INT_COMPARE(I16x8GtU, GtU, asI16x8())
+  SIMD128_INT_COMPARE(I32x4GtS, GtS, asI32x4())
+  SIMD128_INT_COMPARE(I32x4GtU, GtU, asI32x4())
+  SIMD128_INT_COMPARE(I64x2GtS, GtS, asI64x2())
+  SIMD128_INT_COMPARE(I8x16GeS, GeS, asI8x16())
+  SIMD128_INT_COMPARE(I8x16GeU, GeU, asI8x16())
+  SIMD128_INT_COMPARE(I16x8GeS, GeS, asI16x8())
+  SIMD128_INT_COMPARE(I16x8GeU, GeU, asI16x8())
+  SIMD128_INT_COMPARE(I32x4GeS, GeS, asI32x4())
+  SIMD128_INT_COMPARE(I32x4GeU, GeU, asI32x4())
+  SIMD128_INT_COMPARE(I64x2GeS, GeS, asI64x2())
+#undef SIMD128_INT_COMPARE
+
+#define SIMD128_FP_UNARY(BYTECODE_INST, OPERATOR, LANE_INFO)                   \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    using UnaryOperator = minsts::unary::SIMD128FPUnaryOperator;               \
+    auto *Operand = values().pop();                                            \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::unary::SIMD128FPUnary>(           \
+            UnaryOperator::OPERATOR, LANE_INFO, Operand);                      \
+    values().push(Result);                                                     \
+  }
+  // clang-format off
+  SIMD128_FP_UNARY(F32x4Neg    , Neg    , asF32x4())
+  SIMD128_FP_UNARY(F64x2Neg    , Neg    , asF64x2())
+  SIMD128_FP_UNARY(F32x4Abs    , Abs    , asF32x4())
+  SIMD128_FP_UNARY(F64x2Abs    , Abs    , asF64x2())
+  SIMD128_FP_UNARY(F32x4Sqrt   , Sqrt   , asF32x4())
+  SIMD128_FP_UNARY(F64x2Sqrt   , Sqrt   , asF64x2())
+  SIMD128_FP_UNARY(F32x4Ceil   , Ceil   , asF32x4())
+  SIMD128_FP_UNARY(F64x2Ceil   , Ceil   , asF64x2())
+  SIMD128_FP_UNARY(F32x4Floor  , Floor  , asF32x4())
+  SIMD128_FP_UNARY(F64x2Floor  , Floor  , asF64x2())
+  SIMD128_FP_UNARY(F32x4Trunc  , Trunc  , asF32x4())
+  SIMD128_FP_UNARY(F64x2Trunc  , Trunc  , asF64x2())
+  SIMD128_FP_UNARY(F32x4Nearest, Nearest, asF32x4())
+  SIMD128_FP_UNARY(F64x2Nearest, Nearest, asF64x2())
+  // clang-format on
+#undef SIMD128_FP_UNARY
+
+#define SIMD128_FP_BINARY(BYTECODE_INST, BINARY_OPERATOR, ELEMENT_KIND)        \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    auto *RHS = values().pop();                                                \
+    auto *LHS = values().pop();                                                \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::binary::SIMD128FPBinary>(         \
+            minsts::binary::SIMD128FPBinaryOperator::BINARY_OPERATOR,          \
+            mir::SIMD128FPLaneInfo(mir::SIMD128FPElementKind::ELEMENT_KIND),   \
+            LHS, RHS);                                                         \
+    values().push(Result);                                                     \
+  }
+  SIMD128_FP_BINARY(F32x4Add, Add, F32)
+  SIMD128_FP_BINARY(F64x2Add, Add, F64)
+  SIMD128_FP_BINARY(F32x4Sub, Sub, F32)
+  SIMD128_FP_BINARY(F64x2Sub, Sub, F64)
+  SIMD128_FP_BINARY(F32x4Div, Div, F32)
+  SIMD128_FP_BINARY(F64x2Div, Div, F64)
+  SIMD128_FP_BINARY(F32x4Mul, Mul, F32)
+  SIMD128_FP_BINARY(F64x2Mul, Mul, F64)
+  SIMD128_FP_BINARY(F32x4Min, Min, F32)
+  SIMD128_FP_BINARY(F64x2Min, Min, F64)
+  SIMD128_FP_BINARY(F32x4Max, Max, F32)
+  SIMD128_FP_BINARY(F64x2Max, Max, F64)
+  SIMD128_FP_BINARY(F32x4PMin, PMin, F32)
+  SIMD128_FP_BINARY(F64x2PMin, PMin, F64)
+  SIMD128_FP_BINARY(F32x4PMax, PMax, F32)
+  SIMD128_FP_BINARY(F64x2PMax, PMax, F64)
+#undef SIMD128_FP_BINARY
+
+#define SIMD128_FP_COMPARE(BYTECODE_INST, OPERATOR, LANE_INFO)                 \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    using ComareOperator = minsts::compare::SIMD128FPCompareOperator;          \
+    auto *RHS = values().pop();                                                \
+    auto *LHS = values().pop();                                                \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::compare::SIMD128FPCompare>(       \
+            ComareOperator::OPERATOR, LANE_INFO, LHS, RHS);                    \
+    values().push(Result);                                                     \
+  }
+  SIMD128_FP_COMPARE(F32x4Eq, Eq, asF32x4())
+  SIMD128_FP_COMPARE(F64x2Eq, Eq, asF64x2())
+  SIMD128_FP_COMPARE(F32x4Ne, Ne, asF32x4())
+  SIMD128_FP_COMPARE(F64x2Ne, Ne, asF64x2())
+  SIMD128_FP_COMPARE(F32x4Lt, Lt, asF32x4())
+  SIMD128_FP_COMPARE(F64x2Lt, Lt, asF64x2())
+  SIMD128_FP_COMPARE(F32x4Le, Le, asF32x4())
+  SIMD128_FP_COMPARE(F64x2Le, Le, asF64x2())
+  SIMD128_FP_COMPARE(F32x4Gt, Gt, asF32x4())
+  SIMD128_FP_COMPARE(F64x2Gt, Gt, asF64x2())
+  SIMD128_FP_COMPARE(F32x4Ge, Ge, asF32x4())
+  SIMD128_FP_COMPARE(F64x2Ge, Ge, asF64x2())
+#undef SIMD128_FP_COMPARE
+
+#define SIMD128_INT_SPLAT(BYTECODE_INST, ELEMENT_KIND)                         \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    auto *Operand = values().pop();                                            \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::vector_splat::SIMD128IntSplat>(   \
+            mir::SIMD128IntLaneInfo(SIMD128IntElementKind::ELEMENT_KIND),      \
+            Operand);                                                          \
+    values().push(Result);                                                     \
+  }
+  SIMD128_INT_SPLAT(I8x16Splat, I8)
+  SIMD128_INT_SPLAT(I16x8Splat, I16)
+  SIMD128_INT_SPLAT(I32x4Splat, I32)
+  SIMD128_INT_SPLAT(I64x2Splat, I64)
+#undef SIMD128_INT_SPLAT
+
+#define SIMD128_FP_SPLAT(BYTECODE_INST, ELEMENT_KIND)                          \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    auto *Operand = values().pop();                                            \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::vector_splat::SIMD128FPSplat>(    \
+            mir::SIMD128FPLaneInfo(SIMD128FPElementKind::ELEMENT_KIND),        \
+            Operand);                                                          \
+    values().push(Result);                                                     \
+  }
+  SIMD128_FP_SPLAT(F32x4Splat, F32)
+  SIMD128_FP_SPLAT(F64x2Splat, F64)
+#undef SIMD128_FP_SPLAT
+
+#define SIMD128_INT_REPLACE_LANE(BYTECODE_INST, ELEMENT_KIND)                  \
+  void operator()(binsts::BYTECODE_INST const *Inst) {                         \
+    auto *CandidateValue = values().pop();                                     \
+    auto *TargetVector = values().pop();                                       \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::vector_insert::SIMD128IntInsert>( \
+            mir::SIMD128IntLaneInfo(mir::SIMD128IntElementKind::ELEMENT_KIND), \
+            TargetVector, static_cast<unsigned>(Inst->Index), CandidateValue); \
+    values().push(Result);                                                     \
+  }
+  SIMD128_INT_REPLACE_LANE(I8x16ReplaceLane, I8)
+  SIMD128_INT_REPLACE_LANE(I16x8ReplaceLane, I16)
+  SIMD128_INT_REPLACE_LANE(I32x4ReplaceLane, I32)
+  SIMD128_INT_REPLACE_LANE(I64x2ReplaceLane, I64)
+#undef SIMD128_INT_REPLACE_LANE
+
+#define SIMD128_FP_REPLACE_LANE(BYTECODE_INST, ELEMENT_KIND)                   \
+  void operator()(binsts::BYTECODE_INST const *Inst) {                         \
+    auto *CandidateValue = values().pop();                                     \
+    auto *TargetVector = values().pop();                                       \
+    auto *Result =                                                             \
+        CurrentBasicBlock->BuildInst<minsts::vector_insert::SIMD128FPInsert>(  \
+            mir::SIMD128FPLaneInfo(mir::SIMD128FPElementKind::ELEMENT_KIND),   \
+            TargetVector, static_cast<unsigned>(Inst->Index), CandidateValue); \
+    values().push(Result);                                                     \
+  }
+  SIMD128_FP_REPLACE_LANE(F32x4ReplaceLane, F32)
+  SIMD128_FP_REPLACE_LANE(F64x2ReplaceLane, F64)
+#undef SIMD128_FP_REPLACE_LANE
+
+#define SIMD128_CAST(BYTECODE_INST, CAST_OPCODE)                               \
+  void operator()(binsts::BYTECODE_INST const *) {                             \
+    auto *Operand = values().pop();                                            \
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::Cast>(                 \
+        minsts::CastOpcode::CAST_OPCODE, Operand);                             \
+    values().push(Result);                                                     \
+  }
+  // clang-format off
+  SIMD128_CAST(F32x4ConvertI32x4S     , F32x4ConvertI32x4S     )
+  SIMD128_CAST(F32x4ConvertI32x4U     , F32x4ConvertI32x4U     )
+  SIMD128_CAST(F64x2ConvertLowI32x4S  , F64x2ConvertLowI32x4S  )
+  SIMD128_CAST(F64x2ConvertLowI32x4U  , F64x2ConvertLowI32x4U  )
+  SIMD128_CAST(I32x4TruncSatF32x4S    , I32x4TruncSatF32x4S    )
+  SIMD128_CAST(I32x4TruncSatF32x4U    , I32x4TruncSatF32x4U    )
+  SIMD128_CAST(I32x4TruncSatF64x2SZero, I32x4TruncSatF64x2SZero)
+  SIMD128_CAST(I32x4TruncSatF64x2UZero, I32x4TruncSatF64x2UZero)
+  SIMD128_CAST(F32x4DemoteF64x2Zero   , F32x4DemoteF64x2Zero   )
+  SIMD128_CAST(F64x2PromoteLowF32x4   , F64x2PromoteLowF32x4   )
+  SIMD128_CAST(I16x8ExtendLowI8x16S   , I16x8ExtendLowI8x16S   )
+  SIMD128_CAST(I16x8ExtendHighI8x16S  , I16x8ExtendHighI8x16S  )
+  SIMD128_CAST(I16x8ExtendLowI8x16U   , I16x8ExtendLowI8x16U   )
+  SIMD128_CAST(I16x8ExtendHighI8x16U  , I16x8ExtendHighI8x16U  )
+  SIMD128_CAST(I32x4ExtendLowI16x8S   , I32x4ExtendLowI16x8S   )
+  SIMD128_CAST(I32x4ExtendHighI16x8S  , I32x4ExtendHighI16x8S  )
+  SIMD128_CAST(I32x4ExtendLowI16x8U   , I32x4ExtendLowI16x8U   )
+  SIMD128_CAST(I32x4ExtendHighI16x8U  , I32x4ExtendHighI16x8U  )
+  SIMD128_CAST(I64x2ExtendLowI32x4S   , I64x2ExtendLowI32x4S   )
+  SIMD128_CAST(I64x2ExtendHighI32x4S  , I64x2ExtendHighI32x4S  )
+  SIMD128_CAST(I64x2ExtendLowI32x4U   , I64x2ExtendLowI32x4U   )
+  SIMD128_CAST(I64x2ExtendHighI32x4U  , I64x2ExtendHighI32x4U  )
+  // clang-format on
+#undef SIMD128_CAST
+
+  // clang-format off
+  void operator()(binsts::I8x16ExtractLaneS const *Inst) {
+    using namespace minsts::vector_extract;
+    auto LaneInfo = mir::SIMD128IntLaneInfo::getI8x16();
+    auto LaneIndex = static_cast<unsigned>(Inst->Index);
+    auto *Operand = values().pop();
+    auto *Extract = CurrentBasicBlock
+      ->BuildInst<SIMD128IntExtract>(LaneInfo, Operand, LaneIndex);
+    auto *Extend = CurrentBasicBlock
+      ->BuildInst<minsts::Cast>(minsts::CastOpcode::I32Extend8S, Extract);
+    values().push(Extend);
+  }
+
+  void operator()(binsts::I8x16ExtractLaneU const *Inst) {
+    using namespace minsts::vector_extract;
+    auto LaneInfo = mir::SIMD128IntLaneInfo::getI8x16();
+    auto LaneIndex = static_cast<unsigned>(Inst->Index);
+    auto *Operand = values().pop();
+    auto *Result = CurrentBasicBlock
+      ->BuildInst<SIMD128IntExtract>(LaneInfo, Operand, LaneIndex);
+    values().push(Result);
+  }
+
+  void operator()(binsts::I16x8ExtractLaneS const *Inst) {
+    using namespace minsts::vector_extract;
+    auto LaneInfo = mir::SIMD128IntLaneInfo::getI16x8();
+    auto LaneIndex = static_cast<unsigned>(Inst->Index);
+    auto *Operand = values().pop();
+    auto *Extract = CurrentBasicBlock
+      ->BuildInst<SIMD128IntExtract>(LaneInfo, Operand, LaneIndex);
+    auto *Extend = CurrentBasicBlock
+      ->BuildInst<minsts::Cast>(minsts::CastOpcode::I32Extend16S, Extract);
+    values().push(Extend);
+  }
+
+  void operator()(binsts::I16x8ExtractLaneU const *Inst) {
+    using namespace minsts::vector_extract;
+    auto LaneInfo = mir::SIMD128IntLaneInfo::getI16x8();
+    auto LaneIndex = static_cast<unsigned>(Inst->Index);
+    auto *Operand = values().pop();
+    auto *Result = CurrentBasicBlock
+      ->BuildInst<SIMD128IntExtract>(LaneInfo, Operand, LaneIndex);
+    values().push(Result);
+  }
+
+  void operator()(binsts::I32x4ExtractLane const *Inst) {
+    using namespace minsts::vector_extract;
+    auto LaneInfo = mir::SIMD128IntLaneInfo::getI32x4();
+    auto LaneIndex = static_cast<unsigned>(Inst->Index);
+    auto *Operand = values().pop();
+    auto *Result = CurrentBasicBlock
+      ->BuildInst<SIMD128IntExtract>(LaneInfo, Operand, LaneIndex);
+    values().push(Result);
+  }
+
+  void operator()(binsts::I64x2ExtractLane const *Inst) {
+    using namespace minsts::vector_extract;
+    auto LaneInfo = mir::SIMD128IntLaneInfo::getI64x2();
+    auto LaneIndex = static_cast<unsigned>(Inst->Index);
+    auto *Operand = values().pop();
+    auto *Result = CurrentBasicBlock
+      ->BuildInst<SIMD128IntExtract>(LaneInfo, Operand, LaneIndex);
+    values().push(Result);
+  }
+
+  void operator()(binsts::F32x4ExtractLane const *Inst) {
+    using namespace minsts::vector_extract;
+    auto LaneInfo = mir::SIMD128FPLaneInfo::getF32x4();
+    auto LaneIndex = static_cast<unsigned>(Inst->Index);
+    auto *Operand = values().pop();
+    auto *Result = CurrentBasicBlock
+      ->BuildInst<SIMD128FPExtract>(LaneInfo, Operand, LaneIndex);
+    values().push(Result);
+  }
+
+  void operator()(binsts::F64x2ExtractLane const *Inst) {
+    using namespace minsts::vector_extract;
+    auto LaneInfo = mir::SIMD128FPLaneInfo::getF64x2();
+    auto LaneIndex = static_cast<unsigned>(Inst->Index);
+    auto *Operand = values().pop();
+    auto *Result = CurrentBasicBlock
+      ->BuildInst<SIMD128FPExtract>(LaneInfo, Operand, LaneIndex);
+    values().push(Result);
+  }
+  // clang-format on
+
+  void operator()(binsts::V128Store const *Inst) {
+    auto *Mem = Context.getImplicitMemory();
+    auto *Operand = values().pop();
+    auto *Address = values().pop();
+    if (Inst->Offset != 0) {
+      auto *Offset = CurrentBasicBlock->BuildInst<minsts::Constant>(
+          static_cast<std::int32_t>(Inst->Offset));
+      Address = CurrentBasicBlock->BuildInst<minsts::binary::IntBinary>(
+          minsts::binary::IntBinaryOperator::Add, Address, Offset);
+    }
+    CurrentBasicBlock->BuildInst<minsts::MemoryGuard>(Mem, Address, 128);
+    CurrentBasicBlock->BuildInst<minsts::Store>(Mem, Address, Operand, 128);
+  }
+
+  void operator()(binsts::V128Load const *Inst) {
+    auto *Mem = Context.getImplicitMemory();
+    auto *Address = values().pop();
+    if (Inst->Offset != 0) {
+      auto *Offset = CurrentBasicBlock->BuildInst<minsts::Constant>(
+          static_cast<std::int32_t>(Inst->Offset));
+      Address = CurrentBasicBlock->BuildInst<minsts::binary::IntBinary>(
+          minsts::binary::IntBinaryOperator::Add, Address, Offset);
+    }
+    CurrentBasicBlock->BuildInst<minsts::MemoryGuard>(Mem, Address, 128);
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::Load>(
+        Mem, bytecode::ValueTypeKind::V128, Address, 128);
+    values().push(Result);
+  }
+
+  void operator()(binsts::V128Load64Splat const *Inst) {
+    auto *Mem = Context.getImplicitMemory();
+    auto *Address = values().pop();
+    if (Inst->Offset != 0) {
+      auto *Offset = CurrentBasicBlock->BuildInst<minsts::Constant>(
+          static_cast<std::int32_t>(Inst->Offset));
+      Address = CurrentBasicBlock->BuildInst<minsts::binary::IntBinary>(
+          minsts::binary::IntBinaryOperator::Add, Address, Offset);
+    }
+    CurrentBasicBlock->BuildInst<minsts::MemoryGuard>(Mem, Address, 64);
+    mir::Instruction *Result = CurrentBasicBlock->BuildInst<minsts::Load>(
+        Mem, bytecode::ValueTypeKind::I64, Address, 64);
+    Result =
+        CurrentBasicBlock->BuildInst<minsts::vector_splat::SIMD128IntSplat>(
+            mir::SIMD128IntLaneInfo(mir::SIMD128IntElementKind::I64), Result);
+    values().push(Result);
+  }
 
   // TODO: SIMD Translation Pending
   template <bytecode::instruction T> void operator()(T const *) {

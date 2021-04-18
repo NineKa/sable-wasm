@@ -123,7 +123,6 @@ public:
 enum class SIMD128IntBinaryOperator : std::uint8_t 
 { Add, Sub, Mul, 
   ExtMulLowS, ExtMulLowU, ExtMulHighS, ExtMulHighU, 
-  ExtAddPairwiseS, ExtAddPairwiseU,
   AddSatS, AddSatU, SubSatS, SubSatU,
   Shl, ShrS, ShrU,
   MinS, MinU, MaxS, MaxU, AvgrU };

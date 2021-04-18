@@ -84,6 +84,11 @@ public:
   unsigned getLaneWidth() const;
   SIMD128IntLaneInfo widen() const;
   SIMD128IntLaneInfo narrow() const;
+
+  static SIMD128IntLaneInfo getI8x16();
+  static SIMD128IntLaneInfo getI16x8();
+  static SIMD128IntLaneInfo getI32x4();
+  static SIMD128IntLaneInfo getI64x2();
 };
 
 enum class SIMD128FPElementKind { F32, F64 };
@@ -96,6 +101,9 @@ public:
   unsigned getNumLane() const;
   unsigned getLaneWidth() const;
   SIMD128IntLaneInfo getCmpResultLaneInfo() const;
+
+  static SIMD128FPLaneInfo getF32x4();
+  static SIMD128FPLaneInfo getF64x2();
 };
 
 enum class InstructionKind : std::uint8_t {
@@ -125,6 +133,9 @@ enum class InstructionKind : std::uint8_t {
   VectorSplat,
   VectorExtract,
   VectorInsert,
+
+  SIMD128ShuffleByte,
+  SIMD128Narrow
 };
 
 class Instruction :
@@ -159,14 +170,15 @@ SABLE_DEFINE_DYN_CAST(Instruction)
 } // namespace mir
 
 namespace mir::instructions {
-class Branch;        // See Branch.h
-class Compare;       // See Compare.h
-class Unary;         // See Unary.h
-class Binary;        // See Binary.h
-class VectorSplat;   // See Vector.h
-class VectorExtract; // See Vector.h
-class VectorInsert;  // See Vector.h
-class Cast;          // See Cast.h
+class Branch;             // See Branch.h
+class Compare;            // See Compare.h
+class Unary;              // See Unary.h
+class Binary;             // See Binary.h
+class VectorSplat;        // See Vector.h
+class VectorExtract;      // See Vector.h
+class VectorInsert;       // See Vector.h
+class Cast;               // See Cast.h
+class SIMD128ShuffleByte; // See Vector.h
 
 ///////////////////////////////// Unreachable //////////////////////////////////
 class Unreachable : public Instruction {
@@ -624,6 +636,8 @@ public:
     case IKind::VectorSplat  : return castAndCall<VectorSplat>(Inst);
     case IKind::VectorExtract: return castAndCall<VectorExtract>(Inst);
     case IKind::VectorInsert : return castAndCall<VectorInsert>(Inst);
+    case IKind::SIMD128ShuffleByte: 
+      return castAndCall<SIMD128ShuffleByte>(Inst);
     default: utility::unreachable();
     }
     // clang-format on

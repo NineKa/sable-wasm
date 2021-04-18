@@ -147,7 +147,7 @@ formatter<FPCompareOperator>::toString(FPCompareOperator const &Operator) {
 namespace mir::instructions::compare {
 SIMD128IntCompare::SIMD128IntCompare(
     SIMD128IntCompareOperator Operator_, SIMD128IntLaneInfo LaneInfo_,
-    Instruction *LHS_, IntCompare *RHS_)
+    Instruction *LHS_, Instruction *RHS_)
     : Compare(CompareKind::SIMD128IntCompare, LHS_, RHS_), Operator(Operator_),
       LaneInfo(LaneInfo_) {}
 

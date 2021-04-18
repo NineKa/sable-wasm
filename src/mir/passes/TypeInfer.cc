@@ -108,15 +108,48 @@ public:
 
   Type operator()(minsts::unary::IntUnary const *Inst) {
     using namespace bytecode::valuetypes;
-    auto const &OperandTy = getType(Inst->getOperand());
+    auto OperandTy = getType(Inst->getOperand());
     if (!OperandTy.isIntegral()) return Type::BuildBottom();
-    return OperandTy;
+    using UnaryOperator = minsts::unary::IntUnaryOperator;
+    switch (Inst->getOperator()) {
+    case UnaryOperator::Eqz: return Type::BuildPrimitiveI32();
+    case UnaryOperator::Clz:
+    case UnaryOperator::Ctz:
+    case UnaryOperator::Popcnt: return OperandTy;
+    default: utility::unreachable();
+    }
   }
 
   Type operator()(minsts::unary::FPUnary const *Inst) {
     auto const &OperandTy = getType(Inst->getOperand());
     if (!OperandTy.isFloatingPoint()) return Type::BuildBottom();
     return OperandTy;
+  }
+
+  Type operator()(minsts::unary::SIMD128Unary const *Inst) {
+    using UnaryOperator = minsts::unary::SIMD128UnaryOperator;
+    switch (Inst->getOperator()) {
+    case UnaryOperator::Not: return Type::BuildPrimitiveV128();
+    case UnaryOperator::AnyTrue: return Type::BuildPrimitiveI32();
+    default: utility::unreachable();
+    }
+  }
+
+  Type operator()(minsts::unary::SIMD128IntUnary const *Inst) {
+    using UnaryOperator = minsts::unary::SIMD128IntUnaryOperator;
+    switch (Inst->getOperator()) {
+    case UnaryOperator::Neg:
+    case UnaryOperator::Abs:
+    case UnaryOperator::ExtAddPairwiseS:
+    case UnaryOperator::ExtAddPairwiseU: return Type::BuildPrimitiveV128();
+    case UnaryOperator::AllTrue:
+    case UnaryOperator::Bitmask: return Type::BuildPrimitiveI32();
+    default: utility::unreachable();
+    }
+  }
+
+  Type operator()(minsts::unary::SIMD128FPUnary const *) {
+    return Type::BuildPrimitiveV128();
   }
 
   Type operator()(minsts::Unary const *Inst) {
@@ -139,6 +172,18 @@ public:
     if (LHSTy != RHSTy) return Type::BuildBottom();
     if (!LHSTy.isFloatingPoint()) return Type::BuildBottom();
     return LHSTy;
+  }
+
+  Type operator()(minsts::binary::SIMD128IntBinary const *) {
+    return Type::BuildPrimitiveV128();
+  }
+
+  Type operator()(minsts::binary::SIMD128Binary const *) {
+    return Type::BuildPrimitiveV128();
+  }
+
+  Type operator()(minsts::binary::SIMD128FPBinary const *) {
+    return Type::BuildPrimitiveV128();
   }
 
   Type operator()(minsts::Binary const *Inst) {
@@ -227,6 +272,10 @@ public:
 
   Type operator()(minsts::VectorInsert const *) {
     return Type::BuildPrimitive(bytecode::valuetypes::V128);
+  }
+
+  Type operator()(minsts::SIMD128ShuffleByte const *) {
+    return Type::BuildPrimitiveV128();
   }
 };
 } // namespace

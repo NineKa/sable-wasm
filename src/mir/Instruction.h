@@ -135,7 +135,7 @@ enum class InstructionKind : std::uint8_t {
   VectorInsert,
 
   SIMD128ShuffleByte,
-  SIMD128Narrow
+  SIMD128Narrow,
 };
 
 class Instruction :

@@ -42,7 +42,8 @@ class TypeInferVisitor :
     public mir::InstVisitorBase<TypeInferVisitor, Type>,
     public minsts::UnaryVisitorBase<TypeInferVisitor, Type>,
     public minsts::BinaryVisitorBase<TypeInferVisitor, Type>,
-    public minsts::VectorExtractVisitorBase<TypeInferVisitor, Type> {
+    public minsts::VectorExtractVisitorBase<TypeInferVisitor, Type>,
+    public minsts::CompareVisitorBase<TypeInferVisitor, Type> {
   TypeInferPassResult::TypeMap &Types;
 
   Type const &getType(mir::Instruction const *Instruction) const {
@@ -101,10 +102,18 @@ public:
     return Type::BuildPrimitive(Inst->getValueType());
   }
 
-  Type operator()(minsts::Compare const *) {
-    using namespace bytecode::valuetypes;
-    return Type::BuildPrimitive(I32);
-  }
+  // clang-format off
+  Type operator()(minsts::compare::IntCompare const *)
+  { return Type::BuildPrimitiveI32(); }
+  Type operator()(minsts::compare::FPCompare const *)
+  { return Type::BuildPrimitiveI32(); }
+  Type operator()(minsts::compare::SIMD128IntCompare const *)
+  { return Type::BuildPrimitiveV128(); }
+  Type operator()(minsts::compare::SIMD128FPCompare const *)
+  { return Type::BuildPrimitiveV128(); }
+  Type operator()(minsts::Compare const *Inst) 
+  { return CompareVisitorBase::visit(Inst); }
+  // clang-format on
 
   Type operator()(minsts::unary::IntUnary const *Inst) {
     using namespace bytecode::valuetypes;

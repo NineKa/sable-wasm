@@ -972,6 +972,22 @@ public:
     values().push(Result);
   }
 
+  void operator()(binsts::V128BitSelect const *) {
+    auto *Mask = values().pop();
+    auto *V2 = values().pop();
+    auto *V1 = values().pop();
+    auto *MaskComplement =
+        CurrentBasicBlock->BuildInst<minsts::unary::SIMD128Unary>(
+            minsts::unary::SIMD128UnaryOperator::Not, Mask);
+    V1 = CurrentBasicBlock->BuildInst<minsts::binary::SIMD128Binary>(
+        minsts::binary::SIMD128BinaryOperator::And, V1, Mask);
+    V2 = CurrentBasicBlock->BuildInst<minsts::binary::SIMD128Binary>(
+        minsts::binary::SIMD128BinaryOperator::And, V2, MaskComplement);
+    auto *Result = CurrentBasicBlock->BuildInst<minsts::binary::SIMD128Binary>(
+        minsts::binary::SIMD128BinaryOperator::Or, V1, V2);
+    values().push(Result);
+  }
+
 #define SIMD128_UNARY(BYTECODE_INST, OPERATOR)                                 \
   void operator()(binsts::BYTECODE_INST const *) {                             \
     auto *Operand = values().pop();                                            \

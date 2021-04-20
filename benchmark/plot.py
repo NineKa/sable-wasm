@@ -52,33 +52,58 @@ def parse_data(path):
         'wasmtime_naive': wasmtime_naive,
         'wasmtime_opt': wasmtime_opt,
         'wasmtime_simd': wasmtime_simd,
-        'wasmer_cranelift_naive': wasmer_cranelift_naive,
-        'wasmer_cranelift_opt': wasmer_cranelift_opt,
-        'wasmer_cranelift_simd': wasmer_cranelift_simd,
-        'wasmer_llvm_naive': wasmer_llvm_naive,
-        'wasmer_llvm_opt': wasmer_llvm_opt,
-        'wasmer_llvm_simd': wasmer_llvm_simd
+        'wasmer-cranelift_naive': wasmer_cranelift_naive,
+        'wasmer-cranelift_opt': wasmer_cranelift_opt,
+        'wasmer-cranelift_simd': wasmer_cranelift_simd,
+        'wasmer-llvm_naive': wasmer_llvm_naive,
+        'wasmer-llvm_opt': wasmer_llvm_opt,
+        'wasmer-llvm_simd': wasmer_llvm_simd
     }
 
 
-def group_plt(x_label, d0, d1, d2, d3, label0='d0', label1='d1',  label2='d2', label3='d3'):
-    labels = np.arange(len(x_label))
-    width = 0.35
+def relative_plt(file_name, x_label, d0, d1, label0 = 'd0') :
+    x = np.arange(len(x_label))
+    width = 0.618
 
     fig, ax = plt.subplots()
-    pl0 = ax.bar(labels - width / 4, d0, width, label=label0)
-    pl1 = ax.bar(labels - width / 4, d1, width, label=label1)
-    pl2 = ax.bar(labels - width / 4, d2, width, label=label2)
-    pl3 = ax.bar(labels - width / 4, d3, width, label=label3)
+    axes = plt.gca()
+    axes.set_ylim([0, 2])
+
+    d0 = np.array(d0)
+    d1 = np.array(d1)
+    d0 = d0 / d1
+
+    pl0 = ax.bar(x, d0, width, label = label0)
+    ax.axhline(y = 1, linestyle = '--')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(x_label, rotation='vertical')
+    ax.legend()
 
     fig.tight_layout()
-    plt.show()
-
+    plt.savefig(file_name)
+    plt.close(fig)
 
 polybench = parse_data('SableWasm Benchmark - polybench-c-4.2.1-beta.csv')
+for mode in ['naive', 'opt', 'simd']:
+    for toolchain in ['wasmtime', 'wasmer-cranelift', 'wasmer-llvm']:
+        relative_plt('plots/polybench-relative-{}-{}.pdf'.format(toolchain, mode),
+             polybench['target'], polybench['sablewasm_{}'.format(mode)],
+             polybench['{}_{}'.format(toolchain, mode)],
+             'sablewasm_{}'.format(mode))
 
-group_plt(polybench['target'],
-          polybench['sablewasm_naive'],
-          polybench['wasmtime_naive'],
-          polybench['wasmer_cranelift_naive'],
-          polybench['wasmer_llvm_naive'])
+npb = parse_data('SableWasm Benchmark - NPB3.0-omp-C.csv')
+for mode in ['naive', 'opt', 'simd']:
+    for toolchain in ['wasmtime', 'wasmer-cranelift', 'wasmer-llvm']:
+        relative_plt('plots/npb-relative-{}-{}.pdf'.format(toolchain, mode),
+             npb['target'], npb['sablewasm_{}'.format(mode)],
+             npb['{}_{}'.format(toolchain, mode)],
+             'sablewasm_{}'.format(mode))
+
+ostrich = parse_data('SableWasm Benchmark - ostrich.csv')
+for mode in ['naive', 'opt', 'simd']:
+    for toolchain in ['wasmtime', 'wasmer-cranelift', 'wasmer-llvm']:
+        relative_plt('plots/ostrich-relative-{}-{}.pdf'.format(toolchain, mode),
+             ostrich['target'], ostrich['sablewasm_{}'.format(mode)],
+             ostrich['{}_{}'.format(toolchain, mode)],
+             'sablewasm_{}'.format(mode))

@@ -1,6 +1,5 @@
 import os
-import shutil
-import subprocess
+
 targets = [
     'correlation',
     'covariance',
@@ -44,7 +43,8 @@ def run(target):
     wasm_module_simd = '{}.simd.wasm'.format(target)
     command_naive = ['wasmer', 'run', '--cranelift', wasm_module_naive]
     command_opt = ['wasmer', 'run', '--cranelift', wasm_module_opt]
-    command_simd = ['wasmer', 'run', '--cranelift', '--enable-simd', wasm_module_simd]
+    command_simd = ['wasmer', 'run', '--cranelift',
+                    '--enable-simd', wasm_module_simd]
     proc = subprocess.Popen(
         command_naive, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     proc_out, proc_error = proc.communicate()

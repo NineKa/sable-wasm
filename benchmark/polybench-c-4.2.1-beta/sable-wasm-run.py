@@ -11,19 +11,21 @@ def run(target_name):
     compile_process = subprocess.run([
         '../../build/sable-wasm', '--unsafe', '--opt',
         source,
-        '-o', object_file])
+        '-o', object_file],
+        stdout=subprocess.DEVNULL)
     if compile_process.returncode != 0:
         return 'N/A'
 
     link_proces = subprocess.run(
-        ['ld', '-shared', object_file, '-o', sable_file])
+        ['ld', '-shared', object_file, '-o', sable_file],
+        stdout=subprocess.DEVNULL)
     if link_proces.returncode != 0:
         return 'N/A'
 
     tester_process = subprocess.Popen([
         '../../build/tester', sable_file],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    proc_out, proc_error = proc.communicate()
+    proc_out, proc_error = tester_process.communicate()
 
     if len(proc_error) != 0:
         return 'N/A'

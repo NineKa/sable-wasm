@@ -1,14 +1,13 @@
 #include "codegen-llvm-instance/WASI.h"
 #include "codegen-llvm-instance/WebAssemblyInstance.h"
 
-int main(int argc, char const *argv[]) {
+void run(char const *Path) {
   using namespace runtime;
-  utility::ignore(argc, argv);
 
 #define WASI_IMPORT(name, func)                                                \
   InstanceBuilder.tryImport("wasi_snapshot_preview1", name, func)
 
-  auto InstanceBuilder = WebAssemblyInstanceBuilder(argv[1]);
+  auto InstanceBuilder = WebAssemblyInstanceBuilder(Path);
   WASI_IMPORT("proc_exit", wasi::proc_exit);
   WASI_IMPORT("clock_time_get", wasi::clock_time_get);
   WASI_IMPORT("args_sizes_get", wasi::args_sizes_get);
@@ -26,8 +25,13 @@ int main(int argc, char const *argv[]) {
   WASI_IMPORT("poll_oneoff", wasi::poll_oneoff);
   auto Instance = InstanceBuilder.Build();
 
+  Instance->getFunction("_start").invoke<void>();
+}
+
+int main(int argc, char const *argv[]) {
+  utility::ignore(argc);
   try {
-    Instance->getFunction("_start").invoke<void>();
+    run(argv[1]);
   } catch (runtime::wasi::exceptions::WASIExit const &Exception) {
     return Exception.getExitCode();
   }

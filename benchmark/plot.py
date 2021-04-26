@@ -72,7 +72,8 @@ def compute_speedup_percentile(speedups, ratio):
 
 
 def relative_plt(file_name, x_label,
-                 speedup_average, speedup_lower_error, speedup_upper_error):
+                 speedup_average, speedup_lower_error, speedup_upper_error,
+                 capsize=4):
     x = np.arange(len(x_label))
     width = 0.618
 
@@ -84,9 +85,11 @@ def relative_plt(file_name, x_label,
     error_low = speedup_average - speedup_lower_error
     yerr = np.array([error_low, error_high])
 
-    ax.bar(x, speedup_average, width, yerr=yerr, capsize=4, error_kw={'linewidth': 1})
+    ax.bar(x, speedup_average, width,
+           color='gray',
+           yerr=yerr, capsize=capsize, error_kw={'linewidth': 1})
 
-    ax.axhline(y=1, linestyle='--')
+    ax.axhline(y=1, color='black', linestyle='--')
 
     ax.set_xticks(x)
     ax.set_xticklabels(x_label, rotation='vertical')

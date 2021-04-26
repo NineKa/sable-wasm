@@ -2,3 +2,6 @@
 ./libsodium-1.0.18/*.o
 ./NPB-3.0-C/*.sable
 ./NPB-3.0-C/*.o
+
+venv/
+__pycache__/

@@ -157,6 +157,9 @@ void process(
   } catch (bytecode::validation::MalformedError const &Error) {
     panic(fmt::format("{}", Error));
   } catch (bytecode::validation::TypeError const &Error) {
+    for (auto const * InstPtr : Error.getInstSites()) {
+      fmt::print("{}\n", InstPtr->asPointer()->getOpcode());
+    }
     panic(fmt::format("{}", Error));
   }
 

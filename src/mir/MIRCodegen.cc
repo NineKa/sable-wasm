@@ -1472,6 +1472,42 @@ public:
     values().push(Result);
   }
 
+  void operator()(binsts::V128Load32Splat const *Inst) {
+    auto *Mem = Context.getImplicitMemory();
+    auto *Address = values().pop();
+    if (Inst->Offset != 0) {
+      auto *Offset = CurrentBasicBlock->BuildInst<minsts::Constant>(
+          static_cast<std::int32_t>(Inst->Offset));
+      Address = CurrentBasicBlock->BuildInst<minsts::binary::IntBinary>(
+          minsts::binary::IntBinaryOperator::Add, Address, Offset);
+    }
+    CurrentBasicBlock->BuildInst<minsts::MemoryGuard>(Mem, Address, 32);
+    mir::Instruction *Result = CurrentBasicBlock->BuildInst<minsts::Load>(
+        Mem, bytecode::ValueTypeKind::I32, Address, 32);
+    Result =
+        CurrentBasicBlock->BuildInst<minsts::vector_splat::SIMD128IntSplat>(
+            mir::SIMD128IntLaneInfo(mir::SIMD128IntElementKind::I32), Result);
+    values().push(Result);
+  }
+
+  void operator()(binsts::V128Load32x2S const * Inst) {
+    auto *Mem = Context.getImplicitMemory();
+    auto *Address = values().pop();
+    if (Inst->Offset != 0) {
+      auto *Offset = CurrentBasicBlock->BuildInst<minsts::Constant>(
+          static_cast<std::int32_t>(Inst->Offset));
+      Address = CurrentBasicBlock->BuildInst<minsts::binary::IntBinary>(
+          minsts::binary::IntBinaryOperator::Add, Address, Offset);
+    }
+    CurrentBasicBlock->BuildInst<minsts::MemoryGuard>(Mem, Address, 64);
+    mir::Instruction *Result = CurrentBasicBlock->BuildInst<minsts::Load>(
+        Mem, bytecode::ValueTypeKind::V128, Address, 64);
+    Result =
+        CurrentBasicBlock->BuildInst<minsts::Cast>(
+            minsts::CastOpcode::I64x2ExtendLowI32x4S, Result);
+    values().push(Result);
+  }
+
   // TODO: SIMD Translation Pending
   template <bytecode::instruction T> void operator()(T const *) {
     utility::unreachable();

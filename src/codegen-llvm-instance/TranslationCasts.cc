@@ -299,6 +299,9 @@ SABLE_CODEGEN_CAST(I32x4ExtendHighI16x8U) {
 }
 
 SABLE_CODEGEN_CAST(I64x2ExtendLowI32x4S) {
+  auto *ExpectTy = Builder.getV128Ty(mir::SIMD128IntLaneInfo::getI32x4());
+  if (Operand->getType() != ExpectTy)
+      Operand = Builder.CreateBitCast(Operand, ExpectTy);
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateSExt(Operand, Builder.getV128I64x2());
 }

@@ -231,7 +231,7 @@ TranslationVisitor::operator()(minsts::compare::SIMD128IntCompare const *Inst) {
   if (LHS->getType() != ExpectVecType)
     LHS = Builder.CreateBitCast(LHS, ExpectVecType);
   if (RHS->getType() != ExpectVecType)
-    LHS = Builder.CreateBitCast(RHS, ExpectVecType);
+    RHS = Builder.CreateBitCast(RHS, ExpectVecType);
   llvm::Value *Result = nullptr;
   using Operator = mir::instructions::compare::SIMD128IntCompareOperator;
   // clang-format off

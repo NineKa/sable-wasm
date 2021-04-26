@@ -45,7 +45,7 @@ void write(__sable_memory_t *MemoryPtr, std::uint32_t Address, T const &Value) {
 } // namespace
 
 void proc_exit(__sable_instance_t *, std::int32_t ExitCode) {
-  throw exceptions::WASIExit(ExitCode);
+  std::exit(ExitCode);
 }
 
 std::int32_t fd_seek(

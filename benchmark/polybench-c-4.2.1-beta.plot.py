@@ -10,14 +10,14 @@ if __name__ == '__main__':
 
     speedups = plot.compute_relative_speedup(sheet_contents)
     speedup_averages = plot.compute_speedup_average(speedups)
-    speedup_mins = plot.compute_speedup_min(speedups)
-    speedup_maxs = plot.compute_speedup_max(speedups)
+    speedup_percentile_10s = plot.compute_speedup_percentile(speedups, 10)
+    speedup_percentile_90s = plot.compute_speedup_percentile(speedups, 90)
 
     for toolchain, mode in speedups.keys():
         print('plotting relative speed up for {}-{}'.format(toolchain, mode))
         filename = 'plots/polybench-{}-{}.pdf'.format(toolchain, mode)
         speedup_average = speedup_averages[(toolchain, mode)]
-        speedup_min = speedup_mins[(toolchain, mode)]
-        speedup_max = speedup_maxs[(toolchain, mode)]
+        speedup_percentile_10 = speedup_percentile_10s[(toolchain, mode)]
+        speedup_percentile_90 = speedup_percentile_90s[(toolchain, mode)]
         plot.relative_plt(filename, names,
-                          speedup_average, speedup_min, speedup_max)
+                          speedup_average, speedup_percentile_10, speedup_percentile_90)

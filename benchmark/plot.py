@@ -64,31 +64,24 @@ def compute_speedup_average(speedups):
     return result
 
 
-def compute_speedup_min(speedups):
+def compute_speedup_percentile(speedups, ratio):
     result = {}
     for key in speedups.keys():
-        result[key] = np.min(speedups[key], axis=0)
-    return result
-
-
-def compute_speedup_max(speedups):
-    result = {}
-    for key in speedups.keys():
-        result[key] = np.max(speedups[key], axis=0)
+        result[key] = np.percentile(speedups[key], ratio, axis=0)
     return result
 
 
 def relative_plt(file_name, x_label,
-                 speedup_average, speedup_min, speedup_max):
+                 speedup_average, speedup_lower_error, speedup_upper_error):
     x = np.arange(len(x_label))
     width = 0.618
 
     fig, ax = plt.subplots()
     axes = plt.gca()
-    axes.set_ylim([0, max(2, max(speedup_max) + 0.1)])
+    axes.set_ylim([0, max(2, max(speedup_upper_error) + 0.1)])
 
-    error_high = speedup_max - speedup_average
-    error_low = speedup_average - speedup_min
+    error_high = speedup_upper_error - speedup_average
+    error_low = speedup_average - speedup_lower_error
     yerr = np.array([error_low, error_high])
 
     ax.bar(x, speedup_average, width, yerr=yerr, capsize=4, error_kw={'linewidth': 1})

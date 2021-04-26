@@ -8,6 +8,7 @@ targets = [
     'FT.A',
     'IS.A',
     'LU.W',
+    'MG.A',
     'SP.A',
 ]
 
@@ -47,7 +48,7 @@ def run(target):
         command_simd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     proc_out, proc_error = proc.communicate()
     time_simd = get_time(proc_out)
-    print("{}, {}, {}, {}".format(target, time_naive, time_opt, time_simd))
+    print("{},{},{},{}".format(target, time_naive, time_opt, time_simd))
 
 
 if __name__ == '__main__':

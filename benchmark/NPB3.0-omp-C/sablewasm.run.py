@@ -11,6 +11,7 @@ targets = [
     'FT.A',
     'IS.A',
     'LU.W',
+    'MG.A',
     'SP.A',
 ]
 
@@ -66,4 +67,4 @@ for target in targets:
     opt_result = run(target + '.opt.wasm')
     simd_result = run(target + '.simd.wasm')
 
-    print('{}, {}, {}, {}'.format(target, naive_result, opt_result, simd_result))
+    print('{},{},{},{}'.format(target, naive_result, opt_result, simd_result))

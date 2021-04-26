@@ -26,6 +26,10 @@ int main(int argc, char const *argv[]) {
   WASI_IMPORT("poll_oneoff", wasi::poll_oneoff);
   auto Instance = InstanceBuilder.Build();
 
-  Instance->getFunction("_start").invoke<void>();
+  try {
+    Instance->getFunction("_start").invoke<void>();
+  } catch (runtime::wasi::exceptions::WASIExit const &Exception) {
+    return Exception.getExitCode();
+  }
   return 0;
 }

@@ -47,11 +47,6 @@ def run(target_name):
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     proc_out, proc_error = tester_process.communicate()
 
-    if len(proc_error) != 0:
-        os.remove(object_file)
-        os.remove(sable_file)
-        return '#N/A'
-
     os.remove(object_file)
     os.remove(sable_file)
 
@@ -71,4 +66,4 @@ for target in targets:
     opt_result = run(target + '.opt.wasm')
     simd_result = run(target + '.simd.wasm')
 
-    print('{}, {}, {}, {}'.format(target, naive_result, opt_result, simd_result))
+    print('{},{},{},{}'.format(target, naive_result, opt_result, simd_result))

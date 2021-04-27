@@ -40,7 +40,7 @@ targets = [
 def decode_time(proc_out):
     try:
         out = proc_out.decode(terminal_codec)
-        return out
+        return out.replace('\n', '')
     except UnicodeDecodeError:
         return '#N/A'
 

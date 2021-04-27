@@ -471,6 +471,7 @@ void EntityLayout::setupFunctions() {
         /* Linkage */ llvm::GlobalVariable::PrivateLinkage,
         /* Name    */ llvm::StringRef(Function.getName()),
         /* Parent  */ Target);
+    Definition->addFnAttr(llvm::Attribute::AttrKind::UWTable);
     FunctionMap.insert(std::make_pair(
         std::addressof(Function),
         FunctionEntry(Index, Definition, SignatureStr)));

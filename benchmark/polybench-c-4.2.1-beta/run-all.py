@@ -2,7 +2,6 @@ import subprocess
 import re
 
 terminal_codec = 'utf-8'
-time_regex = r'([0-9]*.[0-9]*)'
 
 targets = [
     'correlation',
@@ -41,8 +40,7 @@ targets = [
 def decode_time(proc_out):
     try:
         out = proc_out.decode(terminal_codec)
-        matches = re.search(time_regex, out)
-        return matches.group(1)
+        return out
     except UnicodeDecodeError:
         return '#N/A'
 

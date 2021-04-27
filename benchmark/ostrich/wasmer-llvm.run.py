@@ -37,8 +37,8 @@ def run(target):
     wasm_module_opt = '{}.opt.wasm'.format(target)
     wasm_module_simd = '{}.simd.wasm'.format(target)
     command_naive = ['wasmer', 'run', '--llvm', wasm_module_naive]
-    command_opt = ['wasmtime', 'run', '--llvm', wasm_module_opt]
-    command_simd = ['wasmtime', 'run', '--llvm', '--enable-simd', wasm_module_simd]
+    command_opt = ['wasmer', 'run', '--llvm', wasm_module_opt]
+    command_simd = ['wasmer', 'run', '--llvm', '--enable-simd', wasm_module_simd]
     proc = subprocess.Popen(
         command_naive, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     proc_out, proc_error = proc.communicate()

@@ -109,30 +109,50 @@ SABLE_CODEGEN_CAST(I64Extend32S)
 { return CreateTruncThenSExt<32, 64>(Builder, Operand); }
 // clang-format on
 
-// clang-format off
-SABLE_CODEGEN_CAST(F32x4ConvertI32x4S) 
-{ return Builder.CreateSIToFP(Operand, Builder.getV128F32x4()); }
-SABLE_CODEGEN_CAST(F32x4ConvertI32x4U) 
-{ return Builder.CreateUIToFP(Operand, Builder.getV128F32x4()); }
-// clang-format on
+namespace {
+template <typename T>
+void adjustSIMD128Operand(
+    IRBuilder &Builder, llvm::Value *Operand, T const &LaneInfo) {
+  auto *ExpectTy = Builder.getV128Ty(LaneInfo);
+  if (Operand->getType() != ExpectTy)
+    Operand = Builder.CreateBitCast(Operand, ExpectTy);
+}
+} // namespace
+
+SABLE_CODEGEN_CAST(F32x4ConvertI32x4S) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI32x4());
+  return Builder.CreateSIToFP(Operand, Builder.getV128F32x4());
+}
+
+SABLE_CODEGEN_CAST(F32x4ConvertI32x4U) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI32x4());
+  return Builder.CreateUIToFP(Operand, Builder.getV128F32x4());
+}
 
 SABLE_CODEGEN_CAST(F64x2ConvertLowI32x4S) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI32x4());
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateSIToFP(Operand, Builder.getV128F64x2());
 }
 
 SABLE_CODEGEN_CAST(F64x2ConvertLowI32x4U) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI32x4());
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateUIToFP(Operand, Builder.getV128F64x2());
 }
-// clang-format off
-SABLE_CODEGEN_CAST(I32x4TruncSatF32x4S) 
-{ return Builder.CreateIntrinsicFPTruncSatS(Operand, Builder.getV128I32x4()); }
-SABLE_CODEGEN_CAST(I32x4TruncSatF32x4U) 
-{ return Builder.CreateIntrinsicFPTruncSatU(Operand, Builder.getV128I32x4()); }
-// clang-format on
+
+SABLE_CODEGEN_CAST(I32x4TruncSatF32x4S) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128FPLaneInfo::getF32x4());
+  return Builder.CreateIntrinsicFPTruncSatS(Operand, Builder.getV128I32x4());
+}
+
+SABLE_CODEGEN_CAST(I32x4TruncSatF32x4U) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128FPLaneInfo::getF32x4());
+  return Builder.CreateIntrinsicFPTruncSatU(Operand, Builder.getV128I32x4());
+}
 
 SABLE_CODEGEN_CAST(I32x4TruncSatF64x2SZero) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128FPLaneInfo::getF64x2());
   auto *I32x2Ty = llvm::FixedVectorType::get(Builder.getInt32Ty(), 2);
   auto *Result = Builder.CreateIntrinsicFPTruncSatS(Operand, I32x2Ty);
   auto *ZeroX2Vector =
@@ -144,6 +164,7 @@ SABLE_CODEGEN_CAST(I32x4TruncSatF64x2SZero) {
 }
 
 SABLE_CODEGEN_CAST(I32x4TruncSatF64x2UZero) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128FPLaneInfo::getF64x2());
   auto *I32x2Ty = llvm::FixedVectorType::get(Builder.getInt32Ty(), 2);
   auto *Result = Builder.CreateIntrinsicFPTruncSatU(Operand, I32x2Ty);
   auto *ZeroX2Vector =
@@ -155,6 +176,7 @@ SABLE_CODEGEN_CAST(I32x4TruncSatF64x2UZero) {
 }
 
 SABLE_CODEGEN_CAST(F32x4DemoteF64x2Zero) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128FPLaneInfo::getF64x2());
   auto *F32x2Ty = llvm::FixedVectorType::get(Builder.getFloatTy(), 2);
   auto *Result = Builder.CreateFPTrunc(Operand, F32x2Ty);
   auto *ZeroX2Vector = llvm::ConstantVector::get(
@@ -166,157 +188,79 @@ SABLE_CODEGEN_CAST(F32x4DemoteF64x2Zero) {
 }
 
 SABLE_CODEGEN_CAST(F64x2PromoteLowF32x4) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128FPLaneInfo::getF32x4());
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateFPExt(Operand, Builder.getV128F64x2());
 }
 
-SABLE_CODEGEN_CAST(I8x16NarrowI16x8S) {
-  std::array<llvm::Constant *, 8> MaxConstants;
-  std::array<llvm::Constant *, 8> MinConstants;
-  ranges::fill_n(
-      MaxConstants.begin(), 8,
-      Builder.getInt16(std::numeric_limits<std::int8_t>::max()));
-  ranges::fill_n(
-      MinConstants.begin(), 8,
-      Builder.getInt16(std::numeric_limits<std::int8_t>::min()));
-  Operand = Builder.CreateIntrinsicIntMinS(
-      Operand, llvm::ConstantVector::get(MaxConstants));
-  Operand = Builder.CreateIntrinsicIntMaxS(
-      Operand, llvm::ConstantVector::get(MinConstants));
-  auto *I8x8Ty = llvm::FixedVectorType::get(Builder.getInt8Ty(), 8);
-  auto *Result = Builder.CreateTrunc(Operand, I8x8Ty);
-  std::array<llvm::Constant *, 8> ZeroConstants;
-  std::array<llvm::Constant *, 16> IdentityVectorConstants;
-  ranges::fill_n(ZeroConstants.begin(), 8, Builder.getInt8(0));
-  for (unsigned I = 0; I < 16; ++I)
-    IdentityVectorConstants[I] = Builder.getInt32(I);
-  return Builder.CreateShuffleVector(
-      Result, llvm::ConstantVector::get(ZeroConstants),
-      llvm::ConstantVector::get(IdentityVectorConstants));
-}
-
-SABLE_CODEGEN_CAST(I8x16NarrowI16x8U) {
-  std::array<llvm::Constant *, 8> MaxConstants;
-  ranges::fill_n(
-      MaxConstants.begin(), 8,
-      Builder.getInt16(std::numeric_limits<std::uint8_t>::max()));
-  Operand = Builder.CreateIntrinsicIntMinU(
-      Operand, llvm::ConstantVector::get(MaxConstants));
-  auto *I8x8Ty = llvm::FixedVectorType::get(Builder.getInt8Ty(), 8);
-  auto *Result = Builder.CreateTrunc(Operand, I8x8Ty);
-  std::array<llvm::Constant *, 8> ZeroConstants;
-  std::array<llvm::Constant *, 16> IdentityVectorConstants;
-  ranges::fill_n(ZeroConstants.begin(), 8, Builder.getInt8(0));
-  for (unsigned I = 0; I < 16; ++I)
-    IdentityVectorConstants[I] = Builder.getInt32(I);
-  return Builder.CreateShuffleVector(
-      Result, llvm::ConstantVector::get(ZeroConstants),
-      llvm::ConstantVector::get(IdentityVectorConstants));
-}
-
-SABLE_CODEGEN_CAST(I16x8NarrowI32x4S) {
-  std::array<llvm::Constant *, 4> MaxConstants;
-  std::array<llvm::Constant *, 4> MinConstants;
-  ranges::fill_n(
-      MaxConstants.begin(), 4,
-      Builder.getInt32(std::numeric_limits<std::int16_t>::max()));
-  ranges::fill_n(
-      MinConstants.begin(), 4,
-      Builder.getInt32(std::numeric_limits<std::int16_t>::min()));
-  Operand = Builder.CreateIntrinsicIntMinS(
-      Operand, llvm::ConstantVector::get(MaxConstants));
-  Operand = Builder.CreateIntrinsicIntMaxS(
-      Operand, llvm::ConstantVector::get(MinConstants));
-  auto *I16x4Ty = llvm::FixedVectorType::get(Builder.getInt16Ty(), 4);
-  auto *Result = Builder.CreateTrunc(Operand, I16x4Ty);
-  std::array<llvm::Constant *, 4> ZeroConstants;
-  std::array<llvm::Constant *, 8> IdentityVectorConstants;
-  ranges::fill_n(ZeroConstants.begin(), 4, Builder.getInt16(0));
-  for (unsigned I = 0; I < 8; ++I)
-    IdentityVectorConstants[I] = Builder.getInt32(I);
-  return Builder.CreateShuffleVector(
-      Result, llvm::ConstantVector::get(ZeroConstants),
-      llvm::ConstantVector::get(IdentityVectorConstants));
-}
-
-SABLE_CODEGEN_CAST(I16x8NarrowI32x4U) {
-  std::array<llvm::Constant *, 4> MaxConstants;
-  ranges::fill_n(
-      MaxConstants.begin(), 4,
-      Builder.getInt32(std::numeric_limits<std::uint16_t>::max()));
-  Operand = Builder.CreateIntrinsicIntMinU(
-      Operand, llvm::ConstantVector::get(MaxConstants));
-  auto *I16x4Ty = llvm::FixedVectorType::get(Builder.getInt16Ty(), 4);
-  auto *Result = Builder.CreateTrunc(Operand, I16x4Ty);
-  std::array<llvm::Constant *, 4> ZeroConstants;
-  std::array<llvm::Constant *, 8> IdentityVectorConstants;
-  ranges::fill_n(ZeroConstants.begin(), 4, Builder.getInt16(0));
-  for (unsigned I = 0; I < 8; ++I)
-    IdentityVectorConstants[I] = Builder.getInt32(I);
-  return Builder.CreateShuffleVector(
-      Result, llvm::ConstantVector::get(ZeroConstants),
-      llvm::ConstantVector::get(IdentityVectorConstants));
-}
-
 SABLE_CODEGEN_CAST(I16x8ExtendLowI8x16S) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI8x16());
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateSExt(Operand, Builder.getV128I16x8());
 }
 
 SABLE_CODEGEN_CAST(I16x8ExtendHighI8x16S) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI8x16());
   Operand = Builder.CreateVectorSliceHigh(Operand);
   return Builder.CreateSExt(Operand, Builder.getV128I16x8());
 }
 
 SABLE_CODEGEN_CAST(I16x8ExtendLowI8x16U) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI8x16());
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateZExt(Operand, Builder.getV128I16x8());
 }
 
 SABLE_CODEGEN_CAST(I16x8ExtendHighI8x16U) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI8x16());
   Operand = Builder.CreateVectorSliceHigh(Operand);
   return Builder.CreateZExt(Operand, Builder.getV128I16x8());
 }
 
 SABLE_CODEGEN_CAST(I32x4ExtendLowI16x8S) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI16x8());
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateSExt(Operand, Builder.getV128I32x4());
 }
 
 SABLE_CODEGEN_CAST(I32x4ExtendHighI16x8S) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI16x8());
   Operand = Builder.CreateVectorSliceHigh(Operand);
   return Builder.CreateSExt(Operand, Builder.getV128I32x4());
 }
 
 SABLE_CODEGEN_CAST(I32x4ExtendLowI16x8U) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI16x8());
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateZExt(Operand, Builder.getV128I32x4());
 }
 
 SABLE_CODEGEN_CAST(I32x4ExtendHighI16x8U) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI16x8());
   Operand = Builder.CreateVectorSliceHigh(Operand);
   return Builder.CreateZExt(Operand, Builder.getV128I32x4());
 }
 
 SABLE_CODEGEN_CAST(I64x2ExtendLowI32x4S) {
-  auto *ExpectTy = Builder.getV128Ty(mir::SIMD128IntLaneInfo::getI32x4());
-  if (Operand->getType() != ExpectTy)
-      Operand = Builder.CreateBitCast(Operand, ExpectTy);
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI32x4());
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateSExt(Operand, Builder.getV128I64x2());
 }
 
 SABLE_CODEGEN_CAST(I64x2ExtendHighI32x4S) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI32x4());
   Operand = Builder.CreateVectorSliceHigh(Operand);
   return Builder.CreateSExt(Operand, Builder.getV128I64x2());
 }
 
 SABLE_CODEGEN_CAST(I64x2ExtendLowI32x4U) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI32x4());
   Operand = Builder.CreateVectorSliceLow(Operand);
   return Builder.CreateZExt(Operand, Builder.getV128I64x2());
 }
 
 SABLE_CODEGEN_CAST(I64x2ExtendHighI32x4U) {
+  adjustSIMD128Operand(Builder, Operand, mir::SIMD128IntLaneInfo::getI32x4());
   Operand = Builder.CreateVectorSliceHigh(Operand);
   return Builder.CreateZExt(Operand, Builder.getV128I64x2());
 }

@@ -75,3 +75,6 @@ target_link_libraries(sable-wasm sablewasm cxxopts)
 
 add_executable(tester src/Tester.cc)
 target_link_libraries(tester sablewasm-rt)
+
+add_executable(validate src/validate.cc)
+target_link_libraries(validate sablewasm)

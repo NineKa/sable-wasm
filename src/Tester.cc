@@ -1,6 +1,8 @@
 #include "codegen-llvm-instance/WASI.h"
 #include "codegen-llvm-instance/WebAssemblyInstance.h"
 
+#include <filesystem>
+
 void run(char const *Path) {
   using namespace runtime;
 
@@ -29,11 +31,26 @@ void run(char const *Path) {
 }
 
 int main(int argc, char const *argv[]) {
-  utility::ignore(argc);
+
+  if (argc != 2) {
+    fmt::print("usage: {} [sable shared libraries]\n", argv[0]);
+    std::exit(EXIT_FAILURE);
+  }
+
+  std::filesystem::path Path(argv[1]);
+  if (!std::filesystem::exists(Path)) {
+    fmt::print("cannot locate {}.\n", Path.c_str());
+    return EXIT_FAILURE;
+  }
+
   try {
     run(argv[1]);
   } catch (runtime::wasi::exceptions::WASIExit const &Exception) {
     return Exception.getExitCode();
+  } catch (std::exception const &Exception) {
+    fmt::print("exit with exception:\n  {}\n", Exception.what());
+    return EXIT_FAILURE;
   }
-  return 0;
+
+  return EXIT_SUCCESS;
 }

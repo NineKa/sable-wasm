@@ -4,7 +4,9 @@ project(sable-wasm)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD 11)
-add_compile_options(-Wno-unused-parameter -Wall -Wextra -pedantic -Werror -Wfatal-errors)
+add_compile_options(-Wall -Wextra -pedantic -Werror -Wfatal-errors 
+  -Wno-unused-parameter
+  -Wno-unused-const-variable)
 
 add_compile_options($<$<CONFIG:RELEASE>:-flto>)
 add_link_options($<$<CONFIG:RELEASE>:-flto>)

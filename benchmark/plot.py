@@ -57,11 +57,34 @@ def compute_relative_speedup(sheet_contents):
     return result
 
 
+def compute_relative_speedup_opt(sheet_contents):
+    assert (all([sheet_content['name'] == sheet_contents[0]['name']
+                 for sheet_content in sheet_contents]))
+    sablewasm_prefs = [sheet_content['sablewasm_opt'] for sheet_content in sheet_contents]
+    toolchain_prefs = [sheet_content['sablewasm_naive'] for sheet_content in sheet_contents]
+    speed_up = [toolchain_pref / sablewasm_pref
+                        for toolchain_pref, sablewasm_pref in
+                        zip(toolchain_prefs, sablewasm_prefs)]
+    return speed_up
+
+def compute_relative_speedup_simd(sheet_contents):
+    assert (all([sheet_content['name'] == sheet_contents[0]['name']
+                 for sheet_content in sheet_contents]))
+    sablewasm_prefs = [sheet_content['sablewasm_simd'] for sheet_content in sheet_contents]
+    toolchain_prefs = [sheet_content['sablewasm_opt'] for sheet_content in sheet_contents]
+    speed_up = [toolchain_pref / sablewasm_pref
+                        for toolchain_pref, sablewasm_pref in
+                        zip(toolchain_prefs, sablewasm_prefs)]
+    return speed_up
+
 def compute_speedup_average(speedups):
     result = {}
     for key in speedups.keys():
         result[key] = np.average(speedups[key], axis=0)
     return result
+
+def compute_speedup_average_opt(speedups):
+    return np.average(speedups, axis=0)
 
 
 def compute_speedup_percentile(speedups, ratio):
@@ -70,6 +93,8 @@ def compute_speedup_percentile(speedups, ratio):
         result[key] = np.percentile(speedups[key], ratio, axis=0)
     return result
 
+def compute_speedup_percentile_opt(speedups, ratio):
+    return np.percentile(speedups, ratio, axis=0)
 
 def relative_plt(file_name, x_label,
                  speedup_average, speedup_lower_error, speedup_upper_error,
